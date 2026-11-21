@@ -256,7 +256,7 @@ let head = null;
 if (START <= 0) {
   phase('Preflight');
   const [pre, map] = await parallel([
-    () => agent(`${RULES}\nRead-only except throwaway worktrees under /tmp (remove them when done). Do plan Task 0.1 exactly. Be strict: if anything suggests either build is still running or unfinished, ready=false.`, {
+    () => agent(`${RULES}\nRead-only except throwaway worktrees under /tmp (remove them when done). Do plan Task 0.1 exactly. Be strict: if anything suggests either build is still running or unfinished, ready=false.${args && args.doneEvidence ? `\nEvidence from the orchestrator (the watcher's output lives in the session task log, not /tmp, and Tim's go-ahead is already given): ${args.doneEvidence}\nTreat this as the watcher result and Tim's confirmation. Still check the git facts yourself: if the Talkie branch tip has moved past the commit named here, or a talkie/* worktree is locked by a live process, ready=false.` : ''}`, {
       ...ROLE.explore, phase: 'Preflight', label: 'preflight: both builds done', schema: PREFLIGHT_SCHEMA,
     }),
     () => agent(`${RULES}\nRead-only. Do plan Task 0.2 against branch ${TALKIE_BRANCH} (use "git show ${TALKIE_BRANCH}:<path>" or its worktree). Give exact signatures and file paths.`, {
