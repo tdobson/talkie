@@ -1795,7 +1795,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@talkie/cli@workspace:packages/cli":
+"@talkie/cli@workspace:*, @talkie/cli@workspace:packages/cli":
   version: 0.0.0-use.local
   resolution: "@talkie/cli@workspace:packages/cli"
   dependencies:
@@ -1808,6 +1808,15 @@ __metadata:
     playwright-core: "npm:^1.65.1"
   bin:
     talkie: dist/bin.js
+  languageName: unknown
+  linkType: soft
+
+"@talkie/example-sample-film@workspace:examples/sample-film":
+  version: 0.0.0-use.local
+  resolution: "@talkie/example-sample-film@workspace:examples/sample-film"
+  dependencies:
+    "@talkie/author": "workspace:*"
+    "@talkie/cli": "workspace:*"
   languageName: unknown
   linkType: soft
 
