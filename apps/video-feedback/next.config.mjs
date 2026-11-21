@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Response headers. The admin pages must not be framed by another site (clickjacking on
@@ -25,6 +27,17 @@ export const securityHeaders = [
 // and Turbopack both start there. The standalone server lands in
 // .next/standalone/apps/video-feedback/ as a result.
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+const appDir = fileURLToPath(new URL('.', import.meta.url));
+
+// playwright-core reads its browsers.json with a computed require, which file tracing cannot
+// follow. Without it the standalone server cannot find Chromium for Talkie stills.
+const playwrightBrowsersJson = relative(
+  appDir,
+  join(
+    dirname(createRequire(import.meta.url).resolve('playwright-core/package.json')),
+    'browsers.json'
+  )
+);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -37,6 +50,9 @@ const nextConfig = {
   turbopack: { root: repoRoot },
   // playwright-core starts the headless browser for Talkie stills; it must not be bundled.
   serverExternalPackages: ['sharp', 'playwright-core'],
+  outputFileTracingIncludes: {
+    '/*': [playwrightBrowsersJson],
+  },
   experimental: {
     // Build workers are capped so background builds cannot hog the machine.
     cpus: 2,
