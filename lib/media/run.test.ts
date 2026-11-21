@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { limits } from '@/lib/limits';
 import { lowPrioArgv, run, spawnLowPrio } from './run';
 
 describe('run', () => {
@@ -43,5 +44,29 @@ describe('run', () => {
     const code = await new Promise((resolve) => child.on('close', resolve));
     expect(code).toBe(0);
     expect(Buffer.concat(chunks).toString()).toBe('piped');
+  });
+
+  it('keeps only the end of a very long stderr, where the error is', async () => {
+    const saved = limits.maxStderrBytes;
+    limits.maxStderrBytes = 10;
+    try {
+      const r = await run('sh', ['-c', 'printf 0123456789abcdefghij >&2; exit 2']);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toBe('abcdefghij');
+    } finally {
+      limits.maxStderrBytes = saved;
+    }
+  });
+
+  it('kills a child that writes more to stdout than anything here should', async () => {
+    const saved = limits.maxStdoutBytes;
+    limits.maxStdoutBytes = 1024;
+    try {
+      await expect(run('sh', ['-c', 'yes | head -c 5000000; sleep 5'])).rejects.toThrow(
+        /too much output/
+      );
+    } finally {
+      limits.maxStdoutBytes = saved;
+    }
   });
 });

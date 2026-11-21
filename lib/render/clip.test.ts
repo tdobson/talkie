@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { limits } from '@/lib/limits';
 import { audioDuration } from '@/lib/media/ops';
 import { probe as probeFile } from '@/lib/media/probe';
 import { fx } from '@/lib/media/testutil';
@@ -92,5 +93,41 @@ describe('clip', () => {
     ).rejects.toThrow(/ffmpeg/);
     expect(existsSync(out)).toBe(false);
     expect(existsSync(`${out}.tmp`)).toBe(false);
+  }, 60_000);
+
+  it('stops and leaves no file when the render passes its time limit', async () => {
+    const saved = limits.clipTimeoutMs;
+    limits.clipTimeoutMs = 1;
+    const out = join(dir, 'slow.mp4');
+    try {
+      const probe = await probeFile(fx('h264.mp4'));
+      await expect(
+        renderClip({ src: fx('h264.mp4'), audio: fx('speech-like.webm'), meta, events, probe, out })
+      ).rejects.toThrow(/time limit/);
+    } finally {
+      limits.clipTimeoutMs = saved;
+    }
+    expect(existsSync(out)).toBe(false);
+    expect(existsSync(`${out}.tmp`)).toBe(false);
+  }, 60_000);
+
+  it('never renders more than the longest comment allowed', async () => {
+    const saved = limits.commentDurationMs;
+    limits.commentDurationMs = 1000;
+    const out = join(dir, 'capped.mp4');
+    try {
+      const probe = await probeFile(fx('h264.mp4'));
+      await renderClip({
+        src: fx('h264.mp4'),
+        audio: fx('speech-like.webm'),
+        meta: { ...meta, durationMs: 3_600_000 },
+        events,
+        probe,
+        out,
+      });
+    } finally {
+      limits.commentDurationMs = saved;
+    }
+    expect(await audioDuration(out)).toBeLessThan(1.5);
   }, 60_000);
 });

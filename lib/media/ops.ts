@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { SILENCE_MIN_SPEECH_S, SILENCE_NOISE_DB } from '@/lib/constants';
+import { limits } from '@/lib/limits';
 import { run, runOk } from './run';
 
 const FFMPEG_BASE = ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y'];
@@ -27,18 +28,11 @@ async function viaTmp(dst: string, write: (tmp: string) => Promise<void>): Promi
 /** Stream copy into an MP4 with the moov atom at the front, so playback can start early. */
 export async function remuxFaststart(src: string, dst: string): Promise<void> {
   await viaTmp(dst, async (tmp) => {
-    await runOk('ffmpeg', [
-      ...FFMPEG_BASE,
-      '-i',
-      src,
-      '-c',
-      'copy',
-      '-movflags',
-      '+faststart',
-      '-f',
-      'mp4',
-      tmp,
-    ]);
+    await runOk(
+      'ffmpeg',
+      [...FFMPEG_BASE, '-i', src, '-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', tmp],
+      { timeoutMs: limits.remuxTimeoutMs }
+    );
   });
 }
 
@@ -50,25 +44,29 @@ export async function extractFrame(src: string, vt: number, maxWidth: number): P
   const scale = `scale='min(${Math.floor(maxWidth)},iw)':-2`;
   const t = Math.max(0, vt);
   const fast = Math.max(0, t - SEEK_PREROLL_S);
-  const r = await runOk('ffmpeg', [
-    ...FFMPEG_BASE,
-    ...(fast > 0 ? ['-ss', fast.toFixed(6)] : []),
-    '-i',
-    src,
-    '-ss',
-    (t - fast).toFixed(6),
-    '-map',
-    '0:v:0',
-    '-frames:v',
-    '1',
-    '-vf',
-    scale,
-    '-c:v',
-    'png',
-    '-f',
-    'image2pipe',
-    '-',
-  ]);
+  const r = await runOk(
+    'ffmpeg',
+    [
+      ...FFMPEG_BASE,
+      ...(fast > 0 ? ['-ss', fast.toFixed(6)] : []),
+      '-i',
+      src,
+      '-ss',
+      (t - fast).toFixed(6),
+      '-map',
+      '0:v:0',
+      '-frames:v',
+      '1',
+      '-vf',
+      scale,
+      '-c:v',
+      'png',
+      '-f',
+      'image2pipe',
+      '-',
+    ],
+    { timeoutMs: limits.frameTimeoutMs }
+  );
   if (r.stdout.length > 0) return r.stdout;
   return lastFrame(src, scale);
 }
@@ -78,24 +76,28 @@ async function lastFrame(src: string, scale: string): Promise<Buffer> {
   try {
     const file = join(dir, 'last.png');
     // -update 1 keeps overwriting the same file, so the last frame decoded is what remains.
-    await runOk('ffmpeg', [
-      ...FFMPEG_BASE,
-      '-sseof',
-      '-3',
-      '-i',
-      src,
-      '-map',
-      '0:v:0',
-      '-vf',
-      scale,
-      '-update',
-      '1',
-      '-c:v',
-      'png',
-      '-f',
-      'image2',
-      file,
-    ]);
+    await runOk(
+      'ffmpeg',
+      [
+        ...FFMPEG_BASE,
+        '-sseof',
+        '-3',
+        '-i',
+        src,
+        '-map',
+        '0:v:0',
+        '-vf',
+        scale,
+        '-update',
+        '1',
+        '-c:v',
+        'png',
+        '-f',
+        'image2',
+        file,
+      ],
+      { timeoutMs: limits.frameTimeoutMs }
+    );
     return await readFile(file);
   } catch (e) {
     throw new Error(`Could not extract a frame from the video: ${(e as Error).message}`);
@@ -104,26 +106,36 @@ async function lastFrame(src: string, scale: string): Promise<Buffer> {
   }
 }
 
-/** 16 kHz mono 16-bit PCM WAV of the first audio track. */
+/**
+ * 16 kHz mono 16-bit PCM WAV of the first audio track, cut at `limits.commentDurationMs`: the
+ * upload limits allow hours of compressed audio, and everything downstream (silence detection,
+ * the transcription upload, the clip) needs a bound on how much there is.
+ */
 export async function toWav16k(src: string, dst: string): Promise<void> {
   await viaTmp(dst, async (tmp) => {
-    await runOk('ffmpeg', [
-      ...FFMPEG_BASE,
-      '-i',
-      src,
-      '-map',
-      '0:a:0',
-      '-vn',
-      '-ar',
-      '16000',
-      '-ac',
-      '1',
-      '-c:a',
-      'pcm_s16le',
-      '-f',
-      'wav',
-      tmp,
-    ]);
+    await runOk(
+      'ffmpeg',
+      [
+        ...FFMPEG_BASE,
+        '-i',
+        src,
+        '-map',
+        '0:a:0',
+        '-vn',
+        '-t',
+        (limits.commentDurationMs / 1000).toFixed(3),
+        '-ar',
+        '16000',
+        '-ac',
+        '1',
+        '-c:a',
+        'pcm_s16le',
+        '-f',
+        'wav',
+        tmp,
+      ],
+      { timeoutMs: limits.audioTimeoutMs }
+    );
   });
 }
 
@@ -135,20 +147,24 @@ export async function detectSpeech(
   wav: string
 ): Promise<{ hasSpeech: boolean; speechSeconds: number }> {
   const duration = await audioDuration(wav);
-  const r = await runOk('ffmpeg', [
-    '-hide_banner',
-    '-nostdin',
-    '-nostats',
-    '-i',
-    wav,
-    '-map',
-    '0:a:0',
-    '-af',
-    `silencedetect=noise=${SILENCE_NOISE_DB}dB:d=${SILENCE_MIN_GAP_S}`,
-    '-f',
-    'null',
-    '-',
-  ]);
+  const r = await runOk(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-nostdin',
+      '-nostats',
+      '-i',
+      wav,
+      '-map',
+      '0:a:0',
+      '-af',
+      `silencedetect=noise=${SILENCE_NOISE_DB}dB:d=${SILENCE_MIN_GAP_S}`,
+      '-f',
+      'null',
+      '-',
+    ],
+    { timeoutMs: limits.audioTimeoutMs }
+  );
   let silent = 0;
   let openStart: number | null = null;
   for (const m of r.stderr.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
@@ -188,28 +204,19 @@ export async function concatChunks(chunkPaths: string[], dst: string): Promise<v
  * their header, so when ffprobe has none the file is decoded and the last timestamp is used.
  */
 export async function audioDuration(file: string): Promise<number> {
-  const probed = await runOk('ffprobe', [
-    '-v',
-    'error',
-    '-show_entries',
-    'format=duration',
-    '-of',
-    'default=nw=1:nk=1',
-    file,
-  ]);
+  const probed = await runOk(
+    'ffprobe',
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file],
+    { timeoutMs: limits.probeTimeoutMs }
+  );
   const fromHeader = Number(probed.stdout.toString('utf8').trim());
   if (Number.isFinite(fromHeader) && fromHeader > 0) return fromHeader;
 
-  const decoded = await run('ffmpeg', [
-    '-hide_banner',
-    '-nostdin',
-    '-i',
-    file,
-    '-vn',
-    '-f',
-    'null',
-    '-',
-  ]);
+  const decoded = await run(
+    'ffmpeg',
+    ['-hide_banner', '-nostdin', '-i', file, '-vn', '-f', 'null', '-'],
+    { timeoutMs: limits.audioTimeoutMs }
+  );
   if (decoded.code !== 0) throw new Error(`ffmpeg could not read the duration of ${file}`);
   const times = [...decoded.stderr.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
   const last = times.at(-1);

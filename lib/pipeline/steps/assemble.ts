@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { concatChunks, toWav16k } from '@/lib/media/ops';
 import { readJson, writeJsonAtomic } from '@/lib/storage/json';
 import type { CaptureEvent } from '@/lib/types';
-import { audioFileName, FILES, type StepFn } from './types';
+import { audioFileName, FILES, NoAudioError, type StepFn } from './types';
 
 const CHUNK_FILE_RE = /^(\d+)\.bin$/;
 
@@ -28,6 +28,9 @@ async function storedSeqs(dir: string): Promise<number[]> {
  * The `audio` step: joins the upload chunks in sequence order into the recording, merges the
  * per-chunk event batches into `events.json` sorted by time, and makes the 16 kHz mono WAV
  * that silence detection and transcription read.
+ *
+ * A comment made with no microphone arrives as events with zero bytes of audio. Its events
+ * are still merged, then `NoAudioError` tells the processor to skip the steps that need sound.
  */
 export const assembleStep: StepFn = async ({ dir, meta, log }) => {
   const stored = await storedSeqs(dir);
@@ -58,6 +61,11 @@ export const assembleStep: StepFn = async ({ dir, meta, log }) => {
   events.sort((a, b) => a.t - b.t);
   await writeJsonAtomic(join(dir, FILES.events), events);
 
+  if ((await stat(audio)).size === 0) {
+    await rm(join(dir, FILES.wav), { force: true });
+    log(`no audio in ${total} chunks, kept ${events.length} events`);
+    throw new NoAudioError();
+  }
   await toWav16k(audio, join(dir, FILES.wav));
   log(`assembled ${total} chunks and ${events.length} events`);
 };

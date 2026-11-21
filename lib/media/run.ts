@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { limits } from '@/lib/limits';
 
 // Every child process (ffmpeg, ffprobe, ...) runs at low priority: IO best-effort level 7
 // and nice +19. ionice and nice both exec the next command, so the spawned pid is the real one.
@@ -33,8 +34,9 @@ export function spawnLowPrio(cmd: string, args: string[]): ChildProcess {
 
 /**
  * Runs a command to completion at low priority. Resolves with the exit code whatever it is
- * (callers decide what a failure means); rejects only if the process cannot be spawned or
- * the timeout passes.
+ * (callers decide what a failure means); rejects only if the process cannot be spawned, the
+ * timeout passes, or it writes more than `limits.maxStdoutBytes` to stdout. Of stderr only the
+ * last `limits.maxStderrBytes` are kept, so a child that logs for hours cannot use up memory.
  */
 export async function run(
   cmd: string,
@@ -44,8 +46,11 @@ export async function run(
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawnLowPrio(cmd, args);
     const out: Buffer[] = [];
-    const err: Buffer[] = [];
+    let outBytes = 0;
+    let err: Buffer[] = [];
+    let errBytes = 0;
     let timedOut = false;
+    let flooded = false;
     const timer =
       opts.timeoutMs === undefined
         ? undefined
@@ -54,8 +59,26 @@ export async function run(
             child.kill('SIGKILL');
           }, opts.timeoutMs);
 
-    child.stdout?.on('data', (c: Buffer) => out.push(c));
-    child.stderr?.on('data', (c: Buffer) => err.push(c));
+    child.stdout?.on('data', (c: Buffer) => {
+      if (flooded) return;
+      outBytes += c.length;
+      if (outBytes > limits.maxStdoutBytes) {
+        flooded = true;
+        out.length = 0;
+        child.kill('SIGKILL');
+        return;
+      }
+      out.push(c);
+    });
+    child.stderr?.on('data', (c: Buffer) => {
+      err.push(c);
+      errBytes += c.length;
+      // Trimmed now and then rather than on every write: at most twice the limit is held.
+      if (errBytes > 2 * limits.maxStderrBytes) {
+        err = [Buffer.concat(err).subarray(-limits.maxStderrBytes)];
+        errBytes = err[0].length;
+      }
+    });
     // The child may exit before reading all of its input (EPIPE); the exit code tells the story.
     child.stdin?.on('error', () => {});
     child.on('error', (e) => {
@@ -68,10 +91,14 @@ export async function run(
         reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`));
         return;
       }
+      if (flooded) {
+        reject(new Error(`${cmd} produced too much output and was stopped`));
+        return;
+      }
       resolve({
         code: code ?? (signal ? 128 : 1),
         stdout: Buffer.concat(out),
-        stderr: Buffer.concat(err).toString('utf8'),
+        stderr: Buffer.concat(err).subarray(-limits.maxStderrBytes).toString('utf8'),
       });
     });
 

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resetConfigForTests } from '@/lib/config';
+import { limits } from '@/lib/limits';
 import { fx } from '@/lib/media/testutil';
 import { readCommentMeta } from '@/lib/storage/repo';
 import type { CommentMeta, CommentRef } from '@/lib/types';
@@ -11,6 +12,7 @@ import {
   scanForPendingClips,
   scanForUnfinished,
   startPipeline,
+  stopStaleSweep,
 } from './queue';
 import { readStatus, updateStatus } from './status';
 import { steps } from './steps';
@@ -163,6 +165,29 @@ describe('startPipeline', () => {
     delete process.env.TRANSCRIBER;
     resetConfigForTests();
     await cleanup();
+  });
+
+  it('finishes an upload that went quiet without a complete call, and processes it', async () => {
+    const saved = limits.staleReceivingMs;
+    limits.staleReceivingMs = 0;
+    try {
+      const audio = await readFile(fx('speech-like.webm'));
+      const abandoned = await seedComment({
+        audio,
+        state: 'receiving',
+        meta: { totalChunks: null, endedAt: null, durationMs: null },
+      });
+      await startPipeline();
+      await getQueue().idle();
+      expect(await readStatus(abandoned.ref)).toMatchObject({
+        state: 'done',
+        steps: { audio: 'done', transcribe: 'done' },
+      });
+      expect((await readCommentMeta(abandoned.ref))?.totalChunks).toBe(3);
+    } finally {
+      limits.staleReceivingMs = saved;
+      stopStaleSweep();
+    }
   });
 
   it('resumes unfinished comments, renders clips last and takes new completions', async () => {

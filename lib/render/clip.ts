@@ -3,6 +3,7 @@ import { rename, rm } from 'node:fs/promises';
 import { CLIP_FPS, CLIP_MAX_WIDTH } from '@/lib/constants';
 import { visibleRegion } from '@/lib/geometry';
 import { audioDuration, extractFrame } from '@/lib/media/ops';
+import { limits } from '@/lib/limits';
 import { spawnLowPrio, stderrTail } from '@/lib/media/run';
 import { zoomAt } from '@/lib/moments';
 import type { CaptureEvent, CommentMeta, ProbeInfo, Rect } from '@/lib/types';
@@ -85,11 +86,16 @@ export async function renderClip(opts: {
   const { w, h } = clipSize(probe);
   const raw = { raw: { width: w, height: h, channels: 3 as const } };
 
-  const durationS =
+  const claimedS =
     meta.durationMs !== null && meta.durationMs > 0
       ? meta.durationMs / 1000
       : await audioDuration(audio);
+  // The length comes from the reviewer's browser: it is held to the longest comment allowed,
+  // and the audio is cut to match, so one comment cannot keep the queue busy for hours.
+  const maxS = limits.commentDurationMs / 1000;
+  const durationS = Math.min(claimedS, maxS);
   const totalFrames = Math.max(1, Math.ceil(durationS * CLIP_FPS));
+  const deadline = Date.now() + limits.clipTimeoutMs;
   // General comments have no paused frame; they are recorded at the end of the video.
   const startVt = meta.pausedAtVideoTime ?? probe.duration;
 
@@ -152,6 +158,8 @@ export async function renderClip(opts: {
     String(CLIP_FPS),
     '-i',
     '-',
+    '-t',
+    maxS.toFixed(3),
     '-i',
     audio,
     '-map',
@@ -199,7 +207,15 @@ export async function renderClip(opts: {
   try {
     let lastKey = '';
     let lastFrame: Buffer | null = null;
+    const overTime = () => {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `The clip passed its time limit of ${Math.round(limits.clipTimeoutMs / 1000)}s and was stopped.`
+        );
+      }
+    };
     for (let i = 0; i < totalFrames && !exited; i++) {
+      overTime();
       const state = stateAt(events, (i * 1000) / CLIP_FPS, startVt, probe.duration, w, h);
       const key = JSON.stringify(state);
       if (key !== lastKey || !lastFrame) {
@@ -212,7 +228,17 @@ export async function renderClip(opts: {
       }
     }
     stdin.end();
-    const code = await closed;
+    // ffmpeg still has to finish encoding: that wait is under the same limit.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<'expired'>((resolve) => {
+      timer = setTimeout(() => resolve('expired'), Math.max(0, deadline - Date.now()));
+    });
+    const code = await Promise.race([closed, expired]).finally(() => clearTimeout(timer));
+    if (code === 'expired') {
+      throw new Error(
+        `The clip passed its time limit of ${Math.round(limits.clipTimeoutMs / 1000)}s and was stopped.`
+      );
+    }
     if (code !== 0) {
       const stderr = Buffer.concat(err).toString('utf8');
       throw new Error(`ffmpeg failed (exit ${code}): ${stderrTail(stderr)}`);

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { limits } from '@/lib/limits';
 import {
   audioDuration,
   concatChunks,
@@ -141,5 +142,35 @@ describe('ops', () => {
   it('measures audio duration', async () => {
     expect(await audioDuration(fx('speech-like.wav'))).toBeCloseTo(3, 1);
     expect(await audioDuration(fx('speech-like.webm'))).toBeCloseTo(3, 0);
+  });
+
+  describe('time limits', () => {
+    const saved = { ...limits };
+    afterEach(() => {
+      Object.assign(limits, saved);
+    });
+
+    it('gives up on an audio conversion that takes too long', async () => {
+      limits.audioTimeoutMs = 1;
+      await expect(toWav16k(fx('speech-like.webm'), out('slow.wav'))).rejects.toThrow(/timed out/);
+      expect(existsSync(out('slow.wav'))).toBe(false);
+      await expect(detectSpeech(fx('speech-like.wav'))).rejects.toThrow(/timed out/);
+    });
+
+    it('gives up on a probe, a frame or a remux that takes too long', async () => {
+      limits.probeTimeoutMs = 1;
+      limits.frameTimeoutMs = 1;
+      limits.remuxTimeoutMs = 1;
+      await expect(probe(fx('h264.mp4'))).rejects.toThrow(/timed out/);
+      await expect(audioDuration(fx('speech-like.wav'))).rejects.toThrow(/timed out/);
+      await expect(extractFrame(fx('h264.mp4'), 1, 320)).rejects.toThrow(/timed out/);
+      await expect(remuxFaststart(fx('h264.mp4'), out('slow.mp4'))).rejects.toThrow(/timed out/);
+    });
+
+    it('cuts the audio it converts to the longest comment allowed', async () => {
+      limits.commentDurationMs = 1000;
+      await toWav16k(fx('speech-like.webm'), out('cut.wav'));
+      expect(await audioDuration(out('cut.wav'))).toBeCloseTo(1, 1);
+    });
   });
 });

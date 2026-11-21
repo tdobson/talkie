@@ -298,3 +298,56 @@ it('a clip pass leaves the state alone when the comment was re-queued while it r
   // The re-queued job still starts where the reprocess asked it to.
   expect(s && resumeStep(s)).toBe('transcribe');
 });
+
+describe('a comment recorded with no microphone', () => {
+  const seedSilent = () =>
+    seedComment({ audio: Buffer.alloc(0), parts: 1, events, meta: { micLost: true } });
+
+  it('keeps its pointing: moments and stills are made, the audio steps are skipped', async () => {
+    const { ref, dir } = await seedSilent();
+    await processComment(ref, { includeClip: false });
+
+    expect(await readStatus(ref)).toMatchObject({
+      state: 'done',
+      steps: {
+        audio: 'done',
+        silence: 'skipped',
+        transcribe: 'skipped',
+        moments: 'done',
+        stills: 'done',
+        clip: 'skipped',
+      },
+      error: null,
+    });
+    expect(await json<CaptureEvent[]>(join(dir, 'events.json'))).toHaveLength(events.length);
+    const moments = await json<Moment[]>(join(dir, 'moments.json'));
+    expect(moments.some((m) => m.kinds.includes('click'))).toBe(true);
+    expect(existsSync(join(dir, 'transcript.json'))).toBe(false);
+    expect(steps.stills).toHaveBeenCalledTimes(1);
+    expect(steps.clip).not.toHaveBeenCalled();
+  });
+
+  it('has no audio to work out its length from, so it uses the events', async () => {
+    const { ref, dir } = await seedComment({
+      audio: Buffer.alloc(0),
+      parts: 1,
+      events,
+      meta: { micLost: true, durationMs: null },
+    });
+    await processComment(ref, { includeClip: false });
+    expect((await readStatus(ref))?.state).toBe('done');
+    expect((await json<Moment[]>(join(dir, 'moments.json'))).length).toBeGreaterThan(0);
+  });
+
+  it('can be reprocessed from transcribe without failing', async () => {
+    const { ref } = await seedSilent();
+    await processComment(ref, { includeClip: false });
+    await processComment(ref, { fromStep: 'transcribe', includeClip: true });
+    expect(await readStatus(ref)).toMatchObject({
+      state: 'done',
+      steps: { transcribe: 'skipped', moments: 'done', stills: 'done', clip: 'skipped' },
+      error: null,
+    });
+    expect(steps.clip).not.toHaveBeenCalled();
+  });
+});

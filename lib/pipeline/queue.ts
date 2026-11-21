@@ -1,3 +1,5 @@
+import { limits } from '@/lib/limits';
+import { finaliseStaleComments } from '@/lib/review/service';
 import { listComments, listSessions, listVideos } from '@/lib/storage/repo';
 import type { CommentRef, CommentStatus } from '@/lib/types';
 import { setCommentCompleteHandler } from './enqueue';
@@ -158,13 +160,47 @@ export function getQueue(): ProcessingQueue {
   return holder[QUEUE_KEY];
 }
 
+// Uploads that stopped without a complete call (a tab closed mid-comment) are finished by the
+// server after a while, on a timer. Kept on globalThis for the same reason as the queue.
+const SWEEP_KEY = Symbol.for('video-feedback.staleSweep');
+type SweepHolder = { [SWEEP_KEY]?: ReturnType<typeof setInterval> };
+
+async function sweepStale(): Promise<void> {
+  try {
+    const swept = await finaliseStaleComments();
+    if (swept.length > 0 && process.env.NODE_ENV !== 'test') {
+      console.log(`[pipeline] finished ${swept.length} uploads that had gone quiet`);
+    }
+  } catch (err) {
+    console.error('[pipeline] sweep for stale uploads failed:', err);
+  }
+}
+
+function startStaleSweep(): void {
+  const holder = globalThis as SweepHolder;
+  if (holder[SWEEP_KEY]) return;
+  const timer = setInterval(() => void sweepStale(), limits.staleSweepEveryMs);
+  // The sweep must never be what keeps the process alive.
+  timer.unref?.();
+  holder[SWEEP_KEY] = timer;
+}
+
+export function stopStaleSweep(): void {
+  const holder = globalThis as SweepHolder;
+  if (holder[SWEEP_KEY]) clearInterval(holder[SWEEP_KEY]);
+  delete holder[SWEEP_KEY];
+}
+
 /**
- * Server start: completed uploads go straight to the queue from now on, and whatever was
- * left unfinished by the previous run is picked up again.
+ * Server start: completed uploads go straight to the queue from now on, whatever was left
+ * unfinished by the previous run is picked up again, and uploads that went quiet without a
+ * complete call are finished, now and every few minutes.
  */
 export async function startPipeline(): Promise<{ resumed: number; clips: number }> {
   const queue = getQueue();
   setCommentCompleteHandler((ref) => queue.enqueue(ref));
+  await sweepStale();
+  startStaleSweep();
   const unfinished = await scanForUnfinished();
   for (const ref of unfinished) queue.enqueue(ref);
   const clips = await scanForPendingClips();

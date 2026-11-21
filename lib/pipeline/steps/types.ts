@@ -46,6 +46,18 @@ export function audioFileName(audioMime: string): 'audio.mp4' | 'audio.webm' {
   return /mp4|m4a|aac/i.test(audioMime) ? 'audio.mp4' : 'audio.webm';
 }
 
+/**
+ * Thrown by the audio step, after it has written `events.json`, when the recording holds no
+ * audio at all: the microphone was gone for the whole comment. Not a failure. The steps that
+ * need sound are skipped, and the pointing still gets its moments and stills.
+ */
+export class NoAudioError extends Error {
+  constructor() {
+    super('The recording has no audio.');
+    this.name = 'NoAudioError';
+  }
+}
+
 /** Thrown by the silence step when the recording holds no speech. Not a failure. */
 export class EmptyCommentError extends Error {
   constructor() {

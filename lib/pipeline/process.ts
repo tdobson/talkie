@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readJson } from '@/lib/storage/json';
 import { commentDir, versionDir } from '@/lib/storage/paths';
@@ -11,7 +12,14 @@ import type {
   StepState,
 } from '@/lib/types';
 import { initialStatus, readStatus, updateStatus } from './status';
-import { EmptyCommentError, STEP_ORDER, type StepContext, steps } from './steps';
+import {
+  audioFileName,
+  EmptyCommentError,
+  NoAudioError,
+  STEP_ORDER,
+  type StepContext,
+  steps,
+} from './steps';
 
 export interface ProcessOptions {
   /** First step to run. Earlier steps keep the state they have. Default: `audio`. */
@@ -39,6 +47,17 @@ async function loadProbe(ref: CommentRef, meta: CommentMeta): Promise<ProbeInfo 
   }
 }
 
+/** True when the recording was assembled and holds no audio at all (the microphone was lost). */
+async function assembledAudioIsEmpty(dir: string, meta: CommentMeta): Promise<boolean> {
+  try {
+    return (await stat(join(dir, audioFileName(meta.audioMime)))).size === 0;
+  } catch {
+    return false;
+  }
+}
+
+const NEEDS_SOUND: readonly StepName[] = ['silence', 'transcribe', 'clip'];
+
 /**
  * Runs the pipeline steps for one comment, in order, recording each outcome in status.json.
  *
@@ -46,6 +65,8 @@ async function loadProbe(ref: CommentRef, meta: CommentMeta): Promise<ProbeInfo 
  * - The audio cannot be assembled: nothing later can work, so the rest is `skipped`.
  * - Any other failed step (a Groq outage, say) is recorded and the later steps still run.
  * - General comments have no picture, so their render steps are `skipped`.
+ * - No audio at all (the microphone was lost): the steps that need sound are `skipped`, and
+ *   the moments and stills are still made from the pointing.
  *
  * The final state is `done` if no step failed, else `failed`, and `error` holds the first
  * failure. A pending clip does not hold the comment back: it is `done` once the rest is.
@@ -102,9 +123,12 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
   const overtaken = async () => clipOnly && (await readStatus(ref))?.state !== before.state;
 
   let stopped: 'empty' | 'failed' | null = null;
+  // A pass that starts after the audio step has to find this out for itself.
+  let noAudio = fromIndex > 0 && (await assembledAudioIsEmpty(dir, meta));
+
   for (const name of todo) {
     const noPicture = meta.kind === 'general' && (name === 'stills' || name === 'clip');
-    if (stopped !== null || noPicture) {
+    if (stopped !== null || noPicture || (noAudio && NEEDS_SOUND.includes(name))) {
       await updateStatus(ref, { steps: { [name]: 'skipped' } });
       continue;
     }
@@ -120,6 +144,12 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
         stopped = 'empty';
         await updateStatus(ref, { steps: { [name]: 'done' } });
         log('no speech, nothing more to do');
+        continue;
+      }
+      if (err instanceof NoAudioError) {
+        noAudio = true;
+        await updateStatus(ref, { steps: { [name]: 'done' } });
+        log('no audio, keeping the pointing');
         continue;
       }
       if (await overtaken()) return;

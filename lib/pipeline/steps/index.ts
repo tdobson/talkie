@@ -8,7 +8,14 @@ import { transcribeStep } from './transcribe';
 import type { StepFn } from './types';
 
 export type { StepContext, StepFn } from './types';
-export { audioFileName, EmptyCommentError, FILES, isStepName, STEP_ORDER } from './types';
+export {
+  audioFileName,
+  EmptyCommentError,
+  FILES,
+  isStepName,
+  NoAudioError,
+  STEP_ORDER,
+} from './types';
 
 /**
  * The step registry the processor runs from. It is a plain mutable map so tests can stub any

@@ -1,4 +1,5 @@
 import type { ProbeInfo } from '@/lib/types';
+import { limits } from '@/lib/limits';
 import { runOk } from './run';
 
 interface FfprobeStream {
@@ -19,15 +20,11 @@ interface FfprobeOutput {
 }
 
 async function ffprobe(file: string): Promise<FfprobeOutput> {
-  const r = await runOk('ffprobe', [
-    '-v',
-    'error',
-    '-of',
-    'json',
-    '-show_format',
-    '-show_streams',
-    file,
-  ]);
+  const r = await runOk(
+    'ffprobe',
+    ['-v', 'error', '-of', 'json', '-show_format', '-show_streams', file],
+    { timeoutMs: limits.probeTimeoutMs }
+  );
   return JSON.parse(r.stdout.toString('utf8')) as FfprobeOutput;
 }
 

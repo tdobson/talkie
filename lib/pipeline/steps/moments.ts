@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { audioDuration } from '@/lib/media/ops';
 import { selectMoments } from '@/lib/moments';
@@ -17,8 +18,13 @@ export const momentsStep: StepFn = async ({ dir, meta, log }) => {
   } catch {
     log('transcript.json is unreadable, choosing moments without it');
   }
+  const wav = join(dir, FILES.wav);
+  // With no audio (the microphone was lost) the last event is the best measure of the length.
   const durationMs =
-    meta.durationMs ?? Math.round((await audioDuration(join(dir, FILES.wav))) * 1000);
+    meta.durationMs ??
+    (existsSync(wav)
+      ? Math.round((await audioDuration(wav)) * 1000)
+      : events.reduce((max, e) => Math.max(max, e.t), 0));
   const moments = selectMoments({
     kind: meta.kind,
     pausedAtVideoTime: meta.pausedAtVideoTime,
