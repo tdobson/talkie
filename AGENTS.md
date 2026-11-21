@@ -45,6 +45,9 @@ How the packages depend on each other: `format` stands alone. `author` and `play
 | Get a link preview | [docs/link-previews.md](docs/link-previews.md) |
 | Change the player | [docs/how-it-works.md](docs/how-it-works.md#talkieplayer), then `packages/player/src/element.ts` |
 | Change the format | [spec/talkie-format-1.md](spec/talkie-format-1.md), then `packages/format/src/validate.ts` |
+| Put a film up for review and read the feedback | [docs/review-platform-for-agents.md](docs/review-platform-for-agents.md) |
+| Just watch a `.lottie` | Drop it on https://talkie.tdobson.net (nothing is uploaded) |
+| Deploy the review app or the drop player | [docs/DEPLOY.md](docs/DEPLOY.md), `scripts/deploy/` |
 
 ## Machine rules
 
