@@ -161,7 +161,7 @@ test('source reaches the real element when it is registered after mount', async 
   await settle();
 
   expect(el).toBeInstanceOf(real.TalkiePlayerElement);
-  expect(Object.prototype.hasOwnProperty.call(el, 'source')).toBe(false);
+  expect(Object.hasOwn(el, 'source')).toBe(false);
   expect(el.source).toBe(blob);
   expect(engines).toHaveLength(1);
   expect(engines[0]!.load).toHaveBeenCalledWith(blob, expect.anything());

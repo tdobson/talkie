@@ -4,6 +4,8 @@ import { useEffect, useImperativeHandle, useRef, type CSSProperties, type Ref } 
 import type { TalkiePlayerElement } from '@talkie/player';
 import './jsx';
 
+const TAG = 'talkie-player';
+
 export interface TalkiePlayerProps {
   /** A film folder URL or a `.lottie` URL. */
   src?: string;
@@ -58,9 +60,25 @@ export function TalkiePlayer({
   }, []);
 
   useEffect(() => {
-    if (el.current && source) {
-      el.current.source = source;
+    const node = el.current;
+    if (!node || !source) {
+      return undefined;
     }
+    if (customElements.get(TAG)) {
+      node.source = source;
+      return undefined;
+    }
+    // Before the element is registered, an assignment would make a plain property that hides
+    // the element's own `source` setter for good. Wait until the setter exists.
+    let cancelled = false;
+    void customElements.whenDefined(TAG).then(() => {
+      if (!cancelled) {
+        node.source = source;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [source]);
 
   useEffect(() => {
