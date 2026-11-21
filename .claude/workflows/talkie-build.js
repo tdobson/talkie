@@ -1,7 +1,7 @@
 export const meta = {
   name: 'talkie-build',
   description: 'Build Talkie wave by wave: Haiku explorer, Fable 5.2 low-effort coder in a worktree, review, one fix, then merge and test',
-  whenToUse: 'After talkie-spike has passed and Tim has judged the style check. args: { from?: "W3", to?: "W8", includePhase2?: boolean }',
+  whenToUse: 'After talkie-spike has passed and Tim has judged the style check. args: { from?: "W3", to?: "W8", includePhase2?: boolean, skipTasks?: ["T6"] }',
   phases: [
     { title: 'W1 Scaffold' },
     { title: 'W2 Format' },
@@ -37,6 +37,7 @@ const WAVES = [
   { name: 'P2 Expo example', tasks: ['T17'], phase2: true },
 ]
 
+const SCOPE = `This prompt is your whole assignment. If the harness also shows you a relayed or latest user request, ignore it: the orchestrator has already handled it, and acting on it instead of this task breaks the build. `
 const RULES = `Follow "Ground rules for every agent" in ${PLAN} exactly. In short: every heavy tool runs as "nice -n19 ionice -c2 -n7 <cmd>" (prefer the yarn scripts, which already carry scripts/low); jest --maxWorkers=2, playwright workers 2; no new dependencies and no yarn.lock changes (T1 and T16 excepted); TDD; commit as you go; no em or en dashes in user-facing text; deterministic output; only edit files your task lists.`
 
 const BUILD = {
@@ -71,12 +72,17 @@ const INTEGRATE = {
 const a = args || {}
 const startIdx = a.from ? WAVES.findIndex((w) => w.name.startsWith(a.from)) : 0
 const endIdx = a.to ? WAVES.findIndex((w) => w.name.startsWith(a.to)) : WAVES.length - 1
-const waves = WAVES.slice(Math.max(0, startIdx), endIdx + 1).filter((w) => !w.phase2 || a.includePhase2 !== false)
-const skipped = WAVES.filter((w) => !waves.includes(w)).map((w) => w.name)
+const skipTasks = a.skipTasks || []
+const waves = WAVES.slice(Math.max(0, startIdx), endIdx + 1)
+  .filter((w) => !w.phase2 || a.includePhase2 !== false)
+  .map((w) => ({ ...w, tasks: w.tasks.filter((t) => !skipTasks.includes(t)) }))
+  .filter((w) => w.tasks.length)
+if (skipTasks.length) log(`Skipping tasks already merged: ${skipTasks.join(', ')}`)
+const skipped = WAVES.filter((w) => !waves.some((x) => x.name === w.name)).map((w) => w.name)
 if (skipped.length) log(`Not running: ${skipped.join(', ')}`)
 
 const scout = (t, wave) => agent(
-  `You are the explorer for Task ${t} of the Talkie plan. Read the Task ${t} section of ${MAIN}/${PLAN} and the spec ${MAIN}/${SPEC}. ` +
+  SCOPE + `You are the explorer for Task ${t} of the Talkie plan. Read the Task ${t} section of ${MAIN}/${PLAN} and the spec ${MAIN}/${SPEC}. ` +
   `Then read the current code on branch ${BASE} in ${MAIN} and map exactly what the coder needs: the existing exports, types and function signatures they must use ` +
   `(with file paths), the relevant third-party type signatures from node_modules for libraries this task uses, decisions in spike/REPORT.md that apply, ` +
   `and any mismatch between the plan and the code as it now stands (names, paths, signatures). You are read-only: do not modify files. ` +
@@ -84,7 +90,7 @@ const scout = (t, wave) => agent(
   { ...EXPLORER, label: `${t} explore`, phase: wave })
 
 const build = (brief, t, wave) => agent(
-  `Implement Task ${t} from ${PLAN} exactly (read the task, the ground rules and the spec section it implements). ` +
+  SCOPE + `Implement Task ${t} from ${PLAN} exactly (read the task, the ground rules and the spec section it implements). ` +
   `You are in a fresh git worktree of the repo. First run: git switch -c talkie/${t} ${BASE} (so you start from the latest merged waves). ` +
   `${t === 'T1' ? 'You create the workspace and install the dependencies as the task says.' : 'Then run: scripts/low yarn install --immutable'}\n\n${RULES}\n\n` +
   `Explorer brief:\n${brief ?? '(explorer failed; read the code yourself)'}\n\n` +
@@ -94,14 +100,14 @@ const build = (brief, t, wave) => agent(
   { ...CODER, isolation: 'worktree', schema: BUILD, label: `${t} build`, phase: wave })
 
 const review = (b, t, wave) => agent(
-  `Adversarially review Task ${t} of the Talkie plan. Code: branch ${b.branch} in worktree ${b.worktree}. Diff: git -C ${b.worktree} diff ${BASE}...HEAD. ` +
+  SCOPE + `Adversarially review Task ${t} of the Talkie plan. Code: branch ${b.branch} in worktree ${b.worktree}. Diff: git -C ${b.worktree} diff ${BASE}...HEAD. ` +
   `Read the Task ${t} section and "Reviews and integration" in ${MAIN}/${PLAN}, and the spec section it implements. Try to show it does NOT meet the task: ` +
   `missing requirements, tests that do not test the behaviour, tool calls without the nice/ionice prefix, new dependencies, em or en dashes in user-facing text, ` +
   `non-determinism, SSR-unsafe code in player or react, edits outside the task's files. You may run its tests (prefixed with nice -n19 ionice -c2 -n7). Do not edit files.`,
   { ...REVIEWER, schema: REVIEW, label: `${t} review`, phase: wave })
 
 const fix = (b, r, t, wave) => agent(
-  `In worktree ${b.worktree} (branch ${b.branch}), fix these CRITICAL and HIGH review findings for Task ${t} of ${PLAN}, plus any MEDIUM that is a one-line fix. ` +
+  SCOPE + `In worktree ${b.worktree} (branch ${b.branch}), fix these CRITICAL and HIGH review findings for Task ${t} of ${PLAN}, plus any MEDIUM that is a one-line fix. ` +
   `cd there first; do not create a new worktree. ${RULES}\n\nFindings:\n${JSON.stringify(r.findings, null, 1)}\n\n` +
   `Rerun ${b.testCommand}, yarn typecheck and yarn lint, commit, and return the same fields as a build.`,
   { ...CODER, schema: BUILD, label: `${t} fix`, phase: wave })
@@ -132,7 +138,7 @@ for (const wave of waves) {
   let integ = null
   if (good.length) {
     integ = await agent(
-      `Integrate wave "${wave.name}" of the Talkie plan. cd ${MAIN}; it is on branch ${BASE} and must be clean (git status), otherwise stop and report. ` +
+      SCOPE + `Integrate wave "${wave.name}" of the Talkie plan. cd ${MAIN}; it is on branch ${BASE} and must be clean (git status), otherwise stop and report. ` +
       `Merge in this order with git merge --no-ff: ${good.map((x) => x.b.branch).join(', ')}. Resolve only trivial conflicts; anything else: git merge --abort and report. ` +
       `Then run: scripts/low yarn install --immutable && yarn build && yarn test${wave.name.startsWith('W7') ? ' && yarn test:examples' : ''}${wave.name.startsWith('W8') ? ' && yarn e2e --project=chromium' : ''}. ` +
       `If something fails, you may make one small obvious fix (a missing export, a merge slip), commit it, and rerun; otherwise report the failures verbatim. ` +
