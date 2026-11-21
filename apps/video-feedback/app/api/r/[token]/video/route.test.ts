@@ -89,3 +89,16 @@ it.each(['?version=3', '?version=0', '?version=abc', '?version=1.5', '?version=2
 it('404s when the version exists but its file is gone', async () => {
   expect((await get('?version=1')).status).toBe(404);
 });
+
+it('404s for a talkie version, even with a source.mp4 on disk', async () => {
+  await saveVideo({
+    ...video,
+    versions: [
+      video.versions[0]!,
+      { version: 2, importedAt: 'now', originalFilename: 'a.lottie', mediaKind: 'talkie' },
+    ],
+  });
+  const res = await get('?version=2', 'bytes=0-99');
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: 'not found' });
+});
