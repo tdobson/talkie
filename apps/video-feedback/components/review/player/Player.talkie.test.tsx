@@ -116,8 +116,8 @@ describe('Player with a Talkie film', () => {
   it('mounts the engine in the picture layer and loads the film folder for this version', async () => {
     const { engine, mounts, stage } = await setup();
     expect(mounts).toHaveLength(1);
-    expect(mounts[0].filmUrl).toBe('/api/r/tok/film/?version=3');
-    expect(engine.loaded).toEqual(['/api/r/tok/film/?version=3']);
+    expect(mounts[0].filmUrl).toBe('/api/r/tok/film/3/');
+    expect(engine.loaded).toEqual(['/api/r/tok/film/3/']);
     const surface = mounts[0].container;
     expect(stage.contains(surface)).toBe(true);
     expect(surface).toHaveAttribute('data-testid', T.video);
@@ -367,6 +367,49 @@ describe('Player with a Talkie film', () => {
     unmount();
     expect(engine.destroyed).toBe(true);
     expect(remove).toHaveBeenCalled();
+  });
+
+  it('a press on play before the engine has arrived does nothing, and the next press plays', async () => {
+    const up = fakeUploader();
+    const engine = new FakeEngine(film, CUES);
+    const playSpy = vi.spyOn(engine, 'play');
+    let finish!: (adapter: TalkieAdapter) => void;
+    const mountTalkie: MountTalkie = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    render(
+      <Harness
+        uploader={up.uploader}
+        stream={fakeStream().stream}
+        mediaKind="talkie"
+        mountTalkie={mountTalkie}
+      />
+    );
+    await settle();
+    playPause();
+    await settle();
+    // Not shown as playing over a film that has not started.
+    expect(screen.getByTestId(T.playPause)).toHaveAccessibleName('Play');
+    expect(playSpy).not.toHaveBeenCalled();
+
+    finish(
+      new TalkieAdapter(engine, {
+        filmUrl: '/film/',
+        sceneJson: async (src) => readFixture(src),
+      })
+    );
+    await settle();
+    expect(playSpy).not.toHaveBeenCalled();
+    // No comment was opened by the early press.
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(up.chunks).toHaveLength(0);
+
+    playPause();
+    await settle();
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId(T.playPause)).toHaveAccessibleName('Pause');
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
 
   it('an engine that arrives after the player has gone is destroyed at once', async () => {

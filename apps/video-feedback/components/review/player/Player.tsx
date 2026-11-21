@@ -477,10 +477,13 @@ export function Player({
       const screen = screenRef.current;
       if (screen !== 'player' && screen !== 'end') return;
       if (playingRef.current) return;
+      const adapter = adapterRef.current;
+      // A film's engine arrives some time after the controls do. Until then there is nothing
+      // to start, and showing it as playing would make the next press open a comment.
+      if (!adapter && mediaKind === 'talkie') return;
       playingRef.current = true;
       void closeComment().catch(() => {});
       dispatch({ type: 'play' });
-      const adapter = adapterRef.current;
       if (!adapter || alreadyPlaying) return;
       adapter.play().catch((err: unknown) => {
         // AbortError only means a pause arrived first. Anything else: playback did not start,
@@ -491,7 +494,7 @@ export function Player({
         failPlayback();
       });
     },
-    [closeComment, dispatch, failPlayback]
+    [closeComment, dispatch, failPlayback, mediaKind]
   );
 
   const pause = useCallback(() => {
