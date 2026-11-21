@@ -43,6 +43,8 @@ export interface ExportComment {
   videoTimeRange: [number, number] | null;
   state: CommentState;
   micLost: boolean;
+  /** True when nothing at all was recorded (the microphone was lost): only pointing was kept. */
+  noAudio: boolean;
   transcript: {
     text: string;
     words: (TranscriptWord & { pointer: WordPointer | null })[];
@@ -219,6 +221,8 @@ async function loadComment(
     videoTimeRange: timeRange(paused, events),
     state: status.state,
     micLost: meta.micLost === true,
+    // The silence check is only skipped on a finished comment when there was no audio to check.
+    noAudio: status.state === 'done' && status.steps?.silence === 'skipped',
     transcript:
       transcript && typeof transcript.text === 'string'
         ? {

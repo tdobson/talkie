@@ -1,3 +1,4 @@
+import { mdText } from './markdown';
 import type { ExportModel } from './model';
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -28,7 +29,7 @@ export function renderReadme(model: ExportModel): string {
     '',
     `- Video: "${video.title}" (id \`${video.videoId}\`), ${all ? 'all versions' : `version ${video.version}`}.`,
     `- Picture: ${video.width} x ${video.height} pixels, ${video.fps} frames per second, ${video.duration} seconds long.`,
-    `- ${count(reviewers.size, 'reviewer')}: ${[...reviewers].join(', ') || 'none'}.`,
+    `- ${count(reviewers.size, 'reviewer')}: ${[...reviewers].map(mdText).join(', ') || 'none'}.`,
     `- ${count(moments, 'comment')} made at a paused moment, ${count(general, 'general comment')}, and ${count(empty, 'pause')} where nothing was said.`,
     `- Exported at ${when}.`,
     '',
@@ -88,7 +89,7 @@ export function renderReadme(model: ExportModel): string {
       lines.push(
         'Transcription failed for these comments. Their audio is still included, so the feedback is not lost:',
         '',
-        ...failed.map((c) => `- \`${c.commentId}\` by ${c.reviewerName}: ${c.files.audio}`)
+        ...failed.map((c) => `- \`${c.commentId}\` by ${mdText(c.reviewerName)}: ${c.files.audio}`)
       );
     }
     if (unfinished.length > 0) {
@@ -96,7 +97,9 @@ export function renderReadme(model: ExportModel): string {
       lines.push(
         'These comments were still being processed when the export was made, so they may lack a transcript or images:',
         '',
-        ...unfinished.map((c) => `- \`${c.commentId}\` by ${c.reviewerName}: ${c.files.audio}`)
+        ...unfinished.map(
+          (c) => `- \`${c.commentId}\` by ${mdText(c.reviewerName)}: ${c.files.audio}`
+        )
       );
     }
   }

@@ -100,10 +100,25 @@ function transcriptWithMarkers(transcript: ExportTranscript, moments: ExportMome
   return out + transcript.text.slice(from);
 }
 
+/**
+ * Text from a reviewer (their name), made safe to print inside the document's own structure:
+ * one line, with the characters Markdown gives meaning to escaped. Whoever reads the export
+ * must be able to trust that a heading, image or link in it was written by this tool.
+ */
+export function mdText(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[\\`*_{}[\]()#+!|<>~]/g, '\\$&');
+}
+
 function spokenLines(c: ExportComment): string[] {
   const lines: string[] = [];
   if (c.transcript && c.transcript.text !== '') {
     lines.push(`"${transcriptWithMarkers(c.transcript, c.moments)}"`);
+  } else if (c.noAudio) {
+    lines.push('_No audio: the microphone was lost, so only the pointing was recorded._');
+    return lines;
   } else if (c.state === 'failed') {
     lines.push(`_Transcription failed; listen to ${c.files.audio}_`);
   } else if (c.state === 'queued' || c.state === 'processing') {
@@ -126,7 +141,7 @@ function momentLine(m: ExportMoment): string {
 
 function momentComment(c: ExportComment, fps: number, h: string): string[] {
   const paused = c.pausedAtVideoTime ?? 0;
-  let header = `${h} ${c.reviewerName}, ${formatVideoTime(paused)} (paused ${Math.round(c.durationMs / 1000)}s)`;
+  let header = `${h} ${mdText(c.reviewerName)}, ${formatVideoTime(paused)} (paused ${Math.round(c.durationMs / 1000)}s)`;
   if (c.videoTimeRange) {
     const [a, b] = c.videoTimeRange;
     const frame = fps > 0 ? 1 / fps : 0;
@@ -165,7 +180,7 @@ function section(comments: ExportComment[], fps: number, nested: boolean): strin
   if (general.length > 0) {
     lines.push(`${top} General feedback`, '');
     for (const name of unique(general.map((c) => c.reviewerName))) {
-      lines.push(`${h} ${name}`);
+      lines.push(`${h} ${mdText(name)}`);
       for (const c of general.filter((g) => g.reviewerName === name)) {
         lines.push('', ...spokenLines(c));
       }
@@ -176,7 +191,7 @@ function section(comments: ExportComment[], fps: number, nested: boolean): strin
   if (empty.length > 0) {
     lines.push(`${top} Empty pauses`, '', 'Pauses where the reviewer said nothing:', '');
     for (const name of unique(empty.map((c) => c.reviewerName))) {
-      lines.push(`- ${name}: ${empty.filter((c) => c.reviewerName === name).length}`);
+      lines.push(`- ${mdText(name)}: ${empty.filter((c) => c.reviewerName === name).length}`);
     }
     lines.push('');
   }
@@ -196,7 +211,7 @@ export function renderFeedbackMd(model: ExportModel): string {
   const lines = [
     `# ${video.title}, ${all ? 'all versions' : `version ${video.version}`}`,
     '',
-    `Reviewers: ${names.length > 0 ? names.join(', ') : 'none'}`,
+    `Reviewers: ${names.length > 0 ? names.map(mdText).join(', ') : 'none'}`,
     `Exported: ${formatExportTime(model.exportedAt)}`,
     '',
   ];
