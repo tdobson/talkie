@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
+import type { FrameSource } from '@/lib/media/frame-source';
 import { probe as probeFile } from '@/lib/media/probe';
 import { fx } from '@/lib/media/testutil';
 import { commentDir, sourcePath } from '@/lib/storage/paths';
@@ -121,4 +122,70 @@ describe('render steps', () => {
     );
     expect(existsSync(join(dir, 'render', 'clip.mp4'))).toBe(true); // earlier output untouched
   }, 60_000);
+
+  describe('with a frame source of their own', () => {
+    // Stands in for the Talkie source: any width, and it counts what it is asked for.
+    function counting(failAfter = Number.POSITIVE_INFINITY) {
+      const seen = { widths: [] as number[], closed: 0, opened: [] as [string, number][] };
+      const source: FrameSource = {
+        async frame(_vt, maxWidth) {
+          if (seen.widths.length >= failAfter) throw new Error('the browser went away');
+          seen.widths.push(maxWidth);
+          const height = Math.round((maxWidth * 9) / 16);
+          return sharp({ create: { width: maxWidth, height, channels: 3, background: '#f00' } })
+            .png()
+            .toBuffer();
+        },
+        async close() {
+          seen.closed += 1;
+        },
+      };
+      const frameSource = async (videoId: string, version: number) => {
+        seen.opened.push([videoId, version]);
+        return source;
+      };
+      return { seen, frameSource };
+    }
+    const zoomed = [
+      moment(1, { t: 1600, kinds: ['zoom'], zoom: { scale: 2.5, originX: 0.5, originY: 0.5 } }),
+    ];
+
+    it('stills step draws a vector film at the zoomed width and closes the source', async () => {
+      await writeFile(join(dir, 'moments.json'), JSON.stringify(zoomed));
+      const { seen, frameSource } = counting();
+      const c = await ctx();
+      const probe = { ...c.probe, width: 320, height: 180, codec: 'talkie', pixFmt: 'vector' };
+      await stillsStep({ ...c, probe, frameSource });
+      expect(seen.opened).toEqual([[ref.videoId, 1]]);
+      expect(seen.widths).toEqual([1920, 4800, 1920]);
+      expect(seen.closed).toBe(1);
+      const m = await sharp(join(dir, 'render', 'moment-01-zoom.jpg')).metadata();
+      expect([m.width, m.height]).toEqual([1920, 1080]);
+    }, 60_000);
+
+    it('stills step closes the source when a frame fails', async () => {
+      await writeFile(join(dir, 'moments.json'), JSON.stringify(zoomed));
+      const { seen, frameSource } = counting(1);
+      await expect(stillsStep({ ...(await ctx()), frameSource })).rejects.toThrow(
+        'the browser went away'
+      );
+      expect(seen.closed).toBe(1);
+    }, 60_000);
+
+    it('clip step takes its frames from the source and closes it', async () => {
+      const { seen, frameSource } = counting();
+      await clipStep({ ...(await ctx()), frameSource });
+      expect(seen.widths.length).toBeGreaterThan(0);
+      expect(new Set(seen.widths)).toEqual(new Set([640]));
+      expect(seen.closed).toBe(1);
+    }, 60_000);
+
+    it('clip step closes the source when the render fails', async () => {
+      const { seen, frameSource } = counting(0);
+      await expect(clipStep({ ...(await ctx()), frameSource })).rejects.toThrow(
+        'the browser went away'
+      );
+      expect(seen.closed).toBe(1);
+    }, 60_000);
+  });
 });

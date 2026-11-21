@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { limits } from '@/lib/limits';
 import { audioDuration } from '@/lib/media/ops';
 import { probe as probeFile } from '@/lib/media/probe';
+import { ffmpegFrameSource } from '@/lib/media/frame-source-ffmpeg';
 import { fx } from '@/lib/media/testutil';
 import type { CaptureEvent, CommentMeta } from '@/lib/types';
 import { clipSize, renderClip } from './clip';
@@ -61,7 +62,7 @@ describe('clip', () => {
     const out = join(dir, 'clip.mp4');
     const probe = await probeFile(fx('h264.mp4'));
     await renderClip({
-      src: fx('h264.mp4'),
+      source: ffmpegFrameSource(fx('h264.mp4')),
       audio: fx('speech-like.webm'),
       meta,
       events,
@@ -83,7 +84,7 @@ describe('clip', () => {
     const probe = await probeFile(fx('h264.mp4'));
     await expect(
       renderClip({
-        src: fx('h264.mp4'),
+        source: ffmpegFrameSource(fx('h264.mp4')),
         audio: join(dir, 'missing.webm'),
         meta,
         events,
@@ -102,7 +103,14 @@ describe('clip', () => {
     try {
       const probe = await probeFile(fx('h264.mp4'));
       await expect(
-        renderClip({ src: fx('h264.mp4'), audio: fx('speech-like.webm'), meta, events, probe, out })
+        renderClip({
+          source: ffmpegFrameSource(fx('h264.mp4')),
+          audio: fx('speech-like.webm'),
+          meta,
+          events,
+          probe,
+          out,
+        })
       ).rejects.toThrow(/time limit/);
     } finally {
       limits.clipTimeoutMs = saved;
@@ -118,7 +126,7 @@ describe('clip', () => {
     try {
       const probe = await probeFile(fx('h264.mp4'));
       await renderClip({
-        src: fx('h264.mp4'),
+        source: ffmpegFrameSource(fx('h264.mp4')),
         audio: fx('speech-like.webm'),
         meta: { ...meta, durationMs: 3_600_000 },
         events,

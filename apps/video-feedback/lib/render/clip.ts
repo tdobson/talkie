@@ -2,7 +2,8 @@ import { once } from 'node:events';
 import { rename, rm } from 'node:fs/promises';
 import { CLIP_FPS, CLIP_MAX_WIDTH } from '@/lib/constants';
 import { visibleRegion } from '@/lib/geometry';
-import { audioDuration, extractFrame } from '@/lib/media/ops';
+import type { FrameSource } from '@/lib/media/frame-source';
+import { audioDuration } from '@/lib/media/ops';
 import { limits } from '@/lib/limits';
 import { spawnLowPrio, stderrTail } from '@/lib/media/run';
 import { zoomAt } from '@/lib/moments';
@@ -74,14 +75,14 @@ function stateAt(
  * raw RGB.
  */
 export async function renderClip(opts: {
-  src: string;
+  source: FrameSource;
   audio: string;
   meta: CommentMeta;
   events: CaptureEvent[];
   probe: ProbeInfo;
   out: string;
 }): Promise<void> {
-  const { src, audio, meta, probe, out } = opts;
+  const { source, audio, meta, probe, out } = opts;
   const events = [...opts.events].sort((a, b) => a.t - b.t);
   const { w, h } = clipSize(probe);
   const raw = { raw: { width: w, height: h, channels: 3 as const } };
@@ -107,9 +108,9 @@ export async function renderClip(opts: {
     if (hit) {
       frames.delete(key); // re-insert: most recently used last
     } else {
-      hit = extractFrame(src, vt, w).then((png) =>
-        sharp(png).resize(w, h, { fit: 'fill' }).removeAlpha().raw().toBuffer()
-      );
+      hit = source
+        .frame(vt, w)
+        .then((png) => sharp(png).resize(w, h, { fit: 'fill' }).removeAlpha().raw().toBuffer());
       if (frames.size >= FRAME_CACHE_SIZE) frames.delete(frames.keys().next().value as string);
     }
     frames.set(key, hit);

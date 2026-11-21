@@ -1,5 +1,7 @@
 import sharp from 'sharp';
 import { probe as probeFile } from '@/lib/media/probe';
+import type { FrameSource } from '@/lib/media/frame-source';
+import { ffmpegFrameSource } from '@/lib/media/frame-source-ffmpeg';
 import { fx } from '@/lib/media/testutil';
 import type { CaptureEvent, CommentMeta, Moment, ProbeInfo } from '@/lib/types';
 import { renderMomentStill, renderOverview } from './stills';
@@ -46,6 +48,7 @@ const meta: CommentMeta = {
   },
 };
 
+const src = ffmpegFrameSource(fx('h264.mp4'));
 let probe: ProbeInfo;
 beforeAll(async () => {
   probe = await probeFile(fx('h264.mp4'));
@@ -53,7 +56,7 @@ beforeAll(async () => {
 
 describe('stills', () => {
   it('renders a still with the pointer where the moment is', async () => {
-    const { full, zoom } = await renderMomentStill(fx('h264.mp4'), base, events, probe);
+    const { full, zoom } = await renderMomentStill(src, base, events, probe);
     const img = sharp(full);
     const m = await img.metadata();
     expect(m.format).toBe('jpeg');
@@ -70,26 +73,26 @@ describe('stills', () => {
 
   it('produces a zoom crop of the visible region', async () => {
     const m = { ...base, zoom: { scale: 2.5, originX: 0.5, originY: 0.5 } };
-    const { full, zoom } = await renderMomentStill(fx('h264.mp4'), m, events, probe);
+    const { full, zoom } = await renderMomentStill(src, m, events, probe);
     expect(zoom).not.toBeNull();
     const zm = await sharp(zoom as Buffer).metadata();
     expect(zm.format).toBe('jpeg');
     expect(zm.width).toBe(256);
     expect(zm.height).toBe(144);
     // The box outline changes the full still compared with the unzoomed one.
-    const plain = await renderMomentStill(fx('h264.mp4'), base, events, probe);
+    const plain = await renderMomentStill(src, base, events, probe);
     expect(full.equals(plain.full)).toBe(false);
   }, 30_000);
 
   it('keeps the zoom crop inside the frame when the origin is in a corner', async () => {
     const m = { ...base, x: 0.02, y: 0.02, zoom: { scale: 2.5, originX: 0, originY: 0 } };
-    const { zoom } = await renderMomentStill(fx('h264.mp4'), m, events, probe);
+    const { zoom } = await renderMomentStill(src, m, events, probe);
     const zm = await sharp(zoom as Buffer).metadata();
     expect([zm.width, zm.height]).toEqual([256, 144]);
   }, 30_000);
 
   it('renders an overview image', async () => {
-    const buf = await renderOverview(fx('h264.mp4'), meta, events, probe);
+    const buf = await renderOverview(src, meta, events, probe);
     const m = await sharp(buf).metadata();
     expect(m.format).toBe('jpeg');
     expect([m.width, m.height]).toEqual([640, 360]);
@@ -97,11 +100,59 @@ describe('stills', () => {
 
   it('renders an overview for a general comment with no events', async () => {
     const buf = await renderOverview(
-      fx('h264.mp4'),
+      src,
       { ...meta, kind: 'general', pausedAtVideoTime: null },
       [],
       probe
     );
     expect((await sharp(buf).metadata()).width).toBe(640);
   }, 30_000);
+
+  describe('zoom crops of a vector film', () => {
+    // A source that draws at any width asked for, as the Talkie frame source does.
+    const widths: number[] = [];
+    const vector: FrameSource = {
+      async frame(_vt, maxWidth) {
+        widths.push(maxWidth);
+        const height = Math.round((maxWidth * 9) / 16);
+        return sharp({
+          create: { width: maxWidth, height, channels: 3, background: '#204060' },
+        })
+          .png()
+          .toBuffer();
+      },
+      async close() {},
+    };
+    const vectorProbe = (): ProbeInfo => ({
+      ...probe,
+      width: 320,
+      height: 180,
+      codec: 'talkie',
+      pixFmt: 'vector',
+    });
+
+    it('renders the whole frame at the still width times the zoom scale, then crops', async () => {
+      widths.length = 0;
+      const m = { ...base, zoom: { scale: 2.5, originX: 0.5, originY: 0.5 } };
+      const { full, zoom } = await renderMomentStill(vector, m, events, vectorProbe());
+      expect(widths).toEqual([1920, 4800]);
+      const fm = await sharp(full).metadata();
+      expect([fm.width, fm.height]).toEqual([1920, 1080]);
+      const zm = await sharp(zoom as Buffer).metadata();
+      expect([zm.width, zm.height]).toEqual([1920, 1080]);
+    }, 30_000);
+
+    it('rounds the render width up for a fractional scale', async () => {
+      widths.length = 0;
+      const m = { ...base, zoom: { scale: 1.3337, originX: 0.5, originY: 0.5 } };
+      await renderMomentStill(vector, m, events, vectorProbe());
+      expect(widths).toEqual([1920, Math.ceil(1920 * 1.3337)]);
+    }, 30_000);
+
+    it('asks for one frame when the reviewer was not zoomed in', async () => {
+      widths.length = 0;
+      await renderMomentStill(vector, base, events, vectorProbe());
+      expect(widths).toEqual([1920]);
+    }, 30_000);
+  });
 });

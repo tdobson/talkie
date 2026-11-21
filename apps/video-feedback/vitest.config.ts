@@ -12,6 +12,10 @@ const alias = [
 // Tests that need a browser-like environment. Everything else runs in plain node.
 const jsdomTests = ['**/*.test.tsx', 'lib/capture/**/*.test.ts', 'lib/review/machine.test.ts'];
 const ignored = ['**/node_modules/**', '.next/**', 'e2e/**', '.claude/**'];
+// Tests that start a real headless Chromium are named *.chromium.test.ts. They are opt-in
+// (TEST_CHROMIUM=1, which `yarn test:chromium` sets) and never part of `yarn check`.
+const chromiumTests = '**/*.chromium.test.ts';
+const withChromium = process.env.TEST_CHROMIUM === '1';
 
 export default defineConfig({
   resolve: { alias },
@@ -37,7 +41,12 @@ export default defineConfig({
             'app/**/*.test.ts',
             'test/**/*.test.ts',
           ],
-          exclude: [...ignored, 'lib/capture/**/*.test.ts', 'lib/review/machine.test.ts'],
+          exclude: [
+            ...ignored,
+            'lib/capture/**/*.test.ts',
+            'lib/review/machine.test.ts',
+            ...(withChromium ? [] : [chromiumTests]),
+          ],
         },
       },
       {

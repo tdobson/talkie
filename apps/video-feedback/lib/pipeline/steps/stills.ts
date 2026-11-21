@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { frameSourceFor } from '@/lib/media/frame-sources';
 import { renderMomentStill, renderOverview } from '@/lib/render/stills';
-import { sourcePath } from '@/lib/storage/paths';
 import type { Moment } from '@/lib/types';
 import { type RenderStepContext, readEvents, renderDir } from './renderContext';
 
@@ -36,7 +36,6 @@ async function readMoments(dir: string): Promise<Moment[]> {
  */
 export async function stillsStep(ctx: RenderStepContext): Promise<void> {
   const { ref, dir, meta, probe } = ctx;
-  const src = sourcePath(ref.videoId, meta.version);
   const outDir = renderDir(dir);
   await mkdir(outDir, { recursive: true });
 
@@ -47,14 +46,22 @@ export async function stillsStep(ctx: RenderStepContext): Promise<void> {
     if (STALE_RE.test(name)) await rm(join(outDir, name), { force: true });
   }
 
-  for (const m of moments) {
-    if (!MOMENT_ID_RE.test(m.id)) throw new Error(`Invalid moment id in moments.json: ${m.id}`);
-    const { full, zoom } = await renderMomentStill(src, m, events, probe);
-    await writeAtomic(join(outDir, `${m.id}.jpg`), full);
-    if (zoom) await writeAtomic(join(outDir, `${m.id}-zoom.jpg`), zoom);
-    ctx.log?.(`still ${m.id}${zoom ? ' (with zoom crop)' : ''}`);
-  }
+  const source = await (ctx.frameSource ?? frameSourceFor)(ref.videoId, meta.version);
+  try {
+    for (const m of moments) {
+      if (!MOMENT_ID_RE.test(m.id)) throw new Error(`Invalid moment id in moments.json: ${m.id}`);
+      const { full, zoom } = await renderMomentStill(source, m, events, probe);
+      await writeAtomic(join(outDir, `${m.id}.jpg`), full);
+      if (zoom) await writeAtomic(join(outDir, `${m.id}-zoom.jpg`), zoom);
+      ctx.log?.(`still ${m.id}${zoom ? ' (with zoom crop)' : ''}`);
+    }
 
-  await writeAtomic(join(outDir, 'overview.jpg'), await renderOverview(src, meta, events, probe));
-  ctx.log?.('overview');
+    await writeAtomic(
+      join(outDir, 'overview.jpg'),
+      await renderOverview(source, meta, events, probe)
+    );
+    ctx.log?.('overview');
+  } finally {
+    await source.close();
+  }
 }
