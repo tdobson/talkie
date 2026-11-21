@@ -32,10 +32,23 @@ Out of scope (v1):
 
 ## 3. Architecture
 
-- One Next.js app (App Router, Mantine 9), scaffolded from `~/dev/next-app-template` (Next 16.2, React 19, yarn 4, oxlint, Jest).
-- Runs on geriatrix as a Node process under systemd, built with `output: "standalone"`, listening on `127.0.0.1` only.
+- One Next.js app (App Router, Mantine 9), scaffolded from `~/dev/next-app-template` (Next 16, React 19, yarn 4). The template's oxlint/oxfmt/stylelint/Jest/Storybook setup is replaced by the toolchain below.
+- Runs on geriatrix (2 cores, 9GB RAM) as a Node process under systemd, built with `output: "standalone"`, listening on `127.0.0.1` only.
 - Exposed through a Cloudflare Tunnel hostname (e.g. `video-feedback.tdobson.net`).
 - ffmpeg and ffprobe installed on the host. Image drawing with `sharp`.
+
+### Toolchain
+| Job | Tool |
+|---|---|
+| Lint (TS, TSX, CSS, JSON) | Biome 2 (formatter disabled) |
+| Format | Prettier 3 |
+| Type check | TypeScript 7 (`tsc`, the native Go compiler previously previewed as `tsgo`) |
+| Unit and integration tests | Vitest (jsdom for components, node for server code) |
+| End-to-end tests | Playwright (Chromium with fake mic; Firefox and WebKit smoke project) |
+| Zip writing | `yazl` (streaming) |
+| JWT | `jose` |
+
+**Low CPU and IO priority everywhere.** Every build, test, lint and typecheck script runs through `scripts/lowprio.sh` (`exec ionice -c2 -n7 nice -n19 "$@"`). On the server, every spawned ffmpeg/ffprobe process and the processing queue's CPU-heavy work (sharp, clip frame generation) run at the same priority (`ionice -c2 -n7 nice -n19 ffmpeg ...`; sharp concurrency set to 1). The web server itself runs at normal priority so playback and uploads stay responsive.
 - No database. All state is plain files under `DATA_DIR`.
 - Background work runs in an in-process queue (concurrency 1), driven by per-comment `status.json` files so it survives restarts.
 
@@ -186,9 +199,11 @@ If permission is denied: browser-specific steps to allow it, and a Try again but
 
 **3. Playing.** Video as large as the viewport allows. Controls: play/pause, scroll bar (no timecode anywhere, including tooltips), volume, fullscreen (applied to the whole player container, not the `<video>` element, so pointer tracking continues). Hint line: "Spotted something? Pause and tell me." "I'm done" button always visible.
 
-**4. Paused = listening.** Pausing immediately starts a moment comment. Overlay at top of the picture: "Listening" with a red dot and live mic level, and "Point and explain. Press play when you're done." The overlay must not cover the centre of the frame and is ignored by pointer tracking.
+**4. Paused = listening.** Pausing immediately starts a moment comment. Overlay at top of the picture: "Listening" with a red dot and live mic level, and "Point and explain. Press play when you're done." A second, smaller hint line underneath: "Hold the mouse down to zoom in. Use ← → to step through frames." The overlay must not cover the centre of the frame and is ignored by pointer tracking.
 - The reviewer can move the pointer, click on the picture, and drag the scroll bar. All of this is recorded.
-- Clicking the picture while paused does NOT resume playback. Clicks are recorded as emphasis.
+- Clicking the picture while paused does NOT resume playback. A press shorter than 250ms is a click, recorded as emphasis.
+- **Freeze frames.** While paused, scrolling shows silent still frames. The video's own audio never plays during a comment (it is paused), so it cannot bleed into the mic. ← / → step one frame back or forward (frame duration from `probe.json`); Shift+← / Shift+→ step 1 second. Each step is logged as a `seek`.
+- **Hold to zoom.** While paused, pressing and holding on the picture for 250ms or more zooms the picture 2.5x around the pointer (CSS transform on the video layer, animated over 150ms). While held, moving the pointer pans: the zoom origin follows the pointer, so the area under the pointer stays under the pointer. Releasing zooms back out over 150ms. No zoom during playback. The cursor shows a magnifier while zoomed.
 - Play (button or space) ends the comment.
 
 **4b. Saved.** After play, a small "Saved" toast in the corner, shown only after the server confirms the final chunk. Fades after about 1.5s. While waiting: "Saving...".
@@ -213,6 +228,7 @@ Want to look at something again? Scroll back and pause on it.
 ### Behaviour rules
 - Only a pause creates a moment comment. Rewatching, scrolling and replaying the same section any number of times is fine. Every pause is a separate comment; comments are never merged or deduplicated, and nothing marks a section as "covered".
 - No comment counter, no markers on the scroll bar.
+- Arrow keys and hold-to-zoom only work while paused; during playback ← / → do nothing (no hidden skipping).
 - Space toggles play/pause at page level, except when focus is in a text input or on screen 5b. It calls `preventDefault` so the page never scrolls.
 - The session ID is stored in `localStorage` keyed by token. Reopening the link in the same browser resumes the session (skipping the name screen but still doing the mic check). "I'm done" marks the session done; reopening after that starts the player again on the same session, so they can add more.
 - A session is pinned to the version it started on. New sessions get the latest version.
@@ -229,8 +245,8 @@ Want to look at something again? Scroll back and pause on it.
 `t` = milliseconds since the MediaRecorder `start` event for that comment (`performance.now()` difference). Audio sample 0 corresponds to `t = 0` within recorder start latency, which is accepted.
 
 ### Coordinates
-Pointer positions are normalised to the displayed picture rectangle (the `<video>` content box after letterboxing for `object-fit: contain`):
-`x = (clientX - contentRect.left) / contentRect.width`, same for `y`. Values outside 0..1 are kept and flagged `inside: false`. The content rect is recomputed on resize and fullscreen change, and each change is logged as a `layout` event.
+Pointer positions are always stored in full-frame coordinates, whatever the zoom. Without zoom, they are normalised to the displayed picture rectangle (the `<video>` content box after letterboxing for `object-fit: contain`):
+`x = (clientX - contentRect.left) / contentRect.width`, same for `y`. Values outside 0..1 are kept and flagged `inside: false`. The content rect is recomputed on resize and fullscreen change, and each change is logged as a `layout` event. While zoomed at scale `s` with origin `(ox, oy)`, the on-screen normalised position `(sx, sy)` maps back to frame coordinates as `x = ox + (sx - ox) / s`, `y = oy + (sy - oy) / s`. Events carry a `zoomed: true` flag while a zoom is active.
 
 ### Event log
 Each event is `{ "t": <ms>, "type": ..., ... }`:
@@ -239,7 +255,9 @@ Each event is `{ "t": <ms>, "type": ..., ... }`:
 |---|---|---|
 | `pointer` | `x, y, inside, vt` | once per animation frame, only if the pointer moved |
 | `click` | `x, y, inside, vt, button` | pointerdown on the player area |
-| `seek` | `from, to` | scroll bar change while paused (`seeked` event) |
+| `seek` | `from, to, via` (`scrollbar` / `key`) | scroll bar change or arrow-key step while paused (`seeked` event) |
+| `zoom` | `state` (`start`/`end`), `scale`, `originX, originY` | hold-to-zoom starts or ends; `origin` is in normalised frame coordinates |
+| `zoomPan` | `originX, originY` | zoom origin moves while held (sampled with pointer events) |
 | `visibility` | `state` (`hidden`/`visible`/`blur`/`focus`) | tab or window changes |
 | `layout` | `contentRect, containerWidth, containerHeight, fullscreen` | resize or fullscreen change |
 
@@ -274,10 +292,11 @@ Triggered by a successful `complete`. Jobs are processed one at a time. On start
    - `click`: every click.
    - `dwell`: pointer stays within a radius of 0.02 (normalised) for 400ms or more; one candidate per dwell, at its midpoint.
    - `word`: every transcript word in the list `this, that, these, those, here, there, it`, case-insensitive, at the word's start time, using the latest pointer sample at or before that time.
-   - `seek`: every seek destination.
-   Merge candidates within 500ms and 0.03 distance of each other, keeping all reasons. If more than 12 remain, keep by priority `click > word > dwell > seek > pause`, then earliest. Every moment records `t`, `vt`, `x`, `y`, `inside`, and `reasons` (e.g. `["word 'this' at 3.2s", "dwell 0.9s"]`). Save as `moments.json`.
+   - `seek`: every seek destination (consecutive arrow-key steps within 1s collapse into one, at the final frame).
+   - `zoom`: every zoom start, plus its end position if the pointer moved more than 0.05 while zoomed.
+   Merge candidates within 500ms and 0.03 distance of each other, keeping all reasons. If more than 12 remain, keep by priority `click > zoom > word > dwell > seek > pause`, then earliest. Every moment records `t`, `vt`, `x`, `y`, `inside`, and `reasons` (e.g. `["word 'this' at 3.2s", "dwell 0.9s"]`). Save as `moments.json`.
    General comments have no `vt` and the picture is covered by the 5b screen, so they get no moments, stills, overview or clip: just audio and transcript.
-5. **Render stills.** For each moment, extract the frame at `vt` from the session's `source.mp4` with ffmpeg (accurate seek), scaled to at most 1920px wide. Draw with sharp: a high-contrast pointer at (x, y), the previous 1s of trail, and rings for clicks within that second. Save `moment-NN.jpg` (JPEG quality 85).
+5. **Render stills.** For each moment, extract the frame at `vt` from the session's `source.mp4` with ffmpeg (accurate seek), scaled to at most 1920px wide. Draw with sharp: a high-contrast pointer at (x, y), the previous 1s of trail, and rings for clicks within that second. Save `moment-NN.jpg` (JPEG quality 85). If the reviewer was zoomed at that moment, the full-frame still also gets a rectangle showing the zoomed area, and a second image `moment-NN-zoom.jpg` shows the crop they actually saw (the zoomed region at source resolution, with the pointer).
    `overview.jpg`: the frame at `pausedAtVideoTime` with the whole pointer path drawn, light at the start and dark at the end, clicks as rings. If the reviewer scrolled during the comment, the path segments after a seek are drawn in a different colour and the overview notes "frame changed during comment" in the export.
 6. **Render clip** (lowest priority, after all stills in the queue): 15fps, max 1280px wide, H.264 + AAC. Each output frame shows the video frame at the current `vt` plus the pointer and short trail; audio is the comment audio. Frames are generated in Node and piped to ffmpeg as rawvideo. Duration equals the comment audio.
 
@@ -344,7 +363,7 @@ Explains, in plain terms for a model reading it cold:
 - what the video is, which version, how many reviewers and comments, and the export time
 - that each moment comment starts when the reviewer paused, and video times are in seconds from the start of the video (also shown as m:ss.s)
 - the coordinate system (0..1 of the picture, origin top-left, values outside mean off-picture)
-- what `click`, `dwell`, `word` and `seek` reasons mean
+- what `click`, `zoom`, `dwell`, `word` and `seek` reasons mean, and that `-zoom.jpg` images show exactly what the reviewer was looking at when zoomed in
 - that stills show the pointer as drawn by us, not a real screenshot
 - which comments failed transcription (audio still included)
 - that `previous/` holds feedback on earlier versions, for checking whether it was addressed
@@ -413,7 +432,7 @@ Every transcript word carries the pointer position at the moment it was spoken.
 
 - **Unit (Jest):** coordinate normalisation with letterboxing (wide and tall videos, fullscreen); dwell detection; key-moment merging and capping; word-to-pointer alignment; position labels; `feedback.md` and `feedback.json` generation from fixture data; chunk idempotency and missing-chunk detection; ETag stability; Access JWT verification (valid, expired, wrong audience).
 - **Pipeline fixtures:** a recorded sample session (real `events.json` plus a short real audio file and a short H.264 test video) runs through assemble, silence check, moments, stills and export with Groq mocked from a saved response. Assert on `moments.json`, `feedback.json` and file presence, not pixels. A silent-audio fixture must come out `empty`.
-- **End-to-end (Playwright, Chromium with `--use-fake-device-for-media-stream` and `--use-file-for-fake-audio-capture=<wav>`):** name, mic check, play, pause, mouse moves and clicks, scroll back while paused, play, end of video, general comment, I'm done. Then assert the files on disk, wait for processing (Groq mocked via env), and fetch the zip from the admin API with `ADMIN_AUTH=off`.
+- **End-to-end (Playwright, Chromium with `--use-fake-device-for-media-stream` and `--use-file-for-fake-audio-capture=<wav>`):** name, mic check, play, pause, mouse moves and clicks, scroll back while paused, arrow-key frame steps, press-and-hold zoom and pan, play, end of video, general comment, I'm done. Then assert the files on disk, wait for processing (Groq mocked via env), and fetch the zip from the admin API with `ADMIN_AUTH=off`.
 - **Manual:** Safari and Firefox pass on macOS/Windows before first real use: mic prompt, recording format, fullscreen pointer tracking, space bar.
 
 ## 12. Deployment
