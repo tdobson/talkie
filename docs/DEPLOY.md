@@ -11,17 +11,25 @@ priority. The web server itself runs at normal priority so playback and uploads 
 
 ```
 /srv/video-feedback/
-  app/     git checkout of this repo, built in place
+  app/                         git checkout of this repo (the monorepo), built in place
+    packages/                  the Talkie packages the app is built with
+    apps/video-feedback/       the app: the service runs from this folder
+      .next/standalone/apps/video-feedback/    the built server (server.js)
   data/    DATA_DIR: inbox, videos, sessions, comments
   env      settings and secrets, mode 600
 ```
 
 `data/` sits outside `app/` on purpose. A fresh checkout or a `git clean` cannot touch it.
 
+The checkout is the whole monorepo: Talkie in `packages/`, the app in `apps/video-feedback`.
+Install and build from the repo root, where `yarn vf <script>` runs any script of the app. The
+command line tools (section 6) run from `apps/video-feedback`.
+
 ## 1. First install
 
 Needs on the host: Node 22 or newer (24 preferred), `ffmpeg` and `ffprobe`, `ionice` and `nice`
-(util-linux and coreutils, already there on Debian), git, and a running `cloudflared`.
+(util-linux and coreutils, already there on Debian), git, and a running `cloudflared`. Chromium
+for the stills of Talkie films is installed in section 3.
 
 ```bash
 sudo apt install ffmpeg
@@ -60,7 +68,8 @@ PUBLIC_BASE_URL=https://video-feedback.tdobson.net
 | `CF_ACCESS_AUD`         | Audience tag of the Access application (section 5).                        |
 | `PUBLIC_BASE_URL`       | Public address, no trailing slash. Review links are built from it, and admin POSTs from any other origin are refused. |
 
-Optional: `WHISPER_LANGUAGE` (default `en`).
+Optional: `WHISPER_LANGUAGE` (default `en`), and `TALKIE_CHROMIUM_PATH` to use a Chromium other
+than the one section 3 installs.
 
 Leave these out of the file:
 
@@ -79,27 +88,59 @@ No quotes and no `export` in this file: systemd reads it as plain `KEY=value` li
 ```bash
 cd /srv/video-feedback/app
 scripts/low yarn install --immutable        # one install at the repo root covers every workspace
-cd apps/video-feedback
-yarn build
+yarn vf build
 ```
 
-`scripts/low` is `ionice -c2 -n7 nice -n19`. `yarn build` wraps itself as well, so the prefix is
-belt and braces. The build is capped at 2 workers. Expect it to take a few minutes, and never
-run two at once.
+`scripts/low` is `ionice -c2 -n7 nice -n19`. `yarn vf build` wraps itself the same way. The build
+is capped at 2 workers. Expect it to take a few minutes, and never run two at once.
 
-The app is one workspace of a monorepo, so `yarn build` first builds the Talkie packages it
-depends on. The build writes a self-contained server to
-`.next/standalone/apps/video-feedback/`. It leaves out the static assets,
-so copy them in after every build:
+`yarn vf build` first builds the Talkie packages the app depends on and the page that draws
+Talkie stills, then the app. It writes a self-contained server to
+`apps/video-feedback/.next/standalone/apps/video-feedback/`. The path repeats because the
+standalone output mirrors the repo from its root. The build leaves out the static assets, so copy
+them in after every build:
 
 ```bash
-S=.next/standalone/apps/video-feedback
+A=apps/video-feedback
+S=$A/.next/standalone/apps/video-feedback
 rm -rf $S/.next/static $S/public
-cp -r .next/static $S/.next/static
-cp -r public $S/public
+cp -r $A/.next/static $S/.next/static
+cp -r $A/public $S/public
 ```
 
-Miss this step and pages load with no styles or scripts (404s under `/_next/static/`).
+Miss this step and pages load with no styles or scripts (404s under `/_next/static/`), and a
+Talkie film does not draw for the reviewer (its renderer is served from `public/talkie/`).
+
+### Chromium, for Talkie stills
+
+Stills and clips of a Talkie film are drawn by a headless Chromium that the server starts when
+it needs one and closes after 2 minutes idle. It takes about 400MB on disk, and 200 to 300MB of
+RAM while it renders. Install it once, as the user the service runs as, from the repo root:
+
+```bash
+ionice -c2 -n7 nice -n19 yarn vf playwright install chromium
+```
+
+If Chromium then fails to start because system libraries are missing, install them once, as root:
+
+```bash
+sudo ionice -c2 -n7 nice -n19 yarn vf playwright install --with-deps chromium
+```
+
+Run as root, that command also leaves a second copy of the browser in root's own cache, which
+nothing uses: `sudo rm -rf /root/.cache/ms-playwright` gets the space back.
+
+The browser lands in `~/.cache/ms-playwright/` of the user who ran the first command, which is
+where the service looks. Check that it starts on this machine:
+
+```bash
+cd apps/video-feedback
+"$(node -e "console.log(require('playwright-core').chromium.executablePath())")" --version
+```
+
+That prints a version number. An error naming a `.so` file means the `--with-deps` step is
+needed. MP4 videos do not use Chromium at all: without it they work as before, and a Talkie film
+still plays and still exports its transcript, with the stills and clips steps marked failed.
 
 ## 4. The service
 
@@ -123,7 +164,7 @@ ss -ltnp | grep 3000                                                            
 The 401 is right: the request carries no Access JWT. If `ss` shows `0.0.0.0:3000` or `*:3000`,
 stop and fix `HOSTNAME` before going further.
 
-ffmpeg, ffprobe and the still and clip rendering are lowered per process by the app
+ffmpeg, ffprobe, Chromium and the still and clip rendering are lowered per process by the app
 (`ionice -c2 -n7 nice -n19`), so the unit keeps `Nice=0`.
 
 ## 5. Cloudflare Tunnel and Access
@@ -174,10 +215,15 @@ to the inbox, then import from `/admin/inbox` or the shell:
 
 ```bash
 rsync -P --bwlimit=20000 film.mp4 geriatrix:/srv/video-feedback/data/inbox/
+rsync -P --bwlimit=20000 film.lottie geriatrix:/srv/video-feedback/data/inbox/
 ```
 
-Videos must be MP4 with H.264 video in `yuv420p`. Anything else is refused with the reason and
-left in the inbox.
+A video is one of two things:
+
+- An MP4 with H.264 video in `yuv420p`.
+- A Talkie film, packed as one `.lottie` file (`dist/film.lottie` of a film project).
+
+Anything else is refused with the reason and left in the inbox.
 
 ### Command line tools on the host
 
@@ -189,6 +235,7 @@ set -a; . /srv/video-feedback/env; set +a
 
 yarn import /path/to/film.mp4 --title "Spring promo"     # prints the review link
 yarn import /path/to/film-v2.mp4 --video <videoId>       # next version of a video
+yarn import --film /path/to/film.lottie --title "Roof"   # a Talkie film (or its film/ folder)
 yarn export <videoId> --out ~/exports/                   # prints the path of the zip
 yarn reprocess <videoId>                                 # retry failed comments
 ```
@@ -202,14 +249,18 @@ avoid running it on a comment the server is processing at that moment.
 cd /srv/video-feedback/app
 git pull --ff-only
 scripts/low yarn install --immutable
-cd apps/video-feedback
-yarn build
-S=.next/standalone/apps/video-feedback
+yarn vf build
+A=apps/video-feedback
+S=$A/.next/standalone/apps/video-feedback
 rm -rf $S/.next/static $S/public
-cp -r .next/static $S/.next/static
-cp -r public $S/public
+cp -r $A/.next/static $S/.next/static
+cp -r $A/public $S/public
+ionice -c2 -n7 nice -n19 yarn vf playwright install chromium
 sudo systemctl restart video-feedback
 ```
+
+The Chromium line does nothing when the right browser is already there. It downloads a new one
+only when the update moved `playwright-core` to a release that wants a newer Chromium.
 
 The build replaces `.next/` under the running server, so restart straight after it finishes and
 do not update while someone is reviewing. A restart is safe for data: processing is driven by
@@ -282,6 +333,22 @@ As admin:
 - [ ] The service-token `curl` against `/api/admin/videos` (section 5) returns JSON that lists
       the video.
 
+Talkie stills, after the first install and after any update that downloaded a new Chromium. The
+repo carries a 4 second film for this:
+
+- [ ] Import it and open the review link it prints:
+
+      ```bash
+      cd /srv/video-feedback/app/apps/video-feedback
+      set -a; . /srv/video-feedback/env; set +a
+      yarn import --film test/fixtures/talkie-mini.lottie --title "Talkie smoke check"
+      ```
+
+- [ ] The film plays on the review link. Record one comment while pointing at the frame, then
+      click "I'm done".
+- [ ] Export it: Download zip on the video's admin page, or `yarn export <videoId>`. The zip
+      holds stills of the film with the pointer drawn on, and no step is marked failed.
+
 ## Troubleshooting
 
 | What you see                               | Likely cause                                                        |
@@ -290,6 +357,9 @@ As admin:
 | Unstyled pages, 404s on `/_next/static/`   | The static and public folders were not copied after the build.      |
 | `/admin` answers 401 after signing in      | `CF_ACCESS_AUD` or `CF_ACCESS_TEAM_DOMAIN` does not match the Access application, or the path is not covered by it. |
 | Admin buttons answer 403                   | `PUBLIC_BASE_URL` is not the address in the browser bar.            |
+| Talkie stills fail: "Chromium is not installed for Talkie stills" | Chromium is missing for the service's user, or an update needs a newer one. Run the install in section 3, then `yarn reprocess <videoId>`. |
+| Talkie stills fail after 30 seconds        | Chromium started but did not draw the frame. Run the `--version` check in section 3 and read the journal. |
+| A Talkie film stays blank for the reviewer | `public/` was not copied after the build (`/talkie/` answers 404).  |
 | Review link answers 507                    | Under 1GB free in `DATA_DIR`.                                       |
 | Comments stay "failed" at transcription    | Groq key wrong or out of quota. Fix it, restart, `yarn reprocess <videoId>`. |
 | 502 or error 1033 from Cloudflare          | The service or cloudflared is down.                                 |

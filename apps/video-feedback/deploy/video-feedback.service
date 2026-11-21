@@ -1,6 +1,9 @@
 # Install: sudo cp apps/video-feedback/deploy/video-feedback.service /etc/systemd/system/
 #          sudo systemctl daemon-reload && sudo systemctl enable --now video-feedback
 # See docs/DEPLOY.md for the whole procedure.
+#
+# /srv/video-feedback/app is a checkout of the monorepo. The app is the apps/video-feedback
+# workspace, built from the repo root with "yarn vf build".
 
 [Unit]
 Description=Video feedback (Next.js)
@@ -9,6 +12,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Chromium for Talkie stills is looked up in this user's ~/.cache/ms-playwright, so install it as
+# this user, from the repo root: ionice -c2 -n7 nice -n19 yarn vf playwright install chromium
 User=tdobson
 WorkingDirectory=/srv/video-feedback/app/apps/video-feedback
 # Secrets and site settings. Values in this file win over the Environment= line below,
@@ -16,11 +21,12 @@ WorkingDirectory=/srv/video-feedback/app/apps/video-feedback
 EnvironmentFile=/srv/video-feedback/env
 Environment=NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3000
 # Check the path with "command -v node" on the host and change it if node lives elsewhere.
+# The standalone output mirrors the repo from its root, hence apps/video-feedback twice.
 ExecStart=/usr/bin/node .next/standalone/apps/video-feedback/server.js
 Restart=on-failure
 RestartSec=5
 Nice=0
-# ffmpeg and sharp work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
+# ffmpeg, sharp and Chromium work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
 
 [Install]
 WantedBy=multi-user.target
