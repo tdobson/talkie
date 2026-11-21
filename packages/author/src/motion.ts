@@ -1,7 +1,7 @@
 import { localBboxAt } from './evaluate';
 import type { AnimProp, Ease, Key, Node, Vec } from './model';
 
-/** Two motions on the same node and property overlap in time. */
+/** Two motions on the same node and property overlap in time, or disagree where they meet. */
 export class MotionConflictError extends Error {
   constructor(
     public readonly node: Node,
@@ -58,10 +58,23 @@ function keyValue(n: Node, prop: AnimProp, v: number | Vec): number | Vec {
   return [v[0], v[1]];
 }
 
+const sameValue = (a: number | Vec, b: number | Vec): boolean =>
+  typeof a === 'number' || typeof b === 'number' ? a === b : a[0] === b[0] && a[1] === b[1];
+
+const show = (v: number | Vec): string =>
+  typeof v === 'number' ? String(v) : `[${v[0]}, ${v[1]}]`;
+
+/** Throws TimingError unless a motion's duration is a finite number of seconds above zero. */
+function checkDuration(what: string, dur: number): void {
+  if (!Number.isFinite(dur) || dur <= 0) {
+    throw new TimingError(`${what} needs a duration above 0 s, got ${dur}`);
+  }
+}
+
 /**
  * Adds one motion (a run of keys) to a node. Keys on the same property are merged and sorted.
  * Throws TimingError for a key outside the scene and MotionConflictError when the run overlaps
- * an earlier one on the same property.
+ * an earlier one on the same property, or meets one at an instant with a different value.
  */
 export function addKeys(state: MotionState, n: Node, prop: AnimProp, input: KeyInput[]): void {
   if (input.length === 0) {
@@ -94,6 +107,18 @@ export function addKeys(state: MotionState, n: Node, prop: AnimProp, input: KeyI
       `${prop} on ${label(n)} is animated twice at once: ${span[0]} to ${span[1]} s overlaps ${clash[0]} to ${clash[1]} s`
     );
   }
+  // Two motions may meet at one instant, but only one value can be shown there.
+  const existing = n.tracks.find((candidate) => candidate.prop === prop)?.keys ?? [];
+  for (const key of keys) {
+    const met = existing.find((other) => Math.abs(other.t - key.t) < EPS);
+    if (met && !sameValue(met.v, key.v)) {
+      throw new MotionConflictError(
+        n,
+        prop,
+        `${prop} on ${label(n)} is given two values at ${key.t} s: ${show(met.v)} and ${show(key.v)}`
+      );
+    }
+  }
   spans.push(span);
 
   let track = n.tracks.find((candidate) => candidate.prop === prop);
@@ -108,8 +133,8 @@ export function addKeys(state: MotionState, n: Node, prop: AnimProp, input: KeyI
       merged.push(key);
       return;
     }
-    // Two motions meet at this instant. The key that starts a segment wins, because its value and
-    // ease describe the segment that leaves it.
+    // Two motions meet at this instant with the same value. The key that starts a segment wins,
+    // because its ease describes the segment that leaves it.
     const endsHere = index === keys.length - 1 && keys.length > 1;
     if (!endsHere) {
       merged[at] = key;
@@ -125,6 +150,7 @@ export function fade(
   o: { dur?: number; from?: number; to?: number; ease?: Ease } = {}
 ): void {
   const { dur = 0.4, from = 0, to = 100, ease = 'inOut' } = o;
+  checkDuration(`fade on ${label(n)}`, dur);
   addKeys(state, n, 'opacity', [
     { t: at, v: from, ease },
     { t: at + dur, v: to, ease },
@@ -141,6 +167,7 @@ export function rise(
   o: { dur?: number; dy?: number } = {}
 ): void {
   const { dur = 0.6, dy = 40 } = o;
+  checkDuration(`rise on ${label(n)}`, dur);
   const [x, y] = n.transform.position;
   addKeys(state, n, 'position', [
     { t: at, v: [x, y + dy], ease: 'out' },
@@ -151,6 +178,7 @@ export function rise(
 
 export function pop(state: MotionState, n: Node, at: number, o: { dur?: number } = {}): void {
   const { dur = 0.35 } = o;
+  checkDuration(`pop on ${label(n)}`, dur);
   const box = localBboxAt(n, at + dur);
   if (!box) {
     throw new Error(`pop needs a node with paths, and ${label(n)} has none`);
@@ -163,9 +191,15 @@ export function pop(state: MotionState, n: Node, at: number, o: { dur?: number }
   fade(state, n, at, { dur: dur * 0.4 });
   // Scale about the centre of the drawing. Moving anchor and position together keeps it in place.
   const centre: Vec = [box.x + box.width / 2, box.y + box.height / 2];
+  // A position track (from rise or tween) moves by the same amount, or it would pull the node away.
   const { anchor, position } = n.transform;
-  n.transform.position = [position[0] + centre[0] - anchor[0], position[1] + centre[1] - anchor[1]];
+  const shift: Vec = [centre[0] - anchor[0], centre[1] - anchor[1]];
+  n.transform.position = [position[0] + shift[0], position[1] + shift[1]];
   n.transform.anchor = centre;
+  for (const key of n.tracks.find((track) => track.prop === 'position')?.keys ?? []) {
+    const [x, y] = key.v as Vec;
+    key.v = [x + shift[0], y + shift[1]];
+  }
 }
 
 function trim(n: Node): void {
@@ -176,6 +210,7 @@ function trim(n: Node): void {
 }
 
 export function draw(state: MotionState, n: Node, at: number, dur = 1): void {
+  checkDuration(`draw on ${label(n)}`, dur);
   trim(n);
   addKeys(state, n, 'trimEnd', [
     { t: at, v: 0, ease: 'inOut' },
@@ -197,7 +232,17 @@ export function camera(
 ): void {
   const { dur = 6, scaleTo = 103.5 } = o;
   const origin: Vec = o.origin ?? [state.size[0] / 2, state.size[1] / 2];
+  checkDuration('camera', dur);
   const cam = state.camera;
+  // One node carries the camera, so every move has to scale about the same point.
+  const [ox, oy] = cam.transform.anchor;
+  if (cam.tracks.length > 0 && (ox !== origin[0] || oy !== origin[1])) {
+    throw new MotionConflictError(
+      cam,
+      'scale',
+      `camera moves about ${show([ox, oy])} already, and cannot also move about ${show(origin)}`
+    );
+  }
   const from =
     cam.tracks.find((track) => track.prop === 'scale')?.keys.at(-1)?.v ?? cam.transform.scale;
   addKeys(state, cam, 'scale', [

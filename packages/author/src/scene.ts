@@ -135,6 +135,16 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
     return input.loaders;
   };
   let font: LabelFont | null = null;
+  /** Shapes with NaN or Infinity in them draw nothing and break the bounding box sums. */
+  const finite = (shape: string, name: string, values: Record<string, number>): void => {
+    for (const [key, value] of Object.entries(values)) {
+      if (!Number.isFinite(value)) {
+        throw new TypeError(
+          `scene ${def.id}: ${shape} "${name}" needs finite numbers, got ${key} ${value}`
+        );
+      }
+    }
+  };
   const fromArt = (art: ArtNode, name: string): Node => {
     const n = make(
       name,
@@ -155,8 +165,9 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
     },
     node: make,
     path: (d, style, name = 'path') => make(name, [{ paths: parsePathD(d), style: { ...style } }]),
-    rect: (x, y, rw, rh, style, name = 'rect') =>
-      make(name, [
+    rect: (x, y, rw, rh, style, name = 'rect') => {
+      finite('rect', name, { x, y, w: rw, h: rh });
+      return make(name, [
         {
           paths: [
             polyline(
@@ -171,11 +182,21 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
           ],
           style: { ...style },
         },
-      ]),
-    line: (from, to, style, name = 'line') =>
-      make(name, [{ paths: [polyline([from, to], false)], style: { ...style } }]),
-    circle: (c, r, style, name = 'circle') =>
-      make(name, [{ paths: [circlePath(c, r)], style: { ...style } }]),
+      ]);
+    },
+    line: (from, to, style, name = 'line') => {
+      finite('line', name, {
+        'from[0]': from[0],
+        'from[1]': from[1],
+        'to[0]': to[0],
+        'to[1]': to[1],
+      });
+      return make(name, [{ paths: [polyline([from, to], false)], style: { ...style } }]);
+    },
+    circle: (c, r, style, name = 'circle') => {
+      finite('circle', name, { 'c[0]': c[0], 'c[1]': c[1], r });
+      return make(name, [{ paths: [circlePath(c, r)], style: { ...style } }]);
+    },
     group: (name, children) => make(name, [], children),
     art: (name, o) => {
       const { at, scale = 1 } = o;
