@@ -1,2 +1,9 @@
-// @talkie/author: filled in by a later task.
-export {};
+export * from './model';
+export * from './ease';
+export * from './path';
+export * from './timing';
+export * from './motion';
+export * from './scene';
+export * from './evaluate';
+export * from './emit-lottie';
+export * from './emit-svg';
