@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://talkie.dev/schema/talkie-1.schema.json",
+  "title": "Talkie film description (talkie.json)",
+  "description": "Shape of talkie.json, format major version 1. Cross-field rules (contiguous scenes, the last scene ending at duration, unique scene ids, sorted chapters, a required AAC track) are checked by validateFilm in @talkie/format. Unknown keys are allowed and ignored.",
+  "type": "object",
+  "required": ["talkie", "title", "duration", "size", "audio", "scenes", "chapters", "captions", "poster"],
+  "properties": {
+    "talkie": {
+      "description": "Format major version. Readers refuse a higher major version than they support.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "duration": {
+      "description": "Film length in seconds. Equals the end of the last scene.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "size": {
+      "description": "[width, height] in whole pixels.",
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "audio": {
+      "description": "Narration tracks in order of preference. One must be audio/mp4 (AAC).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["src", "type"],
+        "properties": {
+          "src": { "$ref": "#/$defs/path" },
+          "type": { "type": "string", "pattern": "^audio/" }
+        }
+      }
+    },
+    "scenes": {
+      "description": "Contiguous scenes sorted by start. The first starts at 0.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "src", "start", "end"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "src": { "$ref": "#/$defs/path" },
+          "start": { "type": "number", "minimum": 0 },
+          "end": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "chapters": {
+      "description": "Chapters sorted by start. May be empty.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "start"],
+        "properties": {
+          "title": { "type": "string" },
+          "start": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "captions": {
+      "description": "WebVTT caption tracks. May be empty.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["lang", "label", "src"],
+        "properties": {
+          "lang": { "type": "string" },
+          "label": { "type": "string" },
+          "src": { "$ref": "#/$defs/path" }
+        }
+      }
+    },
+    "poster": {
+      "type": "object",
+      "required": ["png"],
+      "properties": {
+        "svg": { "$ref": "#/$defs/path" },
+        "png": { "$ref": "#/$defs/path" }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "description": "A relative path inside the film: no leading slash, no backslash, no URL scheme, and no empty, '.' or '..' segments.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\\\)(?!.*//)(?!(.*/)?\\.{1,2}(/|$))(?!.*/$).+$"
+    }
+  }
+}
