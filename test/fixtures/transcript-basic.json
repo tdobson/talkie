@@ -1,0 +1,50 @@
+{
+  "task": "transcribe",
+  "language": "English",
+  "duration": 9.6,
+  "text": " so this logo is the old one and the text here runs on too long",
+  "words": [
+    { "word": "so", "start": 2.9, "end": 3.1 },
+    { "word": "this", "start": 3.2, "end": 3.46 },
+    { "word": "logo", "start": 3.5, "end": 3.86 },
+    { "word": "is", "start": 3.9, "end": 4.04 },
+    { "word": "the", "start": 4.1, "end": 4.22 },
+    { "word": "old", "start": 4.3, "end": 4.6 },
+    { "word": "one", "start": 4.7, "end": 4.98 },
+    { "word": "and", "start": 6.6, "end": 6.82 },
+    { "word": "the", "start": 6.9, "end": 7.02 },
+    { "word": "text", "start": 7.1, "end": 7.42 },
+    { "word": "here", "start": 7.8, "end": 8.08 },
+    { "word": "runs", "start": 8.2, "end": 8.44 },
+    { "word": "on", "start": 8.5, "end": 8.64 },
+    { "word": "too", "start": 8.7, "end": 8.92 },
+    { "word": "long", "start": 9.0, "end": 9.42 }
+  ],
+  "segments": [
+    {
+      "id": 0,
+      "seek": 0,
+      "start": 2.9,
+      "end": 4.98,
+      "text": " so this logo is the old one",
+      "tokens": [],
+      "temperature": 0,
+      "avg_logprob": -0.21,
+      "compression_ratio": 0.96,
+      "no_speech_prob": 0.02
+    },
+    {
+      "id": 1,
+      "seek": 0,
+      "start": 6.6,
+      "end": 9.42,
+      "text": " and the text here runs on too long",
+      "tokens": [],
+      "temperature": 0,
+      "avg_logprob": -0.21,
+      "compression_ratio": 0.96,
+      "no_speech_prob": 0.02
+    }
+  ],
+  "x_groq": { "id": "req_fixture0000000000000000" }
+}

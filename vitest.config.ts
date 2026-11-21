@@ -14,6 +14,8 @@ export default defineConfig({
     // Keep parallelism low: this project only ever uses background capacity.
     maxWorkers: 2,
     passWithNoTests: true,
+    // Generates media fixtures once per run (idempotent, low priority).
+    globalSetup: ['./test/globalSetup.ts'],
     projects: [
       {
         extends: true,
