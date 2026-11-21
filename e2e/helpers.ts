@@ -121,10 +121,18 @@ export async function passMicCheck(page: Page): Promise<void> {
   await expect(page.getByTestId(T.player)).toBeVisible();
 }
 
-/** Plays for a moment, pauses (starting a comment), talks, and resumes play to end it. */
+/**
+ * Plays for a moment, pauses (starting a comment), talks, and resumes play to end it. Works from
+ * a paused player or the end screen; a player that is still playing (as the last comment left
+ * it) is paused straight away, since clicking play-pause would pause it instead of playing.
+ */
 export async function giveComment(page: Page, talkMs = 2500): Promise<void> {
-  await page.getByTestId(T.playPause).click();
-  await page.waitForTimeout(800);
+  const playPause = page.getByTestId(T.playPause);
+  if ((await playPause.getAttribute('aria-label')) !== 'Pause') {
+    await playPause.click();
+    await expect(playPause).toHaveAttribute('aria-label', 'Pause');
+    await page.waitForTimeout(800);
+  }
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.listening)).toBeVisible();
   await page.waitForTimeout(talkMs);

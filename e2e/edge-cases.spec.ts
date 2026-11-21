@@ -36,7 +36,9 @@ test('silent pause is stored but marked empty @silence', async ({ page }) => {
   await page.getByTestId(T.nameInput).fill('Sid Silent');
   await page.getByTestId(T.startButton).click();
   await page.getByTestId(T.micContinue).click();
-  // A silent mic never shows "heard"; the reviewer can still go on.
+  // The fake mic says hello, so the check passes, and is silent from then on.
+  await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(T.micMeter)).toHaveAttribute('data-lit', '0');
   await page.getByTestId(T.startWatching).click();
   await expect(page.getByTestId(T.player)).toBeVisible();
   await giveComment(page);
@@ -61,6 +63,9 @@ test('a new version mid-session keeps the session on its version', async ({ page
     cliImport(uniqueCopy('h264.mp4', 'e2e-versions'), { video: created.videoId })
   );
   expect(v3.version).toBe(3);
+  // The four-second video plays on after the first comment and ends while v3 is imported, or
+  // soon after: carry on from the end screen, which plays it again from the start.
+  await expect(page.getByTestId(T.endScreen)).toBeVisible({ timeout: 10_000 });
   await giveComment(page);
 
   const sessionFile = (name: string) => {

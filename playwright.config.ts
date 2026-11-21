@@ -69,12 +69,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      // Says hello at the mic check, then nothing: a reviewer who pauses without talking.
       name: 'chromium-silence',
       grep: /@silence/,
       use: {
         ...devices['Desktop Chrome'],
         permissions: ['microphone'],
-        launchOptions: { args: fakeMic('silence.wav') },
+        launchOptions: { args: fakeMic('e2e-hello-silence.wav') },
       },
     },
     {
