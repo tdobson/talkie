@@ -1,6 +1,6 @@
 import { createRef } from 'react';
-import { render } from '@testing-library/react';
 import type { TalkiePlayerElement } from '@talkie/player';
+import { render } from '@testing-library/react';
 import { TalkiePlayer } from '../src/index';
 
 // The real element is covered by @talkie/player's own tests. Here the tag stays an unknown

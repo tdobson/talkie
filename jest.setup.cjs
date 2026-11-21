@@ -1,5 +1,10 @@
 require('@testing-library/jest-dom');
 
+// A test that opts into the node environment (the server rendering test) has no window to patch.
+if (typeof window === 'undefined') {
+  return;
+}
+
 const { getComputedStyle } = window;
 window.getComputedStyle = (elt) => getComputedStyle(elt);
 window.HTMLElement.prototype.scrollIntoView = () => {};
