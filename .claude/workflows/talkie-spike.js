@@ -57,13 +57,16 @@ const s1 = await agent(
   `First run: git switch -c talkie/spike ${BASE}. ${RULES}\n\nExplorer briefs:\n${brief}\n\n` +
   `Commit as you go. Return the branch, the absolute worktree path (pwd), HEAD SHA, whether your harness pages load without console errors (testsPassed), a summary, deviations from the plan and blockers.`,
   { ...CODER, isolation: 'worktree', schema: BUILD, label: 'S1 prototype', phase: 'Prototype' })
-if (!s1 || s1.blockers.length) return { stoppedAt: 'S1', s1, brief }
+if (!s1 || !s1.testsPassed) return { stoppedAt: 'S1', s1, brief }
+const s1Notes = `S1 deviations:\n- ${s1.deviations.join('\n- ')}\n\nS1 open items you must handle (they are instructions for you, not reasons to stop):\n- ${s1.blockers.join('\n- ') || 'none'}\n\n` +
+  `You may download the Playwright browsers that playwright-core needs for check 2 (nice -n19 ionice -c2 -n7 npx playwright-core install chromium-headless-shell firefox webkit). ` +
+  `Copy the chapter MP4 into spike/media/ as S1's README says if a page needs it.`
 
 phase('Measure')
 const s2 = await agent(
   `Implement Task S2 from ${PLAN}. Work in the existing worktree ${s1.worktree} on branch ${s1.branch} (cd there first; do not create a new worktree). ${RULES}\n\n` +
-  `Explorer briefs:\n${brief}\n\nS1 summary: ${s1.summary}\n\n` +
-  `Write spike/REPORT.md with PASS or FAIL and the numbers for each of the four checks, the chosen Opus container, the chosen SVG converter, and Tim's manual steps. Commit. testsPassed means all four automated checks ran to completion (not that they passed).`,
+  `Explorer briefs:\n${brief}\n\nS1 summary: ${s1.summary}\n\n${s1Notes}\n\n` +
+  `Write spike/REPORT.md with PASS or FAIL and the numbers for each of the four checks, the chosen Opus container, the chosen SVG converter, and Tim's manual steps. Commit. testsPassed means all four automated checks ran to completion (not that they passed). blockers means ONLY things that stopped a check from running; put notes in deviations.`,
   { ...CODER, schema: BUILD, label: 'S2 measure', phase: 'Measure' })
 if (!s2) return { stoppedAt: 'S2', s1 }
 

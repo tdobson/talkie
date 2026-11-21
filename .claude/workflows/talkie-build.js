@@ -89,7 +89,8 @@ const build = (brief, t, wave) => agent(
   `${t === 'T1' ? 'You create the workspace and install the dependencies as the task says.' : 'Then run: scripts/low yarn install --immutable'}\n\n${RULES}\n\n` +
   `Explorer brief:\n${brief ?? '(explorer failed; read the code yourself)'}\n\n` +
   `When done, run the tests your task names (through the yarn scripts) plus yarn typecheck and yarn lint, and commit. ` +
-  `Return branch, absolute worktree path (pwd), HEAD SHA, testsPassed, the test command you ran, a summary, deviations from the plan and blockers.`,
+  `Return branch, absolute worktree path (pwd), HEAD SHA, testsPassed, the test command you ran, a summary, deviations from the plan and blockers. ` +
+  `blockers means ONLY things that stopped you finishing the task; notes, caveats and advice for later tasks go in deviations.`,
   { ...CODER, isolation: 'worktree', schema: BUILD, label: `${t} build`, phase: wave })
 
 const review = (b, t, wave) => agent(
