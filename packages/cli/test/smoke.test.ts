@@ -6,7 +6,7 @@ test('cli workspace is wired', () => {
 
 test('every command exists, and those not written yet say so', async () => {
   expect(commands.map((c) => c.name())).toEqual(['build', 'check', 'voice', 'qa', 'dev', 'export']);
-  const written = ['build', 'check', 'voice', 'qa'];
+  const written = ['build', 'check', 'voice', 'qa', 'dev', 'export'];
   for (const command of commands.filter((c) => !written.includes(c.name()))) {
     command.exitOverride();
     await expect(command.parseAsync([], { from: 'user' })).rejects.toThrow(
