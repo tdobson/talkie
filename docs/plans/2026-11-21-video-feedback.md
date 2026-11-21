@@ -1,6 +1,6 @@
 # Video Feedback Tool Implementation Plan
 
-> **For agentic workers:** This plan is structured for workflow orchestration. Tasks are labelled with a role (`explore` / `build` / `review` / `test` / `fix-tests`). Parallel build tasks run with `isolation: worktree`. Every build task is followed by a review; every phase ends with integration and a test gate.
+> **For agentic workers:** This plan is structured for workflow orchestration. Tasks are labelled with a role (`explore` / `build` / `review` / `test` / `fix-tests`). Parallel build tasks run with `isolation: worktree`. Checking is deliberately light: only the risky modules (3.2, 3.3, 3.4, 3.5, 4.1, 4.2) get a dedicated review (one round, at most one fix); everything else relies on TDD and the test gate that ends every phase.
 >
 > **Execution:** The workflow at `.claude/workflows/build-video-feedback.js` runs this plan end to end. It can also be followed by hand with `superpowers:subagent-driven-development`.
 >
@@ -19,7 +19,7 @@
 | Role | Model | Effort |
 |---|---|---|
 | explore | haiku | default |
-| build (coding, also review fixes) | opus | low |
+| build (coding, review fixes, integration) | fable (Fable 5.2) | low |
 | review | fable (Fable 5.2) | low |
 | test (write/run tests, QA) | opus | low |
 | fix-tests (make failing tests pass) | opus | high |
@@ -1178,14 +1178,14 @@ it('withAdmin returns 401 without header and calls through with ADMIN_AUTH=off',
 ```
 - [ ] **Step 2-4:** Fail, implement, pass. **Step 5:** Commit `feat(auth): Cloudflare Access JWT verification and admin guard`.
 
-### Task R2.x: Review each Phase 2 task — `review`
-One review per task, scoped to that task's worktree diff. Check against the contract above and spec sections 4, 7 and 8. Security focus for 2.1 (path traversal, timing-safe token compare, exclusive chunk writes) and 2.5 (issuer, audience, algorithm pinning, no info leaks). Output schema as R1. If `verdict: 'fix'`, a `build` agent applies fixes in the same worktree, then one re-review.
+### Task R2: No per-task review in Phase 2
+Phase 2 modules are small and pure or thin, with complete tests written into this plan. The workflow builds them as three agents (2.1 + 2.5, 2.2 + 2.3, 2.4) and relies on TDD plus the T2 test gate. Their security points (path traversal, timing-safe compare, JWT pinning) are re-checked in the Phase 6 security lens.
 
 ### Task I2: Integrate Phase 2 — `build` (main tree)
 Merge each Phase 2 branch into `feat/video-feedback` (`git merge --no-ff <branch>`), resolve conflicts, apply any `sharedChangesNeeded`, run `yarn install` (if lockfile changed) and `yarn check`. Remove merged worktrees (`git worktree remove`). Output `{ merged: string[], checkPassing: boolean, failures: string[] }`.
 
 ### Task T2: Test gate Phase 2 — `test`
-Run `yarn check` and `yarn test:coverage`. Compare tests to the contracts above and spec sections; add missing tests for any untested contract item (for example an id kind, a validation branch, a zoom edge case). Commit `test(core): ...`. Output `{ passing: boolean, failures: string[], testsAdded: string[] }`. If `passing` is false, a `fix-tests` agent fixes the code (not the tests, unless the test contradicts the spec) and re-runs until green (max 3 rounds).
+Run `yarn check` and `yarn test:coverage`. Compare tests to the contracts above and spec sections; add missing tests for any untested contract item (for example an id kind, a validation branch, a zoom edge case). Commit `test(core): ...`. Output `{ passing: boolean, failures: string[], testsAdded: string[] }`. If `passing` is false, a `fix-tests` agent fixes the code (not the tests, unless the test contradicts the spec) and re-runs until green (max 2 rounds).
 
 ---
 
@@ -1478,7 +1478,7 @@ it('SpeechGate needs the level held for holdMs', () => {
 - [ ] **Step 2-4:** Fail, implement, pass. **Step 5:** Commit `feat(capture): event log, recorder, resilient uploader, mic level`.
 
 ### Task R3.x, I3, T3
-As in Phase 2: one `review` per task (security focus on 3.1 and 3.2: auth on every admin route, token handling, size limits, path handling; correctness focus on 3.3 queue persistence and 3.5 retry logic). I3 integration also replaces the `render not wired` stubs in `lib/pipeline/steps/index.ts` with imports of Task 3.4's steps and adds an integration test: seeded comment through `processComment` with `includeClip: true` produces `moments.json`, stills, overview and clip. T3 test gate as in Phase 2.
+One `review` each for 3.2, 3.3, 3.4 and 3.5 (one round, at most one fix, no re-review). 3.1 has no dedicated review; its admin auth and path handling are covered by the T3 gate and the Phase 6 security lens. I3 integration also replaces the `render not wired` stubs in `lib/pipeline/steps/index.ts` with imports of Task 3.4's steps and adds an integration test: seeded comment through `processComment` with `includeClip: true` produces `moments.json`, stills, overview and clip. T3 test gate as in Phase 2.
 
 ---
 
@@ -1679,7 +1679,7 @@ it('download builds the right URL from version and clips toggle', async () => { 
 - [ ] **Step 2-4:** Fail, implement, pass, visual check in the browser. **Step 5:** Commit `feat(admin-ui): videos, versions, sessions, inbox import, downloads`.
 
 ### Task R4.x, I4, T4
-As before. Review focus: 4.1 spec section 9 fidelity (every field, sort order, no em-dashes, zip layout); 4.2 spec section 5 behaviour rules one by one (no timecode anywhere, click-while-paused does not play, space and arrows rules, zoom only while paused, overlay never covering the centre, copy matches); 4.3 auth on every admin page and empty states. I4 integration runs `yarn build` as well as `yarn check`.
+One `review` each for 4.1 (spec section 9 fidelity: every field, sort order, no em-dashes, zip layout) and 4.2 (spec section 5 behaviour rules one by one: no timecode anywhere, click-while-paused does not play, space and arrows rules, zoom only while paused, overlay never covering the centre, copy matches). 4.3 has no dedicated review. I4 integration runs `yarn build` as well as `yarn check`.
 
 ---
 
@@ -1782,14 +1782,14 @@ Note for implementers: the `SAVE_TROUBLE_AFTER_MS` override must not be reachabl
 - [ ] **Step 1:** Write config, setup and specs. **Step 2:** `./scripts/lowprio.sh npx playwright install chromium firefox webkit` (if WebKit system deps are missing, mark the webkit project `test.skip` with the reason in the README). **Step 3:** Run `yarn test:e2e`. **Step 4:** Report failures with the failing assertion and trace path. Commit the specs even if red: `test(e2e): reviewer, zoom, resume, edge cases, admin export, a11y`.
 
 ### Task 5.2: Make E2E green — `fix-tests` (loop)
-For each failure: reproduce with `yarn test:e2e --project=chromium <spec> --trace on`, read the trace, decide whether the app or the test is wrong against the spec (the spec wins), fix, re-run the single spec, then the whole suite. Do not weaken assertions or add sleeps longer than needed; prefer `expect.poll` and auto-waiting locators. Max 4 rounds; report anything still failing with diagnosis.
+For each failure: reproduce with `yarn test:e2e --project=chromium <spec> --trace on`, read the trace, decide whether the app or the test is wrong against the spec (the spec wins), fix, re-run the single spec, then the whole suite. Do not weaken assertions or add sleeps longer than needed; prefer `expect.poll` and auto-waiting locators. Max 3 rounds; report anything still failing with diagnosis.
 
 ---
 
 ## Phase 6: Polish and hardening
 
-### Task 6.1: Multi-lens review — `review` (parallel, read-only)
-Four independent reviews of the whole `feat/video-feedback` diff:
+### Task 6.1: Two-reviewer pass — `review` (parallel, read-only)
+Two independent reviews of the whole `feat/video-feedback` diff: one covers lenses 1 and 3, the other lenses 2 and 4:
 1. **Spec compliance:** walk spec sections 2 to 12 line by line; list every requirement with the file implementing it or "missing".
 2. **Security:** token entropy and comparison, path traversal on every id and filename, admin auth on every `/admin` page and `/api/admin` route (grep for routes missing `withAdmin`), upload limits, header injection in `Content-Disposition`, JWT verification details, `127.0.0.1` binding, secrets not logged.
 3. **Reviewer UX polish:** read every component against spec section 5 and the copy; check focus handling, keyboard support, visible focus rings, transitions, the overlay placement, loading and error states, no dead controls, no placeholder text, that nothing shows a timecode; look at screenshots from the last E2E run (`test-results/`).
@@ -1846,10 +1846,10 @@ Not part of the workflow. Run when Tim says so, following `docs/DEPLOY.md`.
 ```
 Phase 0  explore  ─┐ (parallel x2)
 Phase 1  1.1 → 1.2 → R1 (sequential, main tree)
-Phase 2  2.1 2.2 2.3 2.4 2.5   each: build(worktree) → review → [fix → re-review]   then I2 → T2
-Phase 3  3.1 3.2 3.3 3.4 3.5   same pattern                                        then I3 → T3
-Phase 4  4.1 4.2 4.3           same pattern                                        then I4 → T4
-Phase 5  5.1 → 5.2 (loop)
-Phase 6  6.1 (x4 parallel) → 6.2 → 6.3 (loop)
+Phase 2  [2.1+2.5] [2.2+2.3] [2.4]   build(worktree) only                          then I2 → T2
+Phase 3  3.1 3.2 3.3 3.4 3.5         build; 3.2-3.5 also review → [one fix]       then I3 → T3
+Phase 4  4.1 4.2 4.3                 build; 4.1-4.2 also review → [one fix]       then I4 → T4
+Phase 5  5.1 → 5.2 (max 3 fix rounds)
+Phase 6  6.1 (x2 parallel) → 6.2 → 6.3 (max 2 fix rounds)
 Phase 7  7.1
 ```

@@ -1,17 +1,17 @@
 export const meta = {
   name: 'build-video-feedback',
   description:
-    'Build the video feedback tool from docs/plans/2026-11-21-video-feedback.md: explore, scaffold, parallel TDD builds with adversarial review, integration, E2E, polish',
+    'Build the video feedback tool from docs/plans/2026-11-21-video-feedback.md: explore, scaffold, parallel TDD builds (Fable writes, risky modules reviewed), integration, E2E, polish',
   whenToUse:
     'Run after the spec and plan are approved. Pass args {startPhase: N} to skip completed phases (0-7).',
   phases: [
     { title: 'Explore', detail: 'haiku: toolchain and media/API facts', model: 'haiku' },
     { title: 'Scaffold', detail: 'Tasks 1.1, 1.2, review R1' },
-    { title: 'Core libraries', detail: 'Tasks 2.1-2.5 in worktrees, review each, integrate, test gate' },
-    { title: 'Server and capture', detail: 'Tasks 3.1-3.5 in worktrees, review each, integrate, test gate' },
-    { title: 'Export and UI', detail: 'Tasks 4.1-4.3 in worktrees, review each, integrate, test gate' },
+    { title: 'Core libraries', detail: 'Tasks 2.1-2.5 as 3 worktree builds, integrate, test gate (no per-task review)' },
+    { title: 'Server and capture', detail: 'Tasks 3.1-3.5 in worktrees, review 3.2-3.5, integrate, test gate' },
+    { title: 'Export and UI', detail: 'Tasks 4.1-4.3 in worktrees, review 4.1-4.2, integrate, test gate' },
     { title: 'End-to-end', detail: 'Playwright specs, then fix until green' },
-    { title: 'Polish', detail: '4 review lenses, fixes, final gate' },
+    { title: 'Polish', detail: '2 review lenses, fixes, final gate' },
     { title: 'Deploy docs', detail: 'systemd unit, cloudflared and DEPLOY.md (no actual deploy)' },
   ],
 };
@@ -26,10 +26,10 @@ const SPEC = `${REPO}/docs/superpowers/specs/2026-11-21-video-feedback-design.md
 const BRANCH = 'feat/video-feedback';
 const START = (args && typeof args.startPhase === 'number') ? args.startPhase : 0;
 
-// Role -> model mapping requested by Tim.
+// Role -> model mapping requested by Tim: Fable 5.2 low writes the code, checking kept light.
 const ROLE = {
   explore: { model: 'haiku' },
-  build: { model: 'opus', effort: 'low' },
+  build: { model: 'fable', effort: 'low' },
   review: { model: 'fable', effort: 'low' },
   test: { model: 'opus', effort: 'low' },
   fixTests: { model: 'opus', effort: 'high' },
@@ -124,26 +124,26 @@ const TEST_SCHEMA = {
 // Task lists (ids match plan headings)
 // ---------------------------------------------------------------------------
 
+// review: true only for the risky modules. Others rely on TDD plus the phase test gate.
+// A build entry can cover several plan tasks (ids), done in order by one agent.
 const PHASE2 = [
-  { id: '2.1', title: 'Storage', focus: 'path traversal on every id, timing-safe token compare, exclusive chunk writes, atomic JSON' },
-  { id: '2.2', title: 'Geometry', focus: 'letterbox maths, zoom inverse matches the CSS transform, label edges at exactly 1/3 and 2/3' },
-  { id: '2.3', title: 'Moment selection', focus: 'dwell timing with sparse pointer samples, merge ranking, cap ordering, word alignment' },
-  { id: '2.4', title: 'Media helpers', focus: 'every child process goes through ionice/nice, ffmpeg arg injection, validation messages' },
-  { id: '2.5', title: 'Admin auth', focus: 'issuer/audience/alg pinning, service tokens, ADMIN_AUTH=off refused in production, no info leaks' },
+  { id: '2.1', ids: ['2.1', '2.5'], title: 'Storage and admin auth', review: false, focus: 'path traversal, timing-safe token compare, exclusive chunk writes, JWT issuer/audience/alg pinning' },
+  { id: '2.2', ids: ['2.2', '2.3'], title: 'Geometry and moment selection', review: false, focus: 'letterbox and zoom maths, dwell timing, merge ranking, word alignment' },
+  { id: '2.4', ids: ['2.4'], title: 'Media helpers', review: false, focus: 'every child process goes through ionice/nice, validation messages' },
 ];
 
 const PHASE3 = [
-  { id: '3.1', title: 'Video import and inbox API', focus: 'auth on every admin route, filename traversal, inbox file only deleted after success, version races' },
-  { id: '3.2', title: 'Reviewer API', focus: 'token/session/video binding, size and rate limits, idempotent complete, Range edge cases, no stack traces in responses' },
-  { id: '3.3', title: 'Processing pipeline', focus: 'restart recovery, single concurrency, clip work after all other work, Groq retry rules, empty detection' },
-  { id: '3.4', title: 'Rendering', focus: 'pointer placement accuracy, zoom crop region, sharp concurrency 1, ffmpeg via low priority, even clip dimensions' },
-  { id: '3.5', title: 'Client capture library', focus: 'IndexedDB persistence before send, retry/backoff and trouble signalling, seq ordering, resume after reload' },
+  { id: '3.1', ids: ['3.1'], title: 'Video import and inbox API', review: false, focus: 'auth on every admin route, filename traversal, inbox file only deleted after success, version races' },
+  { id: '3.2', ids: ['3.2'], title: 'Reviewer API', review: true, focus: 'token/session/video binding, size and rate limits, idempotent complete, Range edge cases, no stack traces in responses' },
+  { id: '3.3', ids: ['3.3'], title: 'Processing pipeline', review: true, focus: 'restart recovery, single concurrency, clip work after all other work, Groq retry rules, empty detection' },
+  { id: '3.4', ids: ['3.4'], title: 'Rendering', review: true, focus: 'pointer placement accuracy, zoom crop region, sharp concurrency 1, ffmpeg via low priority, even clip dimensions' },
+  { id: '3.5', ids: ['3.5'], title: 'Client capture library', review: true, focus: 'IndexedDB persistence before send, retry/backoff and trouble signalling, seq ordering, resume after reload' },
 ];
 
 const PHASE4 = [
-  { id: '4.1', title: 'Export bundle', focus: 'spec section 9 fidelity: every field, sort order, inline markers, previous/, ETag, 202/304, no em-dashes' },
-  { id: '4.2', title: 'Reviewer UI', focus: 'spec section 5 rule by rule: no timecode anywhere, click while paused never plays, space/arrow rules, zoom only while paused, overlay placement, copy matches, polish and a11y' },
-  { id: '4.3', title: 'Admin UI', focus: 'requireAdminPage on every page, empty states, import errors surfaced, download handles 202' },
+  { id: '4.1', ids: ['4.1'], title: 'Export bundle', review: true, focus: 'spec section 9 fidelity: every field, sort order, inline markers, previous/, ETag, 202/304, no em-dashes' },
+  { id: '4.2', ids: ['4.2'], title: 'Reviewer UI', review: true, focus: 'spec section 5 rule by rule: no timecode anywhere, click while paused never plays, space/arrow rules, zoom only while paused, overlay placement, copy matches, polish and a11y' },
+  { id: '4.3', ids: ['4.3'], title: 'Admin UI', review: false, focus: 'requireAdminPage on every page, empty states, import errors surfaced, download handles 202' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -157,10 +157,10 @@ function notesBlock(notes) {
 
 function buildPrompt(task, notes, expectHead) {
   return `${RULES}${notesBlock(notes)}
-You are the build agent for Task ${task.id} (${task.title}) of the plan. You are in your own git worktree.
+You are the build agent for plan Task(s) ${task.ids.join(' and ')} (${task.title}). You are in your own git worktree.
 1. Make sure your worktree contains the latest integrated work: run "git log --oneline -3" and, if commit ${expectHead || '(none given)'} is not an ancestor of HEAD, run "git merge ${expectHead || BRANCH}". Create a branch named task-${task.id.replace('.', '-')} from there.
 2. Run "./scripts/lowprio.sh yarn install --immutable" if node_modules is missing.
-3. Execute Task ${task.id} exactly as written in the plan, step by step, TDD, including every listed test.
+3. Execute Task(s) ${task.ids.join(' then ')} exactly as written in the plan, step by step, TDD, including every listed test. Commit after each task.
 4. Run "yarn check". Fix your own failures. Commit.
 Return the branch, absolute worktree path, base and head commits, whether yarn check passed, a short summary, and any sharedChangesNeeded.`;
 }
@@ -171,14 +171,14 @@ You are an adversarial reviewer. Do NOT modify any files. Try to REFUTE that Tas
 The work is in worktree ${built.worktreePath} on branch ${built.branch}. Inspect it with:
   git -C ${built.worktreePath} diff ${built.baseCommit}..${built.headCommit}
 and read files under ${built.worktreePath}. You may run tests there (low priority) to confirm a suspicion.
-Check against the plan's Task ${task.id} contract and the spec. Special focus: ${task.focus}.
+Check against the plan's Task ${task.ids.join('/')} contract and the spec. Special focus: ${task.focus}.
 Also check: tests really exercise behaviour (not just mocks of themselves), no skipped tests, no dead code, names match the shared contracts.
 Report only real problems with evidence. verdict "pass" if there are no critical/high/medium findings.`;
 }
 
 function fixPrompt(task, built, findings) {
   return `${RULES}
-You are the build agent fixing review findings for Task ${task.id} (${task.title}).
+You are the build agent fixing review findings for plan Task(s) ${task.ids.join(' and ')} (${task.title}).
 Work ONLY inside ${built.worktreePath} (cd there first), on branch ${built.branch}.
 Findings to fix (add a test for each where it makes sense):
 ${JSON.stringify(findings, null, 2)}
@@ -188,7 +188,7 @@ Run "yarn check", commit, and return the same fields as before (worktreePath mus
 
 function integratePrompt(results, extra) {
   const list = results
-    .map((r) => `- ${r.task.id} ${r.task.title}: branch ${r.branch} at ${r.worktreePath} (head ${r.headCommit}); yarn check ${r.checkPassing ? 'passed' : 'FAILED'}; sharedChangesNeeded: ${JSON.stringify(r.sharedChangesNeeded || [])}; unresolved review notes: ${JSON.stringify(r.openFindings || [])}`)
+    .map((r) => `- ${r.task.ids.join('+')} ${r.task.title}: branch ${r.branch} at ${r.worktreePath} (head ${r.headCommit}); yarn check ${r.checkPassing ? 'passed' : 'FAILED'}; sharedChangesNeeded: ${JSON.stringify(r.sharedChangesNeeded || [])}; unresolved review notes: ${JSON.stringify(r.openFindings || [])}`)
     .join('\n');
   return `${RULES}
 You are the integration agent. Work in the main tree ${REPO} on branch ${BRANCH}.
@@ -233,24 +233,21 @@ async function buildReviewed(task, phaseTitle, notes, expectHead) {
     log(`Task ${task.id} build agent returned nothing; it will be missing from integration.`);
     return null;
   }
-  let review = null;
-  for (let round = 1; round <= 2; round++) {
-    review = await agent(reviewPrompt(task, built), {
-      ...ROLE.review, phase: phaseTitle, label: `review ${task.id} #${round}`, schema: REVIEW_SCHEMA,
-    });
-    const blocking = (review?.findings || []).filter((f) => BLOCKING.includes(f.severity));
-    if (!review || blocking.length === 0) break;
-    if (round === 2) {
-      log(`Task ${task.id}: ${blocking.length} blocking findings remain after 2 review rounds; passing them to integration.`);
-      break;
-    }
+  if (!task.review) return { ...built, task, openFindings: [] };
+  // One review round, at most one fix, no re-review (checking kept light on purpose).
+  const review = await agent(reviewPrompt(task, built), {
+    ...ROLE.review, phase: phaseTitle, label: `review ${task.id}`, schema: REVIEW_SCHEMA,
+  });
+  const blocking = (review?.findings || []).filter((f) => BLOCKING.includes(f.severity));
+  if (blocking.length) {
     const fixed = await agent(fixPrompt(task, built, blocking), {
-      ...ROLE.build, phase: phaseTitle, label: `fix ${task.id} #${round}`, schema: BUILD_SCHEMA,
+      ...ROLE.build, phase: phaseTitle, label: `fix ${task.id}`, schema: BUILD_SCHEMA,
     });
     if (fixed) built = { ...built, headCommit: fixed.headCommit, checkPassing: fixed.checkPassing, summary: fixed.summary,
       sharedChangesNeeded: [...new Set([...(built.sharedChangesNeeded || []), ...(fixed.sharedChangesNeeded || [])])] };
   }
-  return { ...built, task, openFindings: (review?.findings || []) };
+  const low = (review?.findings || []).filter((f) => !BLOCKING.includes(f.severity));
+  return { ...built, task, openFindings: low };
 }
 
 async function gate(phaseTitle, scope, commands, maxRounds) {
@@ -278,7 +275,7 @@ async function buildPhase(phaseTitle, tasks, notes, expectHead, integrateExtra, 
   const integ = await agent(integratePrompt(results, integrateExtra), {
     ...ROLE.build, phase: phaseTitle, label: `integrate ${phaseTitle}`, schema: INTEGRATE_SCHEMA,
   });
-  const g = await gate(phaseTitle, gateScope, gateCommands, 3);
+  const g = await gate(phaseTitle, gateScope, gateCommands, 2);
   return { results: results.map((r) => ({ id: r.task.id, head: r.headCommit, check: r.checkPassing })), integ, gate: g, head: g?.headCommit || integ?.headCommit };
 }
 
@@ -320,17 +317,15 @@ Execute every step of Task ${id} exactly, TDD, then "yarn check" (and "yarn buil
       ...ROLE.build, phase: 'Scaffold', label: `build ${id}`, schema: BUILD_SCHEMA,
     });
   }
-  let r1 = null;
-  for (let round = 1; round <= 2; round++) {
-    r1 = await agent(`${RULES}
+  const r1 = await agent(`${RULES}
 Adversarial review, read-only. Do Task R1 of the plan: review "git -C ${REPO} diff spec/video-feedback-design..${BRANCH}". Try to refute that Phase 1 is correct and complete.`, {
-      ...ROLE.review, phase: 'Scaffold', label: `review R1 #${round}`, schema: REVIEW_SCHEMA,
-    });
-    const blocking = (r1?.findings || []).filter((f) => BLOCKING.includes(f.severity));
-    if (!blocking.length || round === 2) break;
+    ...ROLE.review, phase: 'Scaffold', label: 'review R1', schema: REVIEW_SCHEMA,
+  });
+  const r1Blocking = (r1?.findings || []).filter((f) => BLOCKING.includes(f.severity));
+  if (r1Blocking.length) {
     await agent(`${RULES}
 Fix these Phase 1 review findings in ${REPO} on ${BRANCH}, add tests where sensible, run "yarn check", commit:
-${JSON.stringify(blocking, null, 2)}`, { ...ROLE.build, phase: 'Scaffold', label: `fix R1 #${round}`, schema: BUILD_SCHEMA });
+${JSON.stringify(r1Blocking, null, 2)}`, { ...ROLE.build, phase: 'Scaffold', label: 'fix R1', schema: BUILD_SCHEMA });
   }
   const g1 = await gate('Scaffold', 'Phase 1 scaffold and contracts', '"yarn check" and "yarn build"', 2);
   head = g1?.headCommit || head;
@@ -373,7 +368,7 @@ Return passing, failures (spec + test name + failing assertion + trace path), te
   });
   let result = e2e;
   let round = 0;
-  while (result && !result.passing && round < 4) {
+  while (result && !result.passing && round < 3) {
     round++;
     const fixed = await agent(fixTestsPrompt('Playwright end-to-end suite (Task 5.2)', result.failures, '"yarn check" then "yarn test:e2e"'), {
       ...ROLE.fixTests, phase: 'End-to-end', label: `fix E2E #${round}`, schema: TEST_SCHEMA,
@@ -389,10 +384,8 @@ Return passing, failures (spec + test name + failing assertion + trace path), te
 if (START <= 6) {
   phase('Polish');
   const LENSES = [
-    { key: 'spec', prompt: 'Lens 1 (spec compliance) of Task 6.1.' },
-    { key: 'security', prompt: 'Lens 2 (security) of Task 6.1.' },
-    { key: 'ux', prompt: 'Lens 3 (reviewer UX polish) of Task 6.1. Look at screenshots in test-results/ and, if useful, run the app (yarn dev at low priority) and screenshot screens yourself.' },
-    { key: 'robustness', prompt: 'Lens 4 (robustness) of Task 6.1.' },
+    { key: 'spec-and-ux', prompt: 'Lenses 1 (spec compliance) and 3 (reviewer UX polish) of Task 6.1. Look at screenshots in test-results/ and, if useful, run the app (yarn dev at low priority) and screenshot screens yourself.' },
+    { key: 'security-and-robustness', prompt: 'Lenses 2 (security) and 4 (robustness) of Task 6.1.' },
   ];
   const reviews = await parallel(LENSES.map((l) => () => agent(`${RULES}
 Adversarial review, read-only (no file edits). ${l.prompt} Review the whole branch: "git -C ${REPO} diff spec/video-feedback-design..${BRANCH}" plus the files themselves. Report real problems with evidence only.`, {
@@ -405,7 +398,7 @@ Adversarial review, read-only (no file edits). ${l.prompt} Review the whole bran
 Do Task 6.2 of the plan in ${REPO} on ${BRANCH}. Fix every critical/high/medium finding below, adding a test that would have caught each. Low findings: fix if quick, otherwise list them in docs/FOLLOW-UPS.md. Run "yarn check", commit per area.
 ${JSON.stringify(findings, null, 2)}`, { ...ROLE.build, phase: 'Polish', label: 'apply polish fixes', schema: BUILD_SCHEMA });
   }
-  const finalGate = await gate('Polish', 'final gate (Task 6.3)', '"yarn check", "yarn build" and "yarn test:e2e"', 3);
+  const finalGate = await gate('Polish', 'final gate (Task 6.3)', '"yarn check", "yarn build" and "yarn test:e2e"', 2);
   report.polish = { findings: findings.length, gate: finalGate };
 }
 
