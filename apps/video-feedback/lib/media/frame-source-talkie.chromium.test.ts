@@ -172,6 +172,60 @@ describe('talkieFrameSource @chromium', () => {
     await expect(browser.render(1, 320, 180)).rejects.toThrow();
   }, 120_000);
 
+  describe('with a film that never finishes loading', () => {
+    let stuckPageDir: string;
+
+    /** Chromium processes started by this test process and still running. */
+    const browsersLeft = async (): Promise<number[]> =>
+      (await descendants(process.pid)).filter(alive);
+
+    const noneLeft = async (before: number[]): Promise<boolean> => {
+      for (let i = 0; i < 80; i++) {
+        const extra = (await browsersLeft()).filter((p) => !before.includes(p));
+        if (extra.length === 0) return true;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return false;
+    };
+
+    beforeAll(async () => {
+      stuckPageDir = join(tmp, 'stuck-page');
+      await cp(pageDir, stuckPageDir, { recursive: true });
+      await writeFile(join(stuckPageDir, 'main.js'), 'window.talkieReady = new Promise(() => {});');
+    });
+
+    it('stops the browser when the frame passes its time limit, though it never opened', async () => {
+      const before = await browsersLeft();
+      // The wait for the film is longer than the frame limit, so the frame limit is what acts.
+      const s = talkieFrameSource(filmDir, SIZE, {
+        open: (d, signal) =>
+          openTalkieBrowser(d, { pageDir: stuckPageDir, signal, openTimeoutMs: 60_000 }),
+        frameTimeoutMs: 4000,
+      });
+      await expect(s.frame(1, 320)).rejects.toThrow(/time limit of 4s/);
+      await s.close();
+      expect(await noneLeft(before)).toBe(true);
+    }, 120_000);
+
+    it('gives up on its own when the film does not load in time', async () => {
+      const before = await browsersLeft();
+      await expect(
+        openTalkieBrowser(filmDir, { pageDir: stuckPageDir, openTimeoutMs: 2000 })
+      ).rejects.toThrow(/did not open within 2s/);
+      expect(await noneLeft(before)).toBe(true);
+    }, 120_000);
+
+    it('does not start drawing when it is told to stop before it starts', async () => {
+      const before = await browsersLeft();
+      const stopped = new AbortController();
+      stopped.abort();
+      await expect(
+        openTalkieBrowser(filmDir, { pageDir: stuckPageDir, signal: stopped.signal })
+      ).rejects.toThrow(/stopped/);
+      expect(await noneLeft(before)).toBe(true);
+    }, 120_000);
+  });
+
   it('makes a 2.5x zoom crop that is sharper than an upscale', async () => {
     const s = source(edgeFilmDir);
     try {

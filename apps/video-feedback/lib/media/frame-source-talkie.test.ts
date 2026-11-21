@@ -1,3 +1,4 @@
+import { STILL_MAX_WIDTH, ZOOM_SCALE } from '@/lib/constants';
 import { copy } from '@/lib/review/copy';
 import {
   ChromiumMissingError,
@@ -71,7 +72,7 @@ describe('talkieFrameSource', () => {
     fake.pending[1].resolve(Buffer.from('two'));
     await second;
     expect(open).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledWith('/film');
+    expect(open).toHaveBeenCalledWith('/film', expect.any(AbortSignal));
     expect(fake.calls).toEqual([
       { vt: 1, width: 1920, height: 1080 },
       { vt: 1.5, width: 4800, height: 2700 },
@@ -91,6 +92,10 @@ describe('talkieFrameSource', () => {
     fake.pending[1].resolve(Buffer.alloc(0));
     await none;
     expect(fake.calls[0].width).toBe(TALKIE_MAX_RENDER_WIDTH);
+    // The widest picture the product needs is the normal zoom crop of a full still. Memory
+    // grows with the square of the width, so the limit is that and no more.
+    expect(TALKIE_MAX_RENDER_WIDTH).toBe(Math.ceil(STILL_MAX_WIDTH * ZOOM_SCALE));
+    expect(TALKIE_MAX_RENDER_WIDTH).toBe(4800);
     expect(fake.calls[1]).toMatchObject({ width: 1, height: 1 });
     await source.close();
   });
@@ -156,6 +161,60 @@ describe('talkieFrameSource', () => {
     expect(late.state.killed).toBe(1);
     expect(late.calls).toEqual([]);
     await source.close();
+  });
+
+  it('tells a browser that never finishes starting to stop, at the time limit', async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    const second = fakeBrowser();
+    const open = vi
+      .fn()
+      .mockImplementationOnce((_dir: string, signal: AbortSignal) => {
+        signals.push(signal);
+        return new Promise<TalkieBrowser>(() => {}); // a stuck film load: this never settles
+      })
+      .mockImplementationOnce(async (_dir: string, signal: AbortSignal) => {
+        signals.push(signal);
+        return second.browser;
+      });
+    const source = talkieFrameSource('/film', SIZE, { open, frameTimeoutMs: 4000 });
+    const outcome = source.frame(1, 100).catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(signals[0].aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(((await outcome) as Error).message).toMatch(/time limit of 4s/);
+    // Nothing waits for the start to settle: the stop is asked for there and then.
+    expect(signals[0].aborted).toBe(true);
+    // The next frame gets a browser of its own, with a signal of its own.
+    const next = source.frame(2, 100);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(signals[1].aborted).toBe(false);
+    second.pending[0].resolve(Buffer.from('ok'));
+    expect((await next).toString()).toBe('ok');
+    await source.close();
+    expect(second.state.closed).toBe(1);
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it('close returns when the browser never finishes starting', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const open = vi.fn((_dir: string, s: AbortSignal) => {
+      signal = s;
+      return new Promise<TalkieBrowser>(() => {});
+    });
+    const source = talkieFrameSource('/film', SIZE, { open, frameTimeoutMs: 1000 });
+    const outcome = source.frame(1, 100).catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    let closed = false;
+    const closing = source.close().then(() => {
+      closed = true;
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await closing;
+    expect(closed).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    expect(await outcome).toBeInstanceOf(Error);
   });
 
   it('does not reuse a browser after a render failed', async () => {

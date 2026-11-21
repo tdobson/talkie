@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { type Browser, chromium } from 'playwright-core';
+import { TALKIE_FRAME_TIMEOUT_MS } from '@/lib/constants';
 import { ChromiumMissingError, type TalkieBrowser } from './frame-source-talkie';
 import { serveRenderPage } from './talkie-render-server';
 
@@ -31,6 +32,16 @@ export function chromiumPath(): string {
 export interface OpenTalkieBrowserOptions {
   pageDir?: string;
   executablePath?: string;
+  /**
+   * Aborting this kills the browser and stops the local server at once, at any point: while
+   * the film is still opening (the promise then rejects) or after it has opened.
+   */
+  signal?: AbortSignal;
+  /**
+   * How long the page may take, once Chromium runs, to open the film. After that the browser
+   * is killed and the promise rejects. The default is the time limit of one frame.
+   */
+  openTimeoutMs?: number;
 }
 
 export interface ChromiumTalkieBrowser extends TalkieBrowser {
@@ -69,6 +80,10 @@ function killProcess(pid: number | null): void {
 /**
  * Starts Chromium and opens the film in `filmDir` on the render page. The caller owns the
  * result and must `close()` or `kill()` it: both also stop the local server.
+ *
+ * Nothing here waits without a limit. Starting Chromium has `LAUNCH_TIMEOUT_MS`, opening the
+ * film has `openTimeoutMs`, and `signal` stops either. In each case the process group is killed,
+ * so a film that hangs its renderer leaves nothing running.
  */
 export async function openTalkieBrowser(
   filmDir: string,
@@ -77,33 +92,48 @@ export async function openTalkieBrowser(
   const executable = opts.executablePath ?? chromiumPath();
   if (!existsSync(executable)) throw new ChromiumMissingError();
   const pageDir = opts.pageDir ?? renderPageDir();
+  const { signal } = opts;
+  const openTimeoutMs = opts.openTimeoutMs ?? TALKIE_FRAME_TIMEOUT_MS;
+  const stoppedError = (): Error => new Error('The browser for Talkie stills was stopped.');
+  if (signal?.aborted) throw stoppedError();
 
   const server = await serveRenderPage(filmDir, pageDir);
   let browser: Browser | null = null;
   let pid: number | null = null;
-  let done = false;
+  let stopping: Promise<void> | null = null;
 
-  const stop = async (how: 'close' | 'kill'): Promise<void> => {
-    if (done) return;
-    done = true;
-    const b = browser;
-    if (b) {
-      if (how === 'kill') killProcess(pid);
-      const closed = b.close().then(
-        () => true,
-        () => true
-      );
-      // A browser that does not answer is killed: nothing is left running either way.
-      if (!(await Promise.race([closed, wait(CLOSE_GRACE_MS).then(() => false)]))) {
-        killProcess(pid);
-        await Promise.race([closed, wait(CLOSE_GRACE_MS)]);
+  const stop = (how: 'close' | 'kill'): Promise<void> => {
+    // A kill is never held up, not even by a close that is already under way.
+    if (how === 'kill') killProcess(pid);
+    stopping ??= (async () => {
+      const b = browser;
+      if (b) {
+        const closed = b.close().then(
+          () => true,
+          () => true
+        );
+        // A browser that does not answer is killed: nothing is left running either way.
+        if (!(await Promise.race([closed, wait(CLOSE_GRACE_MS).then(() => false)]))) {
+          killProcess(pid);
+          await Promise.race([closed, wait(CLOSE_GRACE_MS)]);
+        }
       }
-    }
-    await server.close();
+      await server.close();
+    })();
+    return stopping;
   };
 
+  // From here on the signal kills whatever exists. Before `browser` is set there is no process
+  // to reach, so the server goes now and the browser is killed as soon as the launch returns.
+  const onAbort = (): void => {
+    void stop('kill');
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  let openTimer: ReturnType<typeof setTimeout> | undefined;
+  let openTimedOut = false;
+
   try {
-    browser = await chromium.launch({
+    const launched = await chromium.launch({
       // The wrapper execs ionice, nice and then Chromium, so this is still one process.
       executablePath: join(pageDir, 'chromium-lowprio.sh'),
       env: { ...process.env, TALKIE_CHROMIUM_BIN: executable } as Record<string, string>,
@@ -117,9 +147,22 @@ export async function openTalkieBrowser(
         '--disable-dev-shm-usage',
       ],
     });
-    pid = await browserPid(browser);
+    // `stop` has already run if the signal fired during the launch, so it would do nothing now.
+    if (signal?.aborted) {
+      killProcess(await browserPid(launched));
+      await Promise.race([launched.close().catch(() => {}), wait(CLOSE_GRACE_MS)]);
+      throw stoppedError();
+    }
+    browser = launched;
+    openTimer = setTimeout(() => {
+      openTimedOut = true;
+      void stop('kill'); // the steps below are waiting on the browser: killing it fails them
+    }, openTimeoutMs);
+    pid = await browserPid(launched);
+    // A stop asked for while the process id was unknown could only close politely. Kill now.
+    if (stopping) killProcess(pid);
 
-    const context = await browser.newContext({
+    const context = await launched.newContext({
       viewport: { width: 320, height: 180 },
       deviceScaleFactor: 1,
       serviceWorkers: 'block',
@@ -139,6 +182,9 @@ export async function openTalkieBrowser(
       const detail = pageErrors.length > 0 ? ` (${pageErrors.join('; ')})` : '';
       throw new Error(`The film could not be opened for stills: ${problem}${detail}`);
     }
+    // A kill leaves these waits to fail by themselves, but do not depend on it.
+    if (stopping) throw stoppedError();
+    clearTimeout(openTimer);
 
     return {
       get pid() {
@@ -159,7 +205,15 @@ export async function openTalkieBrowser(
       close: () => stop('close'),
     };
   } catch (e) {
+    clearTimeout(openTimer);
+    signal?.removeEventListener('abort', onAbort);
     await stop('kill');
+    if (openTimedOut) {
+      throw new Error(
+        `The film did not open within ${Math.round(openTimeoutMs / 1000)}s and the browser was stopped.`
+      );
+    }
+    if (signal?.aborted) throw stoppedError();
     throw e;
   }
 }

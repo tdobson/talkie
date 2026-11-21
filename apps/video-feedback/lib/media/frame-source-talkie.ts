@@ -1,12 +1,23 @@
-import { TALKIE_BROWSER_IDLE_MS, TALKIE_FRAME_TIMEOUT_MS } from '@/lib/constants';
+import {
+  STILL_MAX_WIDTH,
+  TALKIE_BROWSER_IDLE_MS,
+  TALKIE_FRAME_TIMEOUT_MS,
+  ZOOM_SCALE,
+} from '@/lib/constants';
 import { copy } from '@/lib/review/copy';
 import type { FrameSource } from './frame-source';
 
 /**
- * The widest picture one call may draw. A 2.5x zoom crop of a 1920 still asks for 4800; this
- * leaves room above that while keeping one canvas well under 200 MB on the 9 GB host.
+ * The widest picture one call may draw: the normal zoom crop of a full still (2.5 x 1920 = 4800)
+ * and no more. The zoom scale in an event log comes from the reviewer's browser, so a wider
+ * request is cut down to this, and the crop is then taken from the 4800 picture.
+ *
+ * Memory is why. Measured on the 9 GB host with the 320x180 fixture, as the summed RSS of the
+ * Chromium process tree: about 930 MB with the film open, a peak of about 1650 MB while drawing
+ * at 4800, and a peak of about 2830 MB at 7680 (the limit this replaced), most of which the
+ * browser kept until it closed.
  */
-export const TALKIE_MAX_RENDER_WIDTH = 7680;
+export const TALKIE_MAX_RENDER_WIDTH = Math.ceil(STILL_MAX_WIDTH * ZOOM_SCALE);
 
 /** What the frame source needs from a headless browser that has the film open. */
 export interface TalkieBrowser {
@@ -18,7 +29,12 @@ export interface TalkieBrowser {
   close(): Promise<void>;
 }
 
-export type OpenTalkieBrowser = (filmDir: string) => Promise<TalkieBrowser>;
+/**
+ * Starts a browser on the film. When `signal` aborts, whatever has been started must be stopped
+ * at once, whether or not the promise has settled: a browser stuck while opening the film never
+ * settles it, so the signal is the only way to reach that browser.
+ */
+export type OpenTalkieBrowser = (filmDir: string, signal: AbortSignal) => Promise<TalkieBrowser>;
 
 export interface TalkieFrameSourceOptions {
   /** Starts the browser. The default is headless Chromium at low priority. */
@@ -41,18 +57,18 @@ function isChromiumMissing(e: unknown): boolean {
 }
 
 // Imported only when the first frame is asked for, so nothing loads playwright-core until then.
-const openChromium: OpenTalkieBrowser = async (filmDir) => {
+const openChromium: OpenTalkieBrowser = async (filmDir, signal) => {
   const { openTalkieBrowser } = await import('./talkie-browser');
-  return openTalkieBrowser(filmDir);
+  return openTalkieBrowser(filmDir, { signal });
 };
 
 /**
  * Frames of a Talkie film (the unpacked folder `filmDir`), drawn by one headless browser.
  *
  * The browser starts on the first call. Calls run one at a time, in order. Each has a time
- * limit that covers starting the browser and drawing; when it passes, the browser is killed and
- * the call fails, and the next call starts a new browser. The browser is closed after `idleMs`
- * without work and by `close()`.
+ * limit that covers starting the browser and drawing; when it passes, the browser is killed
+ * (even one that has not finished starting) and the call fails, and the next call starts a new
+ * browser. The browser is closed after `idleMs` without work and by `close()`.
  */
 export function talkieFrameSource(
   filmDir: string,
@@ -64,6 +80,8 @@ export function talkieFrameSource(
   const idleMs = opts.idleMs ?? TALKIE_BROWSER_IDLE_MS;
 
   let browser: Promise<TalkieBrowser> | null = null;
+  /** Stops the browser in `browser`, started or not. One per browser. */
+  let stopper: AbortController | null = null;
   let tail: Promise<unknown> = Promise.resolve();
   let idle: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
@@ -71,6 +89,7 @@ export function talkieFrameSource(
   const closeBrowser = async (): Promise<void> => {
     const current = browser;
     browser = null;
+    stopper = null;
     if (!current) return;
     await current.then(
       (b) => b.close(),
@@ -81,8 +100,12 @@ export function talkieFrameSource(
   const one = async (vt: number, width: number, height: number): Promise<Buffer> => {
     if (closed) throw new Error('The Talkie frame source is closed.');
     clearTimeout(idle);
-    browser ??= open(filmDir);
+    if (!browser || !stopper) {
+      stopper = new AbortController();
+      browser = open(filmDir, stopper.signal);
+    }
     const current = browser;
+    const currentStopper = stopper;
     let abandoned = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = new Promise<never>((_, reject) => {
@@ -102,10 +125,14 @@ export function talkieFrameSource(
     try {
       return await Promise.race([drawn, expired]);
     } catch (e) {
-      // Whatever went wrong, this browser is not used again. It may still be starting, so the
-      // kill is not awaited: it runs as soon as there is something to kill.
+      // Whatever went wrong, this browser is not used again. It may still be starting, and may
+      // never finish, so the signal stops it now; the kill below covers a browser that started.
       abandoned = true;
-      if (browser === current) browser = null;
+      if (browser === current) {
+        browser = null;
+        stopper = null;
+      }
+      currentStopper.abort();
       void current.then(
         (b) => b.kill(),
         () => {}
