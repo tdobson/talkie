@@ -150,8 +150,9 @@ export function selectMoments(input: SelectInput): Moment[] {
   );
   seeks.forEach((s, i) => {
     const next = seeks[i + 1];
-    const collapsed =
-      s.via === 'key' && next?.via === 'key' && next.t - s.t <= KEY_STEP_COLLAPSE_MS;
+    // A run of arrow-key steps, or the ticks of one scroll-bar drag, is one seek: only the
+    // frame the run settles on was looked at.
+    const collapsed = next?.via === s.via && next.t - s.t <= KEY_STEP_COLLAPSE_MS;
     if (!collapsed)
       cands.push(at(s.t, 'seek', `scrolled to ${formatVideoTime(s.to)}`, undefined, s.to));
   });
@@ -193,7 +194,7 @@ export function selectMoments(input: SelectInput): Moment[] {
         zoom: c.zoom ?? m.zoom,
       });
     for (const k of c.kinds) if (!m.kinds.includes(k)) m.kinds.push(k);
-    m.reasons.push(...c.reasons);
+    for (const r of c.reasons) if (!m.reasons.includes(r)) m.reasons.push(r);
   }
 
   const kept = [...merged]

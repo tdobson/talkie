@@ -126,3 +126,38 @@ it('reads pointer, video time and zoom state at a given time', () => {
   expect(zoomAt(events, 9000)).toEqual({ scale: 2.5, originX: 0.48, originY: 0.81 });
   expect(zoomAt(events, 9500)).toBeNull();
 });
+
+it('collapses a scroll-bar drag into one seek moment at the frame it settled on', () => {
+  // 40 slider ticks over 2 seconds, the pointer travelling along the bar as it drags.
+  const ev: CaptureEvent[] = [];
+  for (let i = 0; i < 40; i++) {
+    const t = 1000 + i * 50;
+    ev.push({ t, type: 'pointer', x: 0.8 - i * 0.015, y: 1.05, inside: false, vt: 2.4 });
+    ev.push(seek(t, 2.4 - i * 0.045, 2.4 - (i + 1) * 0.045, 'scrollbar'));
+  }
+  const final = 2.4 - 40 * 0.045;
+  const seeks = selectMoments({
+    ...base,
+    pausedAtVideoTime: 2.4,
+    events: ev,
+    transcript: null,
+  }).filter((x) => x.kinds.includes('seek'));
+  expect(seeks).toHaveLength(1);
+  expect(seeks[0].vt).toBeCloseTo(final);
+  expect(seeks[0].reasons.filter((r) => r.startsWith('scrolled to'))).toHaveLength(1);
+});
+
+it('keeps separate scroll-bar seeks that are more than a second apart', () => {
+  const ev = [seek(1000, 12.4, 5, 'scrollbar'), seek(4000, 5, 8, 'scrollbar')];
+  const seeks = selectMoments({ ...base, events: ev, transcript: null }).filter((x) =>
+    x.kinds.includes('seek')
+  );
+  expect(seeks.map((s) => s.vt)).toEqual([5, 8]);
+});
+
+it('does not repeat the same reason when candidates merge', () => {
+  const ev = [click(1000, 0.5, 0.5), click(1100, 0.5, 0.5), click(1200, 0.5, 0.5)];
+  const m = selectMoments({ ...base, events: ev, transcript: null });
+  const clicked = m.find((x) => x.kinds.includes('click'));
+  expect(clicked?.reasons.filter((r) => r === 'click')).toHaveLength(1);
+});
