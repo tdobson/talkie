@@ -1,0 +1,58 @@
+.page {
+  min-height: 100dvh;
+  background: var(--mantine-color-gray-0);
+}
+
+.card {
+  width: 100%;
+  max-width: 34rem;
+  padding: 2.25rem;
+}
+
+.heading {
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+/* The heading only takes focus from script, to be announced: it needs no ring. */
+.heading:focus {
+  outline: none;
+}
+
+.lead {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.55;
+}
+
+.steps li + li {
+  margin-top: 0.5rem;
+}
+
+.steps li[data-current='true'] {
+  font-weight: 600;
+}
+
+.meter {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.meter[data-size='sm'] {
+  gap: 2px;
+}
+
+.meterBar {
+  flex: 1;
+  min-width: 0;
+}
+
+.heardSlot {
+  min-height: 1.75rem;
+}
