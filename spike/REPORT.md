@@ -5,8 +5,8 @@ Measured on 2026-11-21. Scene: GSE `g01-s01`, "In the roof, not on it", 27.24 s,
 
 | Check | Result | Short version |
 |---|---|---|
-| 1. Style | **Tim to judge** | Five side by side stills are in `out/`. The three I looked at match closely. |
-| 2. Sync | **FAIL as measured** (Firefox), and not a fair test yet | Chromium and WebKit: p99 0 ms. Firefox: p99 55 to 60 ms against a 40 ms limit. The machine was heavily loaded and the runs were niced, so drawing a frame took 20 to 28 ms at the median. Needs a rerun on a quiet machine and on phones. |
+| 1. Style | **Tim to judge** | Five side by side stills are in `out/`. Four match closely. In the fifth (rain and drops) the drops sit about 10 px from the MP4's and the rain differs a little. |
+| 2. Sync | **FAIL as measured** (Firefox), cause not established | Chromium and WebKit: p99 0 ms. Firefox: p99 55 to 60 ms against a 40 ms limit, with the picture ahead of the reported `currentTime` and the worst frames at the clock's 250 ms cap. The machine was heavily loaded. Needs the clock probe and a rerun on a quiet machine before T5 copies the clock, then phones. |
 | 3. Size | **PASS** | Scene: 119 KB against 789 KB in H.265 (6.6 times smaller). Chapter: about 1.35 MB (estimate) against 9.14 MB in H.265 (6.8 times smaller). |
 | 4. Compatibility | **PASS** (stock dotlottie-web) | `out/scene.lottie` loads with no error and draws frame 120. LottieFiles' own web viewer is a manual step. |
 
@@ -15,19 +15,45 @@ Reasons for both are further down.
 
 ## Check 1: style
 
-Run: `nice -n19 ionice -c2 -n7 node stills.mjs` (rerun for this report at 13:02). Each PNG is 3840 x 1080:
-the MP4 frame on the left, the Lottie canvas on the right, at the same scene time.
+Run: `nice -n19 ionice -c2 -n7 node stills.mjs` (last rerun at 13:53, after review). Each PNG is
+3840 x 1080: the MP4 frame on the left, the Lottie canvas on the right, at the same scene time.
 
 | File | Scene time | MP4 time | What is on screen |
 |---|---|---|---|
 | `out/compare-3.00.png` | 3.00 s | 26.88 s | both roof sections, both headings |
 | `out/compare-9.50.png` | 9.48 s | 33.36 s | left half dimmed, tiles lifted off the right |
 | `out/compare-12.60.png` | 12.60 s | 36.48 s | the system arriving |
-| `out/compare-18.20.png` | 18.20 s | 42.08 s | "Black tray" label and its leader line |
-| `out/compare-23.00.png` | 23.00 s | 46.88 s | the water drops |
+| `out/compare-18.20.png` | 18.20 s | 42.08 s | "Black tray" label and its leader line. No rain yet. |
+| `out/compare-20.50.png` | 20.48 s | 44.36 s | rain streaks and both water drops, mid run |
 
-I opened 3.00, 9.50 and 18.20 for this report (S1 opened 12.60, 18.20 and 23.00, so all five have been
-seen once). Geometry, colours, the dimming, the label and the leader line match the MP4. What differs:
+**Correction.** The first version of this report listed a still at 23.00 s as "the water drops", and
+the README said 18.20 showed the label "with rain". Both were wrong. In `scene/g01-s01.nodes.json`
+the rain animations run from 18.31 to 22.26 s and the two `water` groups are visible only from
+18.88 to about 22.67 s, so the whole passage fell between those two stills and neither showed it.
+The drops are the one part of the port made by sampling per frame code (175 and 185 samples), so the
+riskiest part had no evidence at all. I replaced the 23.00 still with one at 20.5 s. It is still
+five stills.
+
+I opened 3.00, 9.50 and 18.20 for the first version, S1 opened 12.60, and I opened the new 20.50 at
+full size with crops around each drop. In the first four, geometry, colours, the dimming, the label
+and the leader line match the MP4. In 20.50:
+
+- Both drops are there on both sides, same shape, colour and size, each on the right surface (one
+  on the glass of the on-roof module, one at the foot of the tray).
+- Each Lottie drop sits about 10 px uphill of its MP4 twin (10 to 12 px by eye on a 1920 px wide
+  frame). The MP4 frame is read 20 ms later than the Lottie one (`stills.mjs` takes the middle of
+  the video frame and the start of it for Lottie), and a drop moving downhill would account for
+  some of that. I have not worked out how much, so treat it as an open difference.
+- The drop's trail on the right section reads a little stronger in Lottie than in the MP4.
+- The rain streaks are present on both sides in the same style. They are not in identical places.
+  They move fast, so the same 20 ms may explain it. I did not check.
+
+So "matches the MP4" holds for the static art and the label. For the rain and drops the honest
+statement is "close, with small differences in position that I have not explained". One still is
+thin evidence for a moving passage; manual step 1 asks Tim to scrub 18.5 to 22.5 s in
+`compare.html` as well.
+
+What differs on purpose:
 
 - The MP4 has the caption, the chapter card in the top left and the dragon in the corner. The Lottie
   side has none of them on purpose: in Talkie the player draws those.
@@ -84,40 +110,84 @@ and the sound advanced 597.7 to 600.1 s in 600 s of wall clock.
 
 ### How much weight these numbers can carry
 
-Read them with three things in mind. I think they matter more than the pass and fail column.
+Read them with four things in mind. I think they matter more than the pass and fail column.
+
+**Correction.** The first version of this section said Firefox lets `currentTime` advance during the
+draw, so the Firefox drift was drawing time, the smoothing clock held, and the player could fix it by
+aiming ahead by its drawing time. The data in `out/sync-firefox.json` contradicts that, and the
+review caught it. Points 2 and 3 and the conclusion below replace it.
 
 1. **The machine was busy and the browsers were niced.** tragicomix had a load average of 15 to 27 on
    12 cores throughout (recorded per track in the JSON), and all three browsers ran at once at
    nice 19. They managed 30 to 36 frames a second, and one `setFrame` call took 17 to 38 ms at the
-   median and 35 to 204 ms at p99, depending on the phase. Nearly all of the measured drift is the
-   time spent drawing.
-2. **The plan's metric flatters Chromium and WebKit.** In those two, `audio.currentTime` does not
-   move while a script is running, so reading it before and after the draw gives the same number and
-   the drift is 0 almost by construction. Firefox lets it advance during the draw, so Firefox is
-   charged for the drawing time and the others are not. The Firefox FAIL is that, plus the load. It
-   is not a clock that wanders.
-3. **So I added a second reading of the same samples** (`estimated` in the JSON, `estimatedDrift` in
-   `sync.mjs`). It takes the highest recent `currentTime`, carried forward at the playback rate, as
-   the best guess at where the sound really is, and measures the picture against that. It treats the
-   three browsers alike. Overall p50 / p95 / p99 in ms:
+   median and 35 to 204 ms at p99, depending on the phase.
+2. **In Firefox the picture is ahead of the reported `currentTime`, and the drift is the smoothing
+   clock's own extrapolation.** Three things in the raw data say so:
+   - `meanSigned` is positive in every Firefox phase, +2.8 to +14.4 ms. `sync.mjs` defines negative
+     as the picture behind the sound, so the picture is ahead. A picture held up by drawing would
+     be behind.
+   - p50 is 0 in the play, seek, 1.5x and 2x phases while `renderP50` is 23 to 38 ms. On at least
+     half the frames `currentTime` did not move at all during a draw that took that long.
+   - The maximum is exactly 250 ms in 9 of the 15 separate phases (play, seeks and the three speeds,
+     for three tracks). 250 ms is `SmoothClock`'s cap on running ahead. The 0.5x figures in the JSON are all
+     multiples of 0.5 ms, which is a whole number of wall clock milliseconds times the rate: the
+     clock's extrapolation term and nothing else.
 
-   | Browser | WebM | Ogg | m4a |
-   |---|---|---|---|
-   | Chromium | 7.8 / 50.1 / 113.4 | 7.9 / 37.3 / 76.1 | 7.0 / 42.0 / 82.9 |
-   | Firefox | 15.2 / 58.6 / 114.6 | 15.1 / 51.0 / 91.2 | 13.6 / 51.0 / 94.4 |
-   | WebKit | 7.7 / 40.3 / 91.9 | 8.4 / 32.3 / 66.5 | 7.1 / 34.3 / 75.0 |
+   A short run of `proto/probe-clock.mjs` after the review (13:53, load average about 8, so not a
+   quiet machine) shows the mechanism. Firefox moved `currentTime` in steps of 40.2 ms, on 75 of
+   179 frames in 3 s of plain playback. Chromium moved it on 180 of 181 frames, in steps of about
+   16.7 ms. So in Firefox the clock extrapolates between steps on most frames, and the metric
+   (clock against raw `currentTime`) counts that extrapolation as drift. That explains the p95 of
+   32 to 33 ms. It also means that with 40 ms steps a limit of 40 ms on this metric leaves Firefox
+   almost no room, whatever the player does.
+3. **Why the worst Firefox frames are so far out is not established.** A p99 of 55 to 60 ms and a
+   maximum at the 250 ms cap mean `currentTime` sometimes went 55 ms, and at times 250 ms or more,
+   without changing. There are two readings and this run cannot tell them apart:
+   - the sound kept playing and Firefox was late updating `currentTime` on a loaded machine, in
+     which case the clock was right to run on and the picture was near the sound; or
+   - the sound really stalled, in which case the clock ran the picture up to 250 ms ahead of it,
+     which is a real sync fault and one the clock caused.
 
-   By this reading the picture is typically 7 to 15 ms from the sound and the worst 1% of frames are
-   66 to 115 ms out in all three browsers. That p99 tracks the p99 drawing time (86 to 117 ms). It is
-   an estimate I designed today, not something the plan asked for, so treat it as a diagnostic. By
-   this reading no browser is inside 40 ms at p99 on this machine today.
+   Nobody listened (the run was muted) and nothing recorded the audio output position.
+4. **The metric says little about Chromium and WebKit either.** There `currentTime` changes on
+   every frame and does not move while a script runs, so the clock never extrapolates, the reading
+   after the draw equals the one before, and the drift is 0 almost by construction. A p99 of 0 shows
+   the clock follows `currentTime`. It does not show the picture reached the screen in time with
+   the sound.
 
-What I take from it: the smoothing clock holds, across seeks and speed changes, in all three engines.
-The risk is the cost of drawing a frame. If a quiet desktop draws this scene in a few milliseconds,
-check 2 should pass comfortably. If a phone takes 20 ms or more, the picture will lag by that much,
-and the player needs to aim ahead by its own measured drawing time or draw at a lower resolution.
-That is a fix inside the design. It needs the rerun and the phone checks below before anyone relies
-on it. I have not measured the drawing cost on a quiet machine, so I do not know which case we are in.
+I also added a second reading of the same samples (`estimated` in the JSON, `estimatedDrift` in
+`sync.mjs`). It takes the highest recent `currentTime`, carried forward at the playback rate, as a
+guess at where the sound is, and measures the picture against that. Overall p50 / p95 / p99 in ms:
+
+| Browser | WebM | Ogg | m4a |
+|---|---|---|---|
+| Chromium | 7.8 / 50.1 / 113.4 | 7.9 / 37.3 / 76.1 | 7.0 / 42.0 / 82.9 |
+| Firefox | 15.2 / 58.6 / 114.6 | 15.1 / 51.0 / 91.2 | 13.6 / 51.0 / 94.4 |
+| WebKit | 7.7 / 40.3 / 91.9 | 8.4 / 32.3 / 66.5 | 7.1 / 34.3 / 75.0 |
+
+By this reading no browser is inside 40 ms at p99 on this machine today. Treat it as a diagnostic
+and no more: I designed it today, the plan did not ask for it, and it rests on the assumption that
+the sound never stalls, which is the very thing point 3 leaves open.
+
+What I take from it:
+
+- Nothing drifts over the long run. That part stands, in all three engines: 597.7 to 600.1 s of
+  sound in 600 s, and the last 30 s like the rest.
+- For Chromium and WebKit the clock follows `currentTime` across seeks and speed changes. That is
+  all the 0 shows.
+- For Firefox I cannot say the smoothing clock holds. Its typical error on this metric is its own
+  extrapolation over 40 ms steps, which is by design and probably harmless. Its worst frames hit
+  the cap, and whether that is harmless depends on point 3.
+- Do not make the player aim ahead by its drawing time on the strength of this run. The Firefox
+  picture is already ahead on this metric, so that would move it the wrong way. Drawing cost is
+  still worth measuring on a quiet machine and on a phone (17 to 38 ms a frame here says nothing
+  about either), but as its own question.
+- Before T5 copies `SmoothClock`: run `proto/probe-clock.mjs firefox` on a quiet machine (manual
+  step 2). If `currentTime` still steps by 40 ms and never sits unchanged for much longer than that,
+  the long gaps here were load, and the clock can be copied as it is, with the test limit set
+  against the step size. If it still goes 100 ms or more without changing on a quiet machine, the
+  cap and the pass metric both need a second look first. I have not done that run: the machine was
+  not quiet today.
 
 Two other caveats:
 
@@ -241,28 +311,42 @@ the published v2 schema; the stock player accepting it is the evidence.
   SVG plus Web Animations timings, so we would need our own animation mapping in any case.
 - An in-house converter keeps the toolchain in one language (Node), with no Python or Qt dependency.
 - Known gap to fix in the real one: a shape with both fill and stroke that fades on its own fades the
-  two paints separately. It was not visible in the five stills.
+  two paints separately. I did not see it in the stills.
 
 ## Manual steps for Tim
 
 1. **Judge check 1.** Open the five `out/compare-*.png` files. Left is today's MP4, right is Lottie.
    Ignore the caption, chapter card and dragon on the left. Is the right side acceptable? If not,
-   the spec says stop and revisit approach C.
+   the spec says stop and revisit approach C. Look hardest at `compare-20.50.png`: the rain and the
+   two drops are the part converted by sampling, and the drops are about 10 px off. Then open
+   `compare.html` (step 3 says how) and drag the slider through 18.5 to 22.5 s, since one still
+   cannot show whether the drops move the way the MP4's do.
 2. **Rerun check 2 when tragicomix is quiet,** or on asterix, one browser at a time:
    ```sh
    cd spike
    REPEATS=24 ./make-audio.sh        # the 24x tracks are not in git (9 MB)
    node sync.mjs --browser chromium  # then firefox, then webkit; about 43 minutes each
    ```
-   Add `--tracks webm` to do one track in about 15 minutes. Look at `renderP50` in the output first:
-   if it is under about 8 ms, the drift numbers mean something. The run is silent (volume 0).
+   Do the clock probe first. It takes about 10 seconds and settles the open question in check 2:
+   ```sh
+   nice -n19 ionice -c2 -n7 node proto/probe-clock.mjs firefox webm
+   ```
+   Read "step size" and "wall between changes". Today, under load, Firefox gave 40.2 ms steps and a
+   longest gap of 55 ms in three 3 second windows. If the longest gap stays near 40 ms when the
+   machine is quiet, the 250 ms readings were load. The probe only watches 3 seconds per phase, so
+   the full Firefox run is still needed to see whether any frame reaches the cap.
+   Add `--tracks webm` to do one track in about 15 minutes. Look at `renderP50` and the load average
+   in the output first. In the Firefox JSON, check `max` (250 means the clock hit its cap) and
+   `meanSigned` (positive means the picture is ahead of `currentTime`). The run is silent
+   (volume 0), so it cannot tell you whether the sound stalled. To find that out, play
+   `sync.html` aloud in Firefox with headphones and listen for gaps.
 3. **Phones.** From the repo root run `npx serve spike`, then on an iPhone and an Android phone on
    the same network open `http://<this machine's address>:3000/sync.html` and
    `http://<this machine's address>:3000/compare.html`.
    - On `sync.html`: note the `canPlayType` line (this settles WebM against Ogg on the iPhone), press
      Play, leave it 9 minutes (the track in git is 544.8 s), press Random seek 20 times, then try
      0.5x, 1.5x and 2x for a minute each. The readout shows p50, p95, p99 and max. Pass is p99 at or
-     under 40 ms. On Safari the number will read near 0 for the reason given above, so also watch
+     under 40 ms. On Safari the number will probably read near 0 (point 4 under check 2), so also watch
      whether the label and the drops land with the words.
    - To force a track: `sync.html?audio=webm`, `?audio=ogg` or `?audio=m4a`.
    - On `compare.html`: copy the chapter MP4 to `spike/media/g01.mp4` first (see `README.md`), then
@@ -280,6 +364,9 @@ the published v2 schema; the stock player accepting it is the evidence.
   Playwright does not mute them and I had not checked. I killed the run when I saw the streams in
   PulseAudio, set the volume to 0 in `sync.mjs` and the probe, watched the streams to confirm, and
   started again. I changed no PulseAudio settings.
+- After review, on tragicomix, niced: the five stills again (13:53, with 20.5 s in place of 23 s) and
+  `proto/probe-clock.mjs` once each for Firefox and Chromium (about 10 s each, muted). The nine full
+  sync runs were not repeated; the tables above are the original run.
 - On tragicomix, all niced: the five stills, the sync harness (smoke runs, a clock probe, then the
   nine full runs), the pack and load for check 4, the 24x narration encode (audio only), and the
   Playwright browser download (Chromium headless shell 1255, Firefox 1572, WebKit 2388, ffmpeg 1013,

@@ -89,9 +89,12 @@ transforms, an animated property it does not know. It does not approximate quiet
 
 ## What to look at (check 1)
 
-Open `out/compare-3.00.png`, `-9.50`, `-12.60`, `-18.20` and `-23.00`. Each has the MP4 frame on the
-left and the Lottie canvas on the right at the same scene time. Those times cover the dimmed left
-half, the tiles lifting off, the system arriving, the label with rain, and the water drops.
+Open `out/compare-3.00.png`, `-9.50`, `-12.60`, `-18.20` and `-20.50`. Each has the MP4 frame on the
+left and the Lottie canvas on the right at the same scene time. Those times cover both sections, the
+dimmed left half with the tiles lifted off, the system arriving, the label with its leader line, and
+(at 20.5 s) the rain and the two water drops. The rain runs from 18.31 to 22.26 s and the drops are
+visible from 18.88 to about 22.67 s, so a still outside that window shows neither. An earlier set
+used 23.00 s and missed them.
 
 Things that differ on purpose:
 
@@ -104,6 +107,7 @@ Things that differ and are not on purpose:
 
 - A shape with both a fill and a stroke, faded on its own, fades the two paints separately. In SVG
   the stroke hides the fill's edge during the fade. I could not see it in the stills.
+- At 20.5 s each water drop sits about 10 px from its place in the MP4. See `REPORT.md`, check 1.
 - Antialiasing differs a little between Chromium's SVG renderer and ThorVG.
 
 ## Findings for the next tasks

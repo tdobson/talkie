@@ -3,7 +3,7 @@
 // pull the same frame out of the chapter MP4 with ffmpeg, and put the pair side by side in
 // out/compare-<t>.png (MP4 on the left, Lottie on the right).
 // ffmpeg runs at the lowest CPU and IO priority. Start this script the same way:
-//   nice -n19 ionice -c2 -n7 node stills.mjs [--mp4 media/g01.mp4] [--start 23.88] [--scene g01-s01] [--times 3,9.5,12.6,18.2,23]
+//   nice -n19 ionice -c2 -n7 node stills.mjs [--mp4 media/g01.mp4] [--start 23.88] [--scene g01-s01] [--times 3,9.5,12.6,18.2,20.5]
 import { chromium } from 'playwright-core';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -17,8 +17,8 @@ const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); retur
 const MP4 = path.resolve(here, arg('mp4', 'media/g01.mp4'));
 const START = parseFloat(arg('start', '23.88'));          // scene start inside the chapter MP4 (ident 3.48 + card 3.00 + g01-s00 17.40)
 const SCENE = arg('scene', 'g01-s01');
-// dimmed left half; tiles lifting off; the system arriving; the label and rain; the water drops
-const TIMES = arg('times', '3,9.5,12.6,18.2,23').split(',').map(Number);
+// both sections; dimmed left half with tiles lifting off; the system arriving; the label and leader line; rain and the two water drops (rain from 18.5 s, drops visible 18.88 to about 22.67 s)
+const TIMES = arg('times', '3,9.5,12.6,18.2,20.5').split(',').map(Number);
 const VIDEO_FPS = 25;
 const OUT = path.join(here, 'out');
 const TMP = path.join(OUT, 'tmp');
