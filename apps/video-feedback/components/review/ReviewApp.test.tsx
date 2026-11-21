@@ -2,7 +2,7 @@ import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
 import { fireEvent, render, screen, userEvent, waitFor } from '@/test/helpers/render';
-import { ReviewApp, type ReviewUploader } from './ReviewApp';
+import { ReviewApp, type ReviewAppProps, type ReviewUploader } from './ReviewApp';
 
 // The level meter needs real audio; the screen itself is covered by MicCheck.test.tsx.
 vi.mock('./screens/MicCheck', () => ({
@@ -42,7 +42,7 @@ function setMatchMedia(matching: string[]) {
   );
 }
 
-function renderApp() {
+function renderApp(props: Partial<ReviewAppProps> = {}) {
   return render(
     <ReviewApp
       token="tok"
@@ -50,6 +50,7 @@ function renderApp() {
       latestVersion={2}
       frameDuration={0.04}
       createUploader={() => uploader}
+      {...props}
     />
   );
 }
@@ -128,6 +129,13 @@ describe('ReviewApp', () => {
     await user.click(await screen.findByTestId(T.startWatching));
     expect(await screen.findByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=1');
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('shows the poster of the latest version on the welcome screen', async () => {
+    const posterUrls = { 1: '/api/r/tok/film/1/poster.png', 2: '/api/r/tok/film/2/poster.png' };
+    renderApp({ latestVersion: 2, posterUrls });
+    const welcome = await screen.findByTestId(T.welcome);
+    expect(welcome.querySelector('img')).toHaveAttribute('src', posterUrls[2]);
   });
 
   it('forgets a stored session the server no longer knows', async () => {

@@ -294,6 +294,51 @@ describe('chunks', () => {
     });
   });
 
+  it('leaves mediaKind out of the meta of a comment on an mp4 version', async () => {
+    await first();
+    expect(await readCommentMeta(ref)).not.toHaveProperty('mediaKind');
+  });
+
+  it('records mediaKind talkie from the version record, never from the client', async () => {
+    // Version 2 of this video is mp4: a client that claims talkie is not believed.
+    const lying = { ...meta, mediaKind: 'talkie' } as CommentMeta;
+    await receiveChunk(token, sid, cid, 0, { audio: blob('a'), events: [], meta: lying });
+    expect(await readCommentMeta(ref)).not.toHaveProperty('mediaKind');
+
+    const film = await seedVideo('A film');
+    const versions = film.versions.map((v) => ({ ...v, mediaKind: 'talkie' as const }));
+    await saveVideo({ ...film, versions });
+    const started = await startSession(film.token, { reviewerName: 'Sam', userAgent: 'ua' });
+    if (!started) throw new Error('seed failed');
+    const filmRef = { videoId: film.videoId, sessionId: started.sessionId, commentId: cid };
+    const sent = { ...meta, mediaKind: 'mp4' } as CommentMeta;
+    const res = await receiveChunk(film.token, started.sessionId, cid, 0, {
+      audio: blob('a'),
+      events: [],
+      meta: sent,
+    });
+    expect(res.status).toBe(200);
+    expect((await readCommentMeta(filmRef))?.mediaKind).toBe('talkie');
+  });
+
+  it('stores a sceneWarning event with its scene id', async () => {
+    const warning = { t: 30, type: 'sceneWarning', sceneId: 'scene-2', extra: 'dropped' };
+    await first(blob('a'), [warning as unknown as CaptureEvent]);
+    expect(await storedEvents(0)).toEqual([{ t: 30, type: 'sceneWarning', sceneId: 'scene-2' }]);
+  });
+
+  it('drops a sceneWarning whose scene id is too long, empty or not a string', async () => {
+    const events = [
+      { t: 1, type: 'sceneWarning', sceneId: 'x'.repeat(201) },
+      { t: 2, type: 'sceneWarning', sceneId: 7 },
+      { t: 3, type: 'sceneWarning' },
+      { t: 4, type: 'sceneWarning', sceneId: '' },
+      { t: 5, type: 'sceneWarning', sceneId: 'x'.repeat(200) },
+    ] as unknown as CaptureEvent[];
+    await first(blob('a'), events);
+    expect(await storedEvents(0)).toEqual([events[4]]);
+  });
+
   it('stores the audio bytes and the events of each chunk', async () => {
     await first(blob('abc'), [ev]);
     expect(await readFile(join(commentDir(ref), 'chunks', '0.bin'), 'utf8')).toBe('abc');

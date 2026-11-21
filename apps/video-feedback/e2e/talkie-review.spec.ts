@@ -4,13 +4,30 @@ import { centrePixel, exportWhenReady, passMicCheck, stageBox, state, T } from '
 
 const NAME = 'Talkie Tess';
 
+// The screenshots are for a person to look over (caption plate, error panel). They land in
+// test-results/ and nothing compares them.
+
 test('reviewer comments on a Talkie film and the export maps it to a scene', async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   test.setTimeout(240_000);
   const film = state().talkie;
+  // A reviewer's browser talks to this site only: the renderer's WebAssembly included.
+  const elsewhere: string[] = [];
+  const home = new URL(film.reviewUrl).origin;
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (/^https?:$/.test(url.protocol) && url.origin !== home) elsewhere.push(req.url());
+  });
   await page.goto(film.reviewUrl);
+  // The film's poster is on the welcome screen, and it loaded.
+  const poster = page.getByTestId(T.welcome).locator('img');
+  await expect(poster).toBeVisible();
+  await expect
+    .poll(() => poster.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth))
+    .toBeGreaterThan(0);
+  await page.screenshot({ path: testInfo.outputPath('talkie-welcome.png') });
   await page.getByTestId(T.nameInput).fill(NAME);
   await page.getByTestId(T.startButton).click();
   await passMicCheck(page);
@@ -18,9 +35,14 @@ test('reviewer comments on a Talkie film and the export maps it to a scene', asy
   const playPause = page.getByTestId(T.playPause);
   await playPause.click();
   await expect(page.getByTestId(T.captionPlate)).toHaveText('Red scene.', { timeout: 10_000 });
+  // The picture is up: one of the engine's two canvases has been shown.
+  const shown = page.getByTestId(T.video).locator('canvas[style*="visibility: visible"]');
+  await expect(shown).toHaveCount(1, { timeout: 15_000 });
+  await page.screenshot({ path: testInfo.outputPath('talkie-playing-caption.png') });
   await page.waitForTimeout(300);
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.listening)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('talkie-paused-listening.png') });
   await expect(page.locator('body')).not.toContainText(/\d+:\d\d/); // no timecode anywhere
 
   const box = await stageBox(page);
@@ -39,6 +61,7 @@ test('reviewer comments on a Talkie film and the export maps it to a scene', asy
   await expect(page.getByTestId(T.endScreen)).toBeVisible({ timeout: 15_000 });
   await page.getByTestId(T.endScreen).getByTestId(T.doneButton).click();
   await expect(page.getByTestId(T.thanks)).toContainText(`Thanks, ${NAME}.`);
+  expect(elsewhere).toEqual([]);
 
   const files = await exportWhenReady(request, film.videoId);
   const feedback = JSON.parse(
@@ -66,7 +89,7 @@ test('reviewer comments on a Talkie film and the export maps it to a scene', asy
 
 test('a Talkie film that will not load shows the error panel and a Reload button', async ({
   page,
-}) => {
+}, testInfo) => {
   const film = state().talkie;
   await page.route(/\/film\/.*talkie\.json(\?.*)?$/, (route) =>
     route.fulfill({ status: 500, body: 'boom' })
@@ -79,4 +102,5 @@ test('a Talkie film that will not load shows the error panel and a Reload button
   await page.getByTestId(T.startWatching).click();
   await expect(page.getByTestId(T.videoError)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(T.videoReload)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('talkie-load-failure.png') });
 });

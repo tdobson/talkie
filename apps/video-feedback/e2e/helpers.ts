@@ -36,7 +36,13 @@ function filesUnder(root: string, dir = root): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).flatMap((name) => {
     const full = join(dir, name);
-    return statSync(full).isDirectory() ? filesUnder(root, full) : [relative(root, full)];
+    try {
+      return statSync(full).isDirectory() ? filesUnder(root, full) : [relative(root, full)];
+    } catch {
+      // The server writes through temporary files and renames them: one can go between the
+      // listing and the stat. It was never part of the comment.
+      return [];
+    }
   });
 }
 

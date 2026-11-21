@@ -8,6 +8,7 @@ import {
 } from '@/lib/constants';
 import { config } from '@/lib/config';
 import { limits } from '@/lib/limits';
+import { mediaKindOf } from '@/lib/media-kind';
 import { notifyCommentComplete } from '@/lib/pipeline/enqueue';
 import { initialStatus, readStatus, updateStatus } from '@/lib/pipeline/status';
 import { missingChunks, putChunk, storedBytes } from '@/lib/storage/chunks';
@@ -175,9 +176,16 @@ const MIME_RE = /^(audio|video)\/[a-z0-9.+-]+(\s*;.*)?$/i;
 
 /**
  * Builds the `meta.json` of a new comment from what the client sent with chunk 0. Only the
- * fields the client owns at that point are taken; ids and version come from the session.
+ * fields the client owns at that point are taken; ids and version come from the session, and
+ * `mediaKind` from the version record. It is written for a Talkie version only, so the meta of
+ * a comment on an MP4 is what it always was.
  */
-function parseMeta(v: unknown, session: SessionRecord, commentId: string): CommentMeta | null {
+function parseMeta(
+  v: unknown,
+  video: VideoRecord,
+  session: SessionRecord,
+  commentId: string
+): CommentMeta | null {
   if (!isDict(v)) return null;
   const { kind, pausedAtVideoTime, startedAt, audioMime } = v;
   if (kind !== 'moment' && kind !== 'general') return null;
@@ -188,6 +196,8 @@ function parseMeta(v: unknown, session: SessionRecord, commentId: string): Comme
   if (audioMime !== '' && !MIME_RE.test(audioMime)) return null;
   const player = parsePlayer(v.player);
   if (player === null) return null;
+  const record = video.versions.find((r) => r.version === session.version);
+  const talkie = record !== undefined && mediaKindOf(record) === 'talkie';
   return {
     commentId,
     sessionId: session.sessionId,
@@ -200,9 +210,12 @@ function parseMeta(v: unknown, session: SessionRecord, commentId: string): Comme
     audioMime,
     totalChunks: null,
     player,
+    ...(talkie ? { mediaKind: 'talkie' as const } : {}),
   };
 }
 
+/** A scene id comes from the film; anything longer than this is not one. */
+const MAX_SCENE_ID_LENGTH = 200;
 const SEEK_VIA: ReadonlySet<unknown> = new Set(['scrollbar', 'key']);
 const ZOOM_STATES: ReadonlySet<unknown> = new Set(['start', 'end']);
 const VISIBILITY_STATES: ReadonlySet<unknown> = new Set(['hidden', 'visible', 'blur', 'focus']);
@@ -252,6 +265,12 @@ function parseEvent(e: unknown): CaptureEvent | null {
       if (contentRect === null || typeof fullscreen !== 'boolean') return null;
       if (!isFiniteNumber(containerWidth) || !isFiniteNumber(containerHeight)) return null;
       return { t, type: 'layout', contentRect, containerWidth, containerHeight, fullscreen };
+    }
+    case 'sceneWarning': {
+      const { sceneId } = e;
+      if (typeof sceneId !== 'string' || sceneId === '') return null;
+      if (sceneId.length > MAX_SCENE_ID_LENGTH) return null;
+      return { t, type: 'sceneWarning', sceneId };
     }
     default:
       return null;
@@ -518,10 +537,11 @@ export async function admitChunk(
     return { ok: false, reply: { status: 400, body: { error: 'invalid chunk number' } } };
   }
   const ref: CommentRef = { videoId: video.videoId, sessionId: session.sessionId, commentId: cid };
-  return { ok: true, store: (form) => storeChunk(session, ref, seq, form) };
+  return { ok: true, store: (form) => storeChunk(video, session, ref, seq, form) };
 }
 
 async function storeChunk(
+  video: VideoRecord,
   session: SessionRecord,
   ref: CommentRef,
   seq: number,
@@ -533,7 +553,7 @@ async function storeChunk(
 
   let meta: CommentMeta | null = null;
   if (seq === 0) {
-    meta = parseMeta(form.meta, session, ref.commentId);
+    meta = parseMeta(form.meta, video, session, ref.commentId);
     if (meta === null) {
       return { status: 400, body: { error: 'chunk 0 needs a valid meta' } };
     }

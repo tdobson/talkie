@@ -33,6 +33,29 @@ function isCode(err: unknown, ...codes: string[]): boolean {
   return codes.includes((err as NodeJS.ErrnoException | null)?.code ?? '');
 }
 
+/**
+ * Refuses a film that lists one path both as a file and as the folder of another file (`a` and
+ * `a/b.json`). No disk can hold both, so it is turned down by name before anything is written.
+ */
+function refuseFileUnderFile(listed: string[]): void {
+  const files = new Set(listed);
+  for (const path of listed) {
+    const parts = path.split('/');
+    for (let i = 1; i < parts.length; i += 1) {
+      const parent = parts.slice(0, i).join('/');
+      if (files.has(parent)) {
+        throw new FilmRefused(
+          `This film lists ${parent} both as a file and as a folder (${path}).`
+        );
+      }
+    }
+  }
+}
+
+/** A directory entry, as ordinary zip tools add for each folder. It holds nothing to unpack. */
+const isDirEntry = (entry: yauzl.Entry) =>
+  entry.fileName.endsWith('/') && entry.uncompressedSize === 0;
+
 const inFilm = (filmOut: string, path: string) => join(filmOut, ...path.split('/'));
 
 /** Bytes still allowed for the film being unpacked. One budget is shared by all of its files. */
@@ -133,9 +156,12 @@ async function unpack(zip: yauzl.ZipFile, filmOut: string): Promise<TalkieFilm> 
   // Every entry is checked against the list before the first byte is written.
   const listed = listedPaths(film);
   if (listed.length > limits.filmEntries) throw tooMany();
+  refuseFileUnderFile(listed);
   const allowed = new Set(listed);
   let declared = 0;
   for (const entry of entries) {
+    // Skipped here, but already counted toward the entry limit by readEntries.
+    if (isDirEntry(entry)) continue;
     if (entry.fileName === MANIFEST && !allowed.has(MANIFEST)) continue;
     if (!allowed.has(entry.fileName)) {
       throw new FilmRefused(
@@ -217,6 +243,7 @@ async function stageFolder(src: string, out: string): Promise<TalkieFilm> {
 
   const listed = listedPaths(film);
   if (listed.length > limits.filmEntries) throw tooMany();
+  refuseFileUnderFile(listed);
   const sources = new Map<string, string>();
   for (const path of listed) sources.set(path, await folderFile(rootReal, path));
 

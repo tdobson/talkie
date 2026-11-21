@@ -29,6 +29,7 @@ export default async function ReviewPage({ params }: Props) {
       frameDuration={page.frameDuration}
       frameDurations={page.frameDurations}
       mediaKinds={page.mediaKinds}
+      posterUrls={page.posterUrls}
     />
   );
 }

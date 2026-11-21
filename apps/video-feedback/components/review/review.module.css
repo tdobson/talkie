@@ -19,6 +19,16 @@
   outline: none;
 }
 
+/* The film poster on the welcome screen: as wide as the card, never taller than a 16:9 frame. */
+.poster {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-dark-9);
+}
+
 .lead {
   font-size: 1.0625rem;
   line-height: 1.6;

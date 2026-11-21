@@ -139,3 +139,6 @@ test/fixtures/generated/
 playwright-report/
 test-results/
 e2e/.state.json
+
+# The dotLottie WASM, copied in by `yarn build:render-page`
+public/talkie/

@@ -28,6 +28,22 @@ describe('Welcome', () => {
     expect(onSubmit).toHaveBeenCalledTimes(2);
   });
 
+  it('shows the film poster when there is one', () => {
+    const src = '/api/r/tok/film/2/poster.png';
+    const { container } = render(
+      <Welcome title="Launch film" posterUrl={src} onSubmit={vi.fn()} />
+    );
+    const img = container.querySelector('img');
+    expect(img).toHaveAttribute('src', src);
+    // Decorative: the heading already names the film.
+    expect(img).toHaveAttribute('alt', '');
+  });
+
+  it('shows no picture when there is no poster', () => {
+    const { container } = render(<Welcome title="Launch film" onSubmit={vi.fn()} />);
+    expect(container.querySelector('img')).toBeNull();
+  });
+
   it('moves focus to the heading for screen readers', () => {
     render(<Welcome title="Launch film" onSubmit={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Feedback: Launch film' })).toHaveFocus();

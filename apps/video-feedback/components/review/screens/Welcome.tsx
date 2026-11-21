@@ -10,7 +10,14 @@ import { ScreenCard } from '../ScreenCard';
 /** Longest name the server accepts. */
 const MAX_NAME_LENGTH = 80;
 
-export function Welcome({ title, onSubmit }: { title: string; onSubmit: (name: string) => void }) {
+interface WelcomeProps {
+  title: string;
+  /** Poster of the film about to be reviewed. Only a Talkie version has one. */
+  posterUrl?: string;
+  onSubmit: (name: string) => void;
+}
+
+export function Welcome({ title, posterUrl, onSubmit }: WelcomeProps) {
   const [name, setName] = useState('');
   const trimmed = name.trim();
 
@@ -21,6 +28,8 @@ export function Welcome({ title, onSubmit }: { title: string; onSubmit: (name: s
 
   return (
     <ScreenCard testId={T.welcome} heading={copy.pageTitle(title)}>
+      {/* Decorative: the heading names the film. A plain img, as the poster is a private file. */}
+      {posterUrl !== undefined && <img src={posterUrl} alt="" className={classes.poster} />}
       <Text className={classes.lead} fw={600}>
         {copy.welcome.thanks}
       </Text>

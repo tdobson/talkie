@@ -4,9 +4,9 @@ import { basename, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import yazl from 'yazl';
 import { FILES } from '@/lib/pipeline/steps/types';
-import { commentDir } from '@/lib/storage/paths';
+import { commentDir, filmDir } from '@/lib/storage/paths';
 import { renderFeedbackMd } from './markdown';
-import { type ExportComment, exportFilmDir, type ExportModel, type ExportOptions } from './model';
+import type { ExportComment, ExportModel, ExportOptions } from './model';
 import { renderReadme } from './readme';
 
 /**
@@ -108,7 +108,7 @@ export async function writeZip(
     for (const c of model.comments) await addComment(c, '', true);
     // A Talkie film: its talkie.json and captions, so scene ids can be mapped to source.
     for (const film of model.films ?? []) {
-      const dir = exportFilmDir(model.video.videoId, film.version);
+      const dir = filmDir(model.video.videoId, film.version);
       const files = [[film.talkie, 'talkie.json'], ...film.captions.map((c) => [c.path, c.src])];
       for (const [zipPath, src] of files) {
         const from = join(/* turbopackIgnore: true */ dir, src);

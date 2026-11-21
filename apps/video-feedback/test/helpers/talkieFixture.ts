@@ -33,10 +33,13 @@ export async function talkieJsonWith(patch: Record<string, unknown>): Promise<Bu
   return Buffer.from(JSON.stringify({ ...film, ...patch }));
 }
 
-/** Zips a file map, in the order given. */
+/** Zips a file map, in the order given. A path that ends in `/` becomes a directory entry. */
 export function zipOf(files: Record<string, Buffer>): Promise<Buffer> {
   const zip = new yazl.ZipFile();
-  for (const [path, bytes] of Object.entries(files)) zip.addBuffer(bytes, path);
+  for (const [path, bytes] of Object.entries(files)) {
+    if (path.endsWith('/')) zip.addEmptyDirectory(path);
+    else zip.addBuffer(bytes, path);
+  }
   zip.end();
   return new Promise((resolve, reject) => {
     const parts: Buffer[] = [];

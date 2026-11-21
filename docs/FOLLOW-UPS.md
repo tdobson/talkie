@@ -42,6 +42,39 @@ open:
   check, the reviewer lands on the "browser blocked the microphone" screen. The no-device
   wording is only used when the browser reports that no microphone exists.
 
+## Talkie
+
+Left over from the Talkie review (plan Task 5.2). The high and medium findings were fixed with
+tests: the film route and `mediaKinds` are committed, `sceneWarning` events are stored,
+`meta.json` records `mediaKind: 'talkie'`, and the welcome screen shows the film's poster.
+
+- **A folder import packs the film in memory.** `stageFolder` in `lib/videos/import-film.ts`
+  reads every listed file into one map and `packFilm` builds the zip in memory too, so a film
+  near the 500 MB limit can need over 1 GB inside the Next server. Streaming the pack with yazl
+  would fix it, but yazl and fflate do not deflate to the same bytes, so `film.lottie` would stop
+  matching what `talkie pack` writes for the same folder (a test relies on that today). Either
+  give up the byte match, or add a streaming packer to `@talkie/format` and use it in both
+  places. Until then, import large films as a packed `.lottie`, which is copied and not repacked.
+- **The load failure panel says "video" for a film.** `copy.player.videoError` reads "We couldn't
+  load the video" for a Talkie film as well. `lib/review/copy.ts` is a frozen shared file, so the
+  wording was left. "We couldn't load this" or a second string for films would do.
+- **`mediaKind` is written for Talkie comments only.** A comment on an MP4 version has no
+  `mediaKind` in its `meta.json`, which reads as `'mp4'`. That keeps old and new MP4 data the
+  same. Write it for both kinds if a reader ever needs it spelled out.
+- **A poster only for Talkie versions.** The welcome screen shows the poster of the latest
+  version when that version is a film. An MP4 version still has no picture there.
+- **The loading spinner can go before the first frame is up.** `TalkieAdapter.load()` reports the
+  film as loaded once `talkie.json` is in, but the first scene is drawn only after the renderer's
+  WebAssembly (1.2 MB) has arrived. On a slow link the reviewer sees a black picture with a
+  caption for a moment. The first e2e screenshots showed exactly that, when the WebAssembly still
+  came from a CDN. It is now served by this site from `public/talkie/` (copied there by
+  `yarn build:render-page`), which shortens the gap, and the e2e test fails if the page asks any
+  other site for anything. Holding the spinner until the engine shows its first scene needs an
+  event from `@talkie/player`.
+- **Reviewer screenshots are not compared.** `e2e/talkie-review.spec.ts` saves four screenshots
+  under `test-results/` for a person to look at. Nothing fails if the caption plate or the error
+  panel moves.
+
 ## Deployment notes for Phase 7
 
 - Set the Cloudflare Access session cookie to `SameSite=Lax` or `Strict`. The app refuses

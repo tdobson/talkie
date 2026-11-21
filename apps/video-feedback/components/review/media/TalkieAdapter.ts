@@ -43,6 +43,13 @@ const FORWARDED: MediaAdapterEvent[] = [
   'loadedmetadata',
 ];
 
+/**
+ * Where this site serves the renderer's WebAssembly. `yarn build:render-page` copies it into
+ * `public/`, so a reviewer's browser fetches nothing from a CDN, which is where dotlottie-web
+ * looks when it is not told otherwise.
+ */
+export const TALKIE_WASM_PATH = '/talkie/dotlottie-player.wasm';
+
 /** Used for frame stepping until a scene's own rate has been read, or if it cannot be. */
 const DEFAULT_FR = 30;
 /** Two times closer than this are the same frame boundary. */
@@ -281,7 +288,8 @@ export async function mountTalkieAdapter(
   container: HTMLElement,
   filmUrl: string
 ): Promise<TalkieAdapter> {
-  const { TalkieEngine } = await import('@talkie/player');
+  const { TalkieEngine, setWasmUrl } = await import('@talkie/player');
+  setWasmUrl(new URL(TALKIE_WASM_PATH, location.href).href);
   const engine = new TalkieEngine({ container });
   // The engine keeps its film source to itself, so scene JSON is read through a second one. It
   // asks for the same URLs the engine does, which the browser already has in its cache.

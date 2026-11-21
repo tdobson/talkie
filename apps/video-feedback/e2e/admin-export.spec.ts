@@ -39,7 +39,10 @@ test('admin imports from the inbox and downloads a zip with the feedback', async
   await row.getByTestId(T.adminImportNew).click();
   await page.getByTestId(T.adminImportTitle).fill('Inbox film');
   await page.getByTestId(T.adminImportSubmit).click();
-  await expect(page.getByTestId(T.adminInboxRow).filter({ hasText: filename })).toHaveCount(0);
+  // The import probes the file at low priority, which takes a while on a busy machine.
+  await expect(page.getByTestId(T.adminInboxRow).filter({ hasText: filename })).toHaveCount(0, {
+    timeout: 30_000,
+  });
 
   await page.goto('/admin');
   const videoRow = page.getByTestId(T.adminVideoRow).filter({ hasText: 'Inbox film' });

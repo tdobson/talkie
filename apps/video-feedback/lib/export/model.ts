@@ -4,7 +4,7 @@ import { isSafeRelativePath, type TalkieFilm, validateFilm } from '@talkie/forma
 import { mediaKindOf } from '@/lib/media-kind';
 import { audioFileName, FILES } from '@/lib/pipeline/steps/types';
 import { readJson } from '@/lib/storage/json';
-import { commentDir, ID_RE, versionDir } from '@/lib/storage/paths';
+import { commentDir, filmDir, ID_RE, versionDir } from '@/lib/storage/paths';
 import { getVideo, listComments, listSessions, readCommentMeta } from '@/lib/storage/repo';
 import type {
   CaptureEvent,
@@ -181,14 +181,6 @@ function timeRange(paused: number | null, events: CaptureEvent[]): [number, numb
   return [Math.min(...times), Math.max(...times)];
 }
 
-/**
- * Where the unpacked film of a Talkie version lives.
- * TODO(integration): use `filmDir` from `@/lib/storage/paths` once Task 3.1 has landed.
- */
-export function exportFilmDir(videoId: string, version: number): string {
-  return join(versionDir(videoId, version), 'film');
-}
-
 /** What is needed to place a moment in a Talkie film. */
 interface TalkieContext {
   film: TalkieFilm;
@@ -208,7 +200,7 @@ async function loadTalkie(
   version: number,
   fps: number
 ): Promise<TalkieContext | null> {
-  const dir = exportFilmDir(videoId, version);
+  const dir = filmDir(videoId, version);
   const raw = await readOptional<unknown>(join(dir, 'talkie.json'));
   if (raw === null || !validateFilm(raw).ok) return null;
   const film = raw as TalkieFilm;

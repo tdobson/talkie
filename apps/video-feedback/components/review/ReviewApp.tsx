@@ -29,6 +29,8 @@ export interface ReviewAppProps {
   frameDurations?: Record<number, number>;
   /** What each version is, by version number. A version not listed is an mp4. */
   mediaKinds?: Record<number, MediaKind>;
+  /** Poster image of each Talkie version that has one, by version number. */
+  posterUrls?: Record<number, string>;
   /** Test seam. Defaults to the real IndexedDB-backed uploader. */
   createUploader?: (options: UploaderOptions) => ReviewUploader;
 }
@@ -73,6 +75,7 @@ export function ReviewApp({
   frameDuration,
   frameDurations,
   mediaKinds,
+  posterUrls,
   createUploader,
 }: ReviewAppProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -232,7 +235,11 @@ export function ReviewApp({
     case 'welcome':
       return (
         <Fade key="welcome">
-          <Welcome title={title} onSubmit={(name) => dispatch({ type: 'submitName', name })} />
+          <Welcome
+            title={title}
+            posterUrl={posterUrls?.[latestVersion]}
+            onSubmit={(name) => dispatch({ type: 'submitName', name })}
+          />
         </Fade>
       );
     case 'micExplain':

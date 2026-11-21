@@ -262,6 +262,39 @@ describe('refusals of a packed film', () => {
     await expectNothingWritten('bad.lottie');
   });
 
+  it('accepts a film zipped with directory entries, as ordinary zip tools write them', async () => {
+    const none = Buffer.alloc(0);
+    await dropZip({ 'a/': none, 'u/': none, 'captions/': none, ...(await talkieMiniFiles()) });
+    const r = await importNew('bad.lottie');
+    if (!r.ok) throw new Error(r.reason);
+    await sameFilmAsFixture(filmDir(r.videoId, 1));
+  });
+
+  it('counts directory entries toward the entry limit', async () => {
+    limits.filmEntries = 8;
+    const dirs = Object.fromEntries(['a/', 'u/', 'captions/'].map((d) => [d, Buffer.alloc(0)]));
+    await dropZip({ ...dirs, ...(await talkieMiniFiles()) });
+    expect(await importNew('bad.lottie')).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/too many files/),
+    });
+    await expectNothingWritten('bad.lottie');
+  });
+
+  it('refuses a film that lists one path as both a file and a folder', async () => {
+    const { 'poster.png': poster, ...files } = await talkieMiniFiles();
+    await dropZip({
+      ...files,
+      a: poster,
+      'talkie.json': await talkieJsonWith({ poster: { png: 'a' } }),
+    });
+    expect(await importNew('bad.lottie')).toEqual({
+      ok: false,
+      reason: 'This film lists a both as a file and as a folder (a/s01.json).',
+    });
+    await expectNothingWritten('bad.lottie');
+  });
+
   it('refuses a film with a listed file missing', async () => {
     const { 'a/s02.json': _gone, ...files } = await talkieMiniFiles();
     await dropZip(files);
