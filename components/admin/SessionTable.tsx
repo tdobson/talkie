@@ -1,3 +1,5 @@
+'use client';
+
 import { Badge, Group, Table, Text } from '@mantine/core';
 import { formatWhen, plural } from '@/lib/admin/format';
 import type { AdminSessionRow } from '@/lib/admin/sessions';

@@ -1,3 +1,5 @@
+'use client';
+
 import { Anchor, Badge, Code, Group, Paper, Stack, Table, Text } from '@mantine/core';
 import Link from 'next/link';
 import { formatWhen, plural } from '@/lib/admin/format';

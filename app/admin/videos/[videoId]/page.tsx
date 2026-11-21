@@ -1,7 +1,7 @@
-import { Anchor, Code, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import Link from 'next/link';
+import { Code, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { notFound } from 'next/navigation';
 import { CopyLinkButton } from '@/components/admin/CopyLinkButton';
+import { NavAnchor } from '@/components/admin/NavAnchor';
 import { VersionCard } from '@/components/admin/VersionCard';
 import { summariseSessions } from '@/lib/admin/sessions';
 import { summariseVideos } from '@/lib/admin/summary';
@@ -21,9 +21,9 @@ export default async function AdminVideoPage({ params }: { params: Promise<{ vid
 
   return (
     <Stack>
-      <Anchor component={Link} href="/admin" size="sm">
+      <NavAnchor href="/admin" size="sm">
         All videos
-      </Anchor>
+      </NavAnchor>
       <Title order={2}>{video.title}</Title>
       <Paper withBorder p="md">
         <Stack gap="xs">
