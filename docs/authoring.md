@@ -179,7 +179,8 @@ you export from a drawing tool: convert text to outlines, expand gradients to fl
 save as plain SVG.
 
 Keep art above y 845 on a 1080 stage. Below that is the caption band, and `talkie qa` fails art
-that reaches into it.
+that reaches into it. A background is the exception: a node that covers the whole stage, such as
+`c.rect(0, 0, 1920, 1080, ...)`, should fill the frame, and `qa` lets it through.
 
 ## The fact gate
 

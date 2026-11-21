@@ -117,4 +117,15 @@ describe('outOfBand', () => {
     });
     expect(outOfBand(model, band)).toEqual([{ id: 'n2', name: 'shown', t: 4, bottom: 920 }]);
   });
+
+  it('passes over a background, which is a node that covers the whole stage', () => {
+    const model = build((ctx) => {
+      const sky = ctx.rect(0, 0, 1920, 1080, { fill: '#eaf3f6' }, 'sky');
+      // Nearly a background, but it stops short of the right edge, so it is art.
+      const floor = ctx.rect(0, 0, 1900, 1080, { fill: '#cccccc' }, 'floor');
+      ctx.add(sky, floor, box(ctx, 900, 'low'));
+      ctx.camera(1, { dur: 2, scaleTo: 110 });
+    });
+    expect(outOfBand(model, band).map((hit) => hit.name)).toEqual(['floor', 'low']);
+  });
 });

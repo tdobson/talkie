@@ -5,8 +5,8 @@ const RAFTER_X = [300, 500, 700, 900];
 const BATTEN_Y = [420, 290, 160];
 
 export default scene('roof', (c) => {
-  // The bottom of the stage is kept clear for captions, so the picture stops at y 540.
-  const sky = c.rect(0, 0, 1280, 540, { fill: SKY }, 'sky');
+  // The sky fills the frame. Everything else stays above y 563, where the caption band starts.
+  const sky = c.rect(0, 0, 1280, 720, { fill: SKY }, 'sky');
 
   // art() places a drawing by its top left corner. group() keeps the four rafters together.
   const rafters = c.group(

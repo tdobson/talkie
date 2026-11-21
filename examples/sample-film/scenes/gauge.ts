@@ -7,8 +7,8 @@ const TOP = 150;
 const NEXT = 390;
 
 export default scene('gauge', (c) => {
-  // The bottom of the stage is kept clear for captions, so the picture stops at y 540.
-  const sky = c.rect(0, 0, 1280, 540, { fill: SKY }, 'sky');
+  // The sky fills the frame. Everything else stays above y 563, where the caption band starts.
+  const sky = c.rect(0, 0, 1280, 720, { fill: SKY }, 'sky');
   const upper = c.art('batten', { at: [120, TOP] });
   const lower = c.art('batten', { at: [120, NEXT] });
 

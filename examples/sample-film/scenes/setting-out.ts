@@ -7,8 +7,8 @@ const MARK_Y = [470, 330, 190];
 const STEP = 140;
 
 export default scene('setting-out', (c) => {
-  // The bottom of the stage is kept clear for captions, so the picture stops at y 540.
-  const sky = c.rect(0, 0, 1280, 540, { fill: SKY }, 'sky');
+  // The sky fills the frame. Everything else stays above y 563, where the caption band starts.
+  const sky = c.rect(0, 0, 1280, 720, { fill: SKY }, 'sky');
   const rafter = c.art('roof/rafter', { at: [620, 70], scale: 0.9 });
 
   // node() makes a parent with shapes of its own or, as here, with children. The rod and its

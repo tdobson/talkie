@@ -101,7 +101,7 @@ talkie qa
 | `loudness` | A track is more than 1 LU from -16 LUFS. |
 | `true peak` | A track peaks above -1 dBTP. |
 | `still` | Nothing moves for more than 8 seconds in a scene (the tail at the end is not counted). |
-| `caption band` | Art reaches below y 845 on a 1080 stage, where captions sit. |
+| `caption band` | Art reaches below y 845 on a 1080 stage, where captions sit. A node that covers the whole stage is a background and is let through. |
 | `size` | Never. It reports the bytes of the animation and each audio track. |
 
 It takes the same `--opus` flag as `build`. It exits 1 if any gate fails.

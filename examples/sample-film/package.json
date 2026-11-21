@@ -5,7 +5,7 @@
   "description": "A small original film that uses every Talkie author helper",
   "type": "module",
   "scripts": {
-    "build:fake": "talkie voice ../sample-film --provider fake && talkie build",
+    "build:fake": "talkie voice --provider fake && talkie build",
     "check": "talkie check dist/film",
     "qa": "talkie qa ."
   },
