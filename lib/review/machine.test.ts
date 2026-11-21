@@ -135,6 +135,21 @@ describe('review machine', () => {
     expect(reducer(general, { type: 'pause', commentId: 'c' })).toBe(general);
   });
 
+  it('a restarted comment replaces the open one, and only an open one', () => {
+    const paused: ReviewState = { ...playerState, playing: false, commentId: 'c1' };
+    expect(reducer(paused, { type: 'commentRestarted', commentId: 'c2' })).toMatchObject({
+      screen: 'player',
+      playing: false,
+      commentId: 'c2',
+    });
+    const general: ReviewState = { ...playerState, screen: 'general', commentId: 'g1' };
+    expect(reducer(general, { type: 'commentRestarted', commentId: 'g2' }).commentId).toBe('g2');
+    const playing: ReviewState = { ...playerState, playing: true };
+    expect(reducer(playing, { type: 'commentRestarted', commentId: 'c2' })).toBe(playing);
+    const end: ReviewState = { ...playerState, screen: 'end' };
+    expect(reducer(end, { type: 'commentRestarted', commentId: 'c2' })).toBe(end);
+  });
+
   it('tracks a lost and reconnected microphone', () => {
     const lost = reducer(playerState, { type: 'micLost' });
     expect(lost.micLost).toBe(true);

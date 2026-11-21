@@ -1,8 +1,8 @@
-import { useReducer } from 'react';
+import { type Dispatch, useReducer } from 'react';
 import { HOLD_TO_ZOOM_MS } from '@/lib/constants';
 import type { PendingChunk } from '@/lib/capture/uploader';
 import { copy } from '@/lib/review/copy';
-import { initialState, type ReviewState, reducer } from '@/lib/review/machine';
+import { initialState, type ReviewAction, type ReviewState, reducer } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
 import type { CaptureEvent, CompleteBody } from '@/lib/types';
 import { FakeMediaRecorder, fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
@@ -59,8 +59,11 @@ function Harness(props: {
   onDone?: () => void;
   onReconnectMic?: () => void;
   trouble?: boolean;
+  /** Gives the test the machine's dispatch, to play the part of ReviewApp. */
+  dispatchRef?: { current: Dispatch<ReviewAction> | null };
 }) {
   const [state, dispatch] = useReducer(reducer, props.initial ?? playerState);
+  if (props.dispatchRef) props.dispatchRef.current = dispatch;
   return (
     <>
       <output data-testid="screen">{state.screen}</output>
@@ -415,6 +418,69 @@ describe('Player', () => {
     expect(chunks[0].meta).toMatchObject({ kind: 'moment' });
     expect(chunks[0].events).toContainEqual(expect.objectContaining({ type: 'pointer' }));
     expect(completes[0].body).toMatchObject({ totalChunks: 1, micLost: true });
+  });
+
+  it('a microphone lost mid-comment and reconnected flags that comment and records a new one', async () => {
+    const up = fakeUploader();
+    const first = fakeStream();
+    const dispatchRef: { current: Dispatch<ReviewAction> | null } = { current: null };
+    const ui = (stream: MediaStream) => (
+      <Harness uploader={up.uploader} stream={stream} dispatchRef={dispatchRef} />
+    );
+    const { rerender } = render(ui(first.stream));
+    layOut();
+    playPause();
+    playPause();
+    await settle();
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+
+    // The track ends: the browser stops the recorder itself, and ReviewApp reports the loss.
+    first.track.readyState = 'ended';
+    FakeMediaRecorder.instances[0].stop();
+    act(() => dispatchRef.current?.({ type: 'micLost' }));
+    await settle();
+    expect(screen.getByTestId(T.micLost)).toBeInTheDocument();
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+
+    // Reconnect: a new stream arrives, then the machine hears about it.
+    const second = fakeStream();
+    rerender(ui(second.stream));
+    act(() => dispatchRef.current?.({ type: 'micReconnected' }));
+    await settle();
+
+    // The interrupted comment is closed and flagged; Listening is backed by a live recorder.
+    expect(up.completes).toHaveLength(1);
+    expect(up.completes[0].body).toMatchObject({ micLost: true });
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+    expect(FakeMediaRecorder.instances).toHaveLength(2);
+    expect(FakeMediaRecorder.instances[1].stream).toBe(second.stream);
+    expect(FakeMediaRecorder.instances[1].state).toBe('recording');
+
+    playPause();
+    await settle();
+    expect(up.completes).toHaveLength(2);
+    expect(up.completes[1].cid).not.toBe(up.completes[0].cid);
+    expect(up.completes[1].body.micLost).toBeUndefined();
+    const audio = up.chunks.filter((c) => c.cid === up.completes[1].cid && c.audio.size > 0);
+    expect(audio.length).toBeGreaterThan(0);
+  });
+
+  it('a microphone lost mid-comment and never reconnected is flagged micLost', async () => {
+    const mic = fakeStream();
+    const dispatchRef: { current: Dispatch<ReviewAction> | null } = { current: null };
+    const { completes } = setup({ stream: mic.stream, dispatchRef });
+    playPause();
+    playPause();
+    await settle();
+    mic.track.readyState = 'ended';
+    FakeMediaRecorder.instances[0].stop();
+    act(() => dispatchRef.current?.({ type: 'micLost' }));
+    await settle();
+    playPause();
+    await settle();
+    expect(completes).toHaveLength(1);
+    expect(completes[0].body).toMatchObject({ micLost: true });
   });
 
   it('shows the trouble banner while uploads are failing', () => {

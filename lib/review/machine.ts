@@ -39,6 +39,8 @@ export type ReviewAction =
   | { type: 'ended' }
   | { type: 'shareMore'; commentId: string }
   | { type: 'generalFinished' }
+  /** The open comment was closed and a new one started in its place (microphone reconnected). */
+  | { type: 'commentRestarted'; commentId: string }
   | { type: 'scrollBack' }
   | { type: 'zoomStart'; zoom: ZoomState }
   | { type: 'zoomPan'; originX: number; originY: number }
@@ -143,6 +145,10 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
     case 'generalFinished':
       if (s.screen !== 'general') return s;
       return { ...s, screen: 'end', commentId: null };
+
+    case 'commentRestarted':
+      if (s.commentId === null || (s.screen !== 'player' && s.screen !== 'general')) return s;
+      return { ...s, commentId: a.commentId };
 
     case 'zoomStart':
       if (s.screen !== 'player' || s.playing) return s;

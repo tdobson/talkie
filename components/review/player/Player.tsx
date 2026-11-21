@@ -62,6 +62,8 @@ interface OpenComment {
   kind: CommentKind;
   log: EventLog;
   recorder: CommentRecorder | null;
+  /** The stream the recorder was started on. */
+  mic: MediaStream | null;
   meta: CommentMeta;
   /** performance.now() at t=0 of the event log. */
   startedAt: number;
@@ -216,6 +218,7 @@ export function Player({
         });
         recorder.start();
         o.recorder = recorder;
+        o.mic = mic;
         return true;
       } catch {
         return false;
@@ -233,6 +236,7 @@ export function Player({
         kind,
         log: new EventLog(),
         recorder: null,
+        mic: null,
         startedAt: performance.now(),
         micLost: false,
         sent: 0,
@@ -349,11 +353,28 @@ export function Player({
     return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
-  // A microphone reconnected during a comment that has no audio yet starts recording into it.
+  // The microphone went away while a comment was open: the flag stays on that comment, whatever
+  // happens to the microphone afterwards.
+  useEffect(() => {
+    const o = openRef.current;
+    if (o && state.micLost) o.micLost = true;
+  }, [state.micLost]);
+
+  // A microphone reconnected during a comment. With no audio yet, it starts recording into it.
+  // Otherwise the comment's recorder died with the old stream and cannot be restarted: that
+  // comment is closed, flagged, and a new one is opened on the new stream.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when a new stream arrives.
   useEffect(() => {
     const o = openRef.current;
-    if (o && o.recorder === null && o.sent === 0) attachRecorder(o);
+    if (!o || !micIsLive(stream)) return;
+    if (o.recorder === null && o.sent === 0) {
+      attachRecorder(o);
+      return;
+    }
+    if (o.mic === stream) return;
+    o.micLost = true;
+    void closeRef.current().catch(() => {});
+    dispatch({ type: 'commentRestarted', commentId: openComment(o.kind) });
   }, [stream, attachRecorder]);
 
   // The server refused part of this comment (too large, or too many requests): stop adding to it.
