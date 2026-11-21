@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect id="inline" x="0" y="0" width="10" height="10" fill="#ff0000" style="fill: #00ff00; stroke: black; stroke-width: 2px; opacity: 0.8; fill-opacity: 0.5; stroke-opacity: 0.5"/>
+  <rect id="fill-only" x="0" y="0" width="10" height="10" fill="white" fill-opacity="0.25" stroke-opacity="0.9"/>
+  <rect id="hidden" x="0" y="0" width="10" height="10" display="none"/>
+</svg>
