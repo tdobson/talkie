@@ -25,6 +25,11 @@ export function inboxDir(): string {
   return join(config().dataDir, 'inbox');
 }
 
+/** Where an import is put together before it is moved into place. Same disk as `videosDir`. */
+export function stagingDir(): string {
+  return join(config().dataDir, 'staging');
+}
+
 export function videosDir(): string {
   return join(config().dataDir, 'videos');
 }
@@ -41,6 +46,16 @@ export function versionDir(videoId: string, version: number): string {
 
 export function sourcePath(videoId: string, version: number): string {
   return join(versionDir(videoId, version), 'source.mp4');
+}
+
+/** A Talkie version's film, unpacked: the files the film route serves. */
+export function filmDir(videoId: string, version: number): string {
+  return join(versionDir(videoId, version), 'film');
+}
+
+/** A Talkie version's film as one packed .lottie file. */
+export function filmPackedPath(videoId: string, version: number): string {
+  return join(versionDir(videoId, version), 'film.lottie');
 }
 
 export function sessionsDir(videoId: string): string {

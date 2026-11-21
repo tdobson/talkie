@@ -1,9 +1,12 @@
 // yarn import <file> --title "..."      import a file as a new video
 // yarn import <file> --video <videoId>  import a file as the next version of a video
+// yarn import --film <folder or .lottie> --title "..." | --video <videoId>
+//                                       the same, for a Talkie film
 //
-// Copies the file into the inbox, imports it, and prints the review URL.
+// <file> is an MP4 or a packed Talkie film (.lottie). --film also takes a film folder, the one
+// that holds talkie.json. Copies it into the inbox, imports it, and prints the review URL.
 import { constants } from 'node:fs';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { config } from '@/lib/config';
@@ -15,6 +18,8 @@ import { importFromInbox } from '@/lib/videos/import';
 const USAGE = [
   'Usage: yarn import <file> --title "Title of the new video"',
   '       yarn import <file> --video <videoId>',
+  '       yarn import --film <folder or .lottie> --title "Title of the new video"',
+  '       yarn import --film <folder or .lottie> --video <videoId>',
 ].join('\n');
 
 export interface CliIo {
@@ -30,28 +35,56 @@ interface Args {
 
 function parseArgs(argv: string[]): Args | null {
   const files: string[] = [];
-  const opts: { title?: string; video?: string } = {};
+  const opts: { title?: string; video?: string; film?: string } = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    const match = /^--(title|video)(?:=(.*))?$/s.exec(arg);
+    const match = /^--(title|video|film)(?:=(.*))?$/s.exec(arg);
     if (match) {
       const value = match[2] ?? argv[++i];
       if (value === undefined) return null;
-      opts[match[1] as 'title' | 'video'] = value;
+      opts[match[1] as 'title' | 'video' | 'film'] = value;
     } else if (arg.startsWith('--')) {
       return null;
     } else {
       files.push(arg);
     }
   }
-  if (files.length !== 1) return null;
+  // Exactly one thing to import: a file, or a film given with --film.
+  const { film, ...rest } = opts;
+  if (film !== undefined) files.push(film);
+  if (files.length !== 1 || files[0] === '') return null;
   // Exactly one of --title and --video.
-  if ((opts.title === undefined) === (opts.video === undefined)) return null;
-  return { file: files[0], ...opts };
+  if ((rest.title === undefined) === (rest.video === undefined)) return null;
+  return { file: files[0], ...rest };
 }
 
 function isCode(err: unknown, code: string): boolean {
   return (err as NodeJS.ErrnoException | null)?.code === code;
+}
+
+/**
+ * Copies a file or a film folder into the inbox under `inboxPath`, never over something that is
+ * already there. Links inside a folder are copied as links, and the import refuses them.
+ */
+async function copyIntoInbox(source: string, inboxPath: string): Promise<void> {
+  if (!(await stat(source)).isDirectory()) {
+    // COPYFILE_EXCL: never overwrite a file somebody else dropped into the inbox.
+    await copyFile(source, inboxPath, constants.COPYFILE_EXCL);
+    return;
+  }
+  try {
+    await lstat(inboxPath);
+    throw Object.assign(new Error('already in the inbox'), { code: 'EEXIST' });
+  } catch (err) {
+    if (!isCode(err, 'ENOENT')) throw err;
+  }
+  try {
+    await cp(source, inboxPath, { recursive: true, errorOnExist: true, force: false });
+  } catch (err) {
+    // A folder copy can stop part way. The name was free a moment ago, so what is there is ours.
+    await rm(inboxPath, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 /** Runs the import and returns the process exit code. */
@@ -62,12 +95,13 @@ export async function runImport(argv: string[], io: CliIo): Promise<number> {
     return 2;
   }
 
-  const filename = basename(args.file);
+  // resolve() drops a trailing slash, so "films/launch/" is imported as "launch".
+  const source = resolve(args.file);
+  const filename = basename(source);
   const inboxPath = join(inboxDir(), filename);
   await mkdir(inboxDir(), { recursive: true });
   try {
-    // COPYFILE_EXCL: never overwrite a file somebody else dropped into the inbox.
-    await copyFile(resolve(args.file), inboxPath, constants.COPYFILE_EXCL);
+    await copyIntoInbox(source, inboxPath);
   } catch (err) {
     if (isCode(err, 'ENOENT')) io.err(`File not found: ${args.file}`);
     else if (isCode(err, 'EEXIST'))
@@ -83,7 +117,7 @@ export async function runImport(argv: string[], io: CliIo): Promise<number> {
   const result = await importFromInbox(request);
   if (!result.ok) {
     // The copy was ours, so a refused import should not leave it lying in the inbox.
-    await rm(inboxPath, { force: true });
+    await rm(inboxPath, { recursive: true, force: true });
     io.err(`Import failed: ${result.reason}`);
     return 1;
   }
