@@ -4,7 +4,6 @@ import { Button, Text } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { SpeechGate } from '@/lib/capture/micLevel';
 import { MIC_SPEECH_HOLD_MS } from '@/lib/constants';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { useMicLevel } from '../hooks/useMicLevel';
@@ -83,8 +82,8 @@ export function MicCheck({
         )}
       </div>
       {quiet && !heard && (
-        <Text c="gray.7" size="sm" data-testid={MORE_T.micCheckHelp}>
-          {moreCopy.micCheck.quietHelp}
+        <Text c="gray.7" size="sm" data-testid={T.micCheckHelp}>
+          {copy.micCheck.quietHelp}
         </Text>
       )}
       <Button

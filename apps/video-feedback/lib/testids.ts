@@ -46,4 +46,13 @@ export const T = {
   adminImportSubmit: 'admin-import-submit',
   adminImportError: 'admin-import-error',
   adminSessionRow: 'admin-session-row',
+  videoError: 'video-error',
+  videoReload: 'video-reload',
+  videoLoading: 'video-loading',
+  commentStopped: 'comment-stopped',
+  micStillLost: 'mic-still-lost',
+  micCheckHelp: 'mic-check-help',
+  micNoDevice: 'mic-no-device',
+  captionPlate: 'caption-plate',
+  captionsToggle: 'captions-toggle',
 } as const;

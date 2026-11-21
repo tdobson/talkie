@@ -1,7 +1,6 @@
 'use client';
 
 import { Button, Loader } from '@mantine/core';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { LiveMicMeter } from '../MicMeter';
@@ -37,7 +36,7 @@ export function ListeningOverlay({ stream }: { stream: MediaStream | null }) {
 /** The words for a comment the server has stopped taking (it is full). Nothing is recording. */
 export function CommentStoppedNotice({ text, help }: { text: string; help: string }) {
   return (
-    <div role="alert" data-testid={MORE_T.commentStopped}>
+    <div role="alert" data-testid={T.commentStopped}>
       <div className={classes.listeningLabel}>{text}</div>
       <div className={classes.help}>{help}</div>
     </div>
@@ -48,7 +47,7 @@ export function CommentStoppedNotice({ text, help }: { text: string; help: strin
 export function CommentStopped() {
   return (
     <div className={classes.listening}>
-      <CommentStoppedNotice text={moreCopy.player.stopped} help={moreCopy.player.stoppedHelp} />
+      <CommentStoppedNotice text={copy.player.stopped} help={copy.player.stoppedHelp} />
     </div>
   );
 }
@@ -60,17 +59,11 @@ export function VideoError({ onReload }: { onReload: () => void }) {
       className={classes.videoError}
       role="alert"
       data-no-capture="true"
-      data-testid={MORE_T.videoError}
+      data-testid={T.videoError}
     >
-      <div className={classes.listeningLabel}>{moreCopy.player.videoError}</div>
-      <Button
-        size="sm"
-        variant="white"
-        color="dark"
-        onClick={onReload}
-        data-testid={MORE_T.videoReload}
-      >
-        {moreCopy.player.reload}
+      <div className={classes.listeningLabel}>{copy.player.videoError}</div>
+      <Button size="sm" variant="white" color="dark" onClick={onReload} data-testid={T.videoReload}>
+        {copy.player.reload}
       </Button>
     </div>
   );
@@ -79,8 +72,8 @@ export function VideoError({ onReload }: { onReload: () => void }) {
 /** A small spinner in the middle of the picture while the video waits for data. */
 export function VideoLoading() {
   return (
-    <div className={classes.videoLoading} role="status" data-testid={MORE_T.videoLoading}>
-      <Loader color="gray.3" size="md" aria-label={moreCopy.player.loading} />
+    <div className={classes.videoLoading} role="status" data-testid={T.videoLoading}>
+      <Loader color="gray.3" size="md" aria-label={copy.player.loading} />
     </div>
   );
 }

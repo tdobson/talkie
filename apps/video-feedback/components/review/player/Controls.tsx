@@ -9,7 +9,6 @@ import {
   IconVolume,
   IconVolumeOff,
 } from '@tabler/icons-react';
-import { moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from './player.module.css';
@@ -117,7 +116,7 @@ export function Controls({
             size="lg"
             variant="subtle"
             color="gray.3"
-            aria-label={fullscreen ? moreCopy.player.exitFullscreen : moreCopy.player.fullscreen}
+            aria-label={fullscreen ? copy.player.exitFullscreen : copy.player.fullscreen}
             onClick={onFullscreen}
             data-testid={T.fullscreen}
           >

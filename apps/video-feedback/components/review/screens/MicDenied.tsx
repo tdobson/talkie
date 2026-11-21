@@ -1,7 +1,6 @@
 'use client';
 
 import { Button, Text } from '@mantine/core';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from '../review.module.css';
@@ -38,8 +37,8 @@ export function MicDenied({
   if (noDevice) {
     return (
       <ScreenCard testId={T.micDenied} heading={copy.micDenied.title}>
-        <Text className={classes.lead} data-testid={MORE_T.micNoDevice}>
-          {moreCopy.micDenied.noDevice}
+        <Text className={classes.lead} data-testid={T.micNoDevice}>
+          {copy.micDenied.noDevice}
         </Text>
         <Button size="md" onClick={onRetry} data-testid={T.micRetry}>
           {copy.micDenied.retry}

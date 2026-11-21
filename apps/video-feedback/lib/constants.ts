@@ -33,3 +33,11 @@ export const DEICTIC_WORDS = ['this', 'that', 'these', 'those', 'here', 'there',
 export const TRANSCRIBE_BACKOFF_MS = [5_000, 30_000, 120_000];
 export const GROQ_MODEL = 'whisper-large-v3';
 export const TRANSCRIBE_TIMEOUT_MS = 5 * 60_000;
+/** Most bytes a Talkie film may unpack to on import. */
+export const FILM_MAX_UNPACKED_BYTES = 500 * 1024 * 1024;
+/** Most files a Talkie film may hold. */
+export const FILM_MAX_ENTRIES = 2000;
+/** Limit for one Talkie still, after which the headless browser is restarted. */
+export const TALKIE_FRAME_TIMEOUT_MS = 30_000;
+/** The headless browser for Talkie stills closes after this long idle. */
+export const TALKIE_BROWSER_IDLE_MS = 120_000;

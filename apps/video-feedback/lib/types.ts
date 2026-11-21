@@ -11,10 +11,14 @@ export interface Rect {
   height: number;
 }
 
+export type MediaKind = 'mp4' | 'talkie';
+
 export interface VersionRecord {
   version: number;
   importedAt: string;
   originalFilename: string;
+  /** Absent on data written before Talkie support: read as 'mp4'. */
+  mediaKind?: MediaKind;
 }
 
 export interface VideoRecord {
@@ -26,6 +30,7 @@ export interface VideoRecord {
   versions: VersionRecord[];
 }
 
+/** For Talkie versions `codec` is 'talkie' and `pixFmt` is 'vector'. */
 export interface ProbeInfo {
   width: number;
   height: number;
@@ -70,6 +75,10 @@ export interface CommentMeta {
   totalChunks: number | null;
   player: PlayerInfo;
   micLost?: boolean;
+  /** Absent on data written before Talkie support: read as 'mp4'. */
+  mediaKind?: MediaKind;
+  /** The end of the comment is estimated (server sweep or provisional record). */
+  cutShort?: boolean;
 }
 
 export interface ZoomState {
@@ -80,6 +89,11 @@ export interface ZoomState {
 
 interface Base {
   t: number;
+}
+/** A Talkie scene failed to load while the reviewer was commenting. */
+export interface SceneWarningEvent extends Base {
+  type: 'sceneWarning';
+  sceneId: string;
 }
 export type CaptureEvent =
   | (Base & {
@@ -115,7 +129,8 @@ export type CaptureEvent =
       containerWidth: number;
       containerHeight: number;
       fullscreen: boolean;
-    });
+    })
+  | SceneWarningEvent;
 
 export interface CommentStatus {
   state: CommentState;
@@ -153,6 +168,17 @@ export interface Moment {
   zoom: ZoomState | null; // zoom active at t
   kinds: MomentKind[];
   reasons: string[]; // human labels e.g. "word 'this' at 3.2s"
+}
+
+/** Where a moment falls in a Talkie film. Added to moments on 'talkie' versions in the export. */
+export interface TalkieMomentInfo {
+  sceneId: string;
+  sceneIndex: number;
+  sceneSrc: string;
+  sceneTime: number; // seconds, scene-local, 3 decimals
+  sceneFrame: number; // integer Lottie frame
+  chapter: string | null;
+  caption: string | null;
 }
 
 export interface CommentRef {

@@ -1,8 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
 import { T } from '@/lib/testids';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
+import * as constants from '@/lib/constants';
+import type {
+  CaptureEvent,
+  CommentMeta,
+  SceneWarningEvent,
+  TalkieMomentInfo,
+  VersionRecord,
+} from '@/lib/types';
+import type { FrameSource, FrameSourceFactory } from '@/lib/media/frame-source';
+import type { MediaAdapter, MediaAdapterEvent } from '@/components/review/media/adapter';
 import { copy } from '@/lib/review/copy';
 import { notifyCommentComplete, setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
 
@@ -22,13 +32,91 @@ describe('contracts', () => {
   it('reviewer copy has no em-dashes', () => {
     for (const s of strings(copy)) expect(s).not.toContain('—');
   });
-  it('the added copy has no em-dashes or timecodes, and the added test ids clash with nothing', () => {
-    for (const text of strings(moreCopy)) {
-      expect(text).not.toContain('—');
-      expect(text).not.toMatch(/\d+:\d{2}/);
-    }
-    const ids = [...Object.values(T), ...Object.values(MORE_T)];
-    expect(new Set(ids).size).toBe(ids.length);
+  it('reviewer copy shows no timecodes', () => {
+    for (const s of strings(copy)) expect(s).not.toMatch(/\d+:\d{2}/);
+  });
+  it('the Phase 6 additions are folded into copy and test ids', () => {
+    expect(existsSync(join(__dirname, 'review/additions.ts'))).toBe(false);
+    expect(copy.micCheck.heard).toBe('Got you, loud and clear.');
+    expect(copy.player.videoError).toBe(
+      "We couldn't load the video. Check your connection and reload."
+    );
+    expect(copy.player.reload).toBe('Reload');
+    expect(copy.player.stoppedHelp).toBe('Press play, then pause again to carry on.');
+    expect(copy.general.stoppedHelp).toBe('Press "Finished, save that" to keep what you said.');
+    expect(copy.micCheck.quietHelp).toContain("Can't see the meter move?");
+    expect(copy.micDenied.noDevice).toContain("couldn't find a microphone");
+    expect(T.videoError).toBe('video-error');
+    expect(T.videoReload).toBe('video-reload');
+    expect(T.videoLoading).toBe('video-loading');
+    expect(T.commentStopped).toBe('comment-stopped');
+    expect(T.micStillLost).toBe('mic-still-lost');
+    expect(T.micCheckHelp).toBe('mic-check-help');
+    expect(T.micNoDevice).toBe('mic-no-device');
+  });
+  it('Talkie copy, test ids and limits are in place', () => {
+    expect(T.captionPlate).toBe('caption-plate');
+    expect(T.captionsToggle).toBe('captions-toggle');
+    expect(copy.player.captionsOn).toBe('Captions on');
+    expect(copy.player.captionsOff).toBe('Captions off');
+    expect(copy.admin.filmInvalid).toBe('This film did not pass validation: {errors}');
+    expect(copy.admin.filmVersion).toBe(
+      'This film needs Talkie version {major}, which this tool does not read yet.'
+    );
+    expect(copy.admin.chromiumMissing).toBe(
+      'Chromium is not installed for Talkie stills; see DEPLOY.md'
+    );
+    expect(constants.FILM_MAX_UNPACKED_BYTES).toBe(500 * 1024 * 1024);
+    expect(constants.FILM_MAX_ENTRIES).toBe(2000);
+    expect(constants.TALKIE_FRAME_TIMEOUT_MS).toBe(30_000);
+    expect(constants.TALKIE_BROWSER_IDLE_MS).toBe(120_000);
+  });
+  it('the Talkie types hold the planned shapes', () => {
+    const v: VersionRecord = {
+      version: 2,
+      importedAt: '2026-11-21T00:00:00.000Z',
+      originalFilename: 'promo.lottie',
+      mediaKind: 'talkie',
+    };
+    const flags: Pick<CommentMeta, 'mediaKind' | 'cutShort'> = {
+      mediaKind: 'talkie',
+      cutShort: true,
+    };
+    const warn: SceneWarningEvent = { t: 10, type: 'sceneWarning', sceneId: 's03' };
+    const ev: CaptureEvent = warn;
+    const info: TalkieMomentInfo = {
+      sceneId: 's03',
+      sceneIndex: 2,
+      sceneSrc: 'a/s03.json',
+      sceneTime: 1.84,
+      sceneFrame: 55,
+      chapter: null,
+      caption: null,
+    };
+    const src: FrameSource = { frame: async () => Buffer.alloc(0), close: async () => {} };
+    const factory: FrameSourceFactory = async () => src;
+    const names: MediaAdapterEvent[] = [
+      'play',
+      'pause',
+      'seeking',
+      'seeked',
+      'timeupdate',
+      'waiting',
+      'playing',
+      'ended',
+      'loadedmetadata',
+      'error',
+    ];
+    const kind: MediaAdapter['kind'] = 'talkie';
+    expect([v.mediaKind, flags.cutShort, ev.type, info.sceneFrame, kind]).toEqual([
+      'talkie',
+      true,
+      'sceneWarning',
+      55,
+      'talkie',
+    ]);
+    expect(typeof factory).toBe('function');
+    expect(new Set(names).size).toBe(10);
   });
   it('copy functions interpolate', () => {
     expect(copy.pageTitle('Promo')).toBe('Feedback: Promo');

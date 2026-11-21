@@ -1,4 +1,3 @@
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
@@ -233,13 +232,11 @@ describe('ReviewApp', () => {
     fireEvent.click(screen.getByTestId(T.playPause));
     fireEvent.click(screen.getByTestId(T.playPause));
     await screen.findByTestId(T.micLost);
-    expect(screen.queryByTestId(MORE_T.micStillLost)).toBeNull();
+    expect(screen.queryByTestId(T.micStillLost)).toBeNull();
 
     getUserMedia.mockRejectedValueOnce(new DOMException('gone', 'NotFoundError'));
     await user.click(screen.getByTestId(T.micReconnect));
-    expect(await screen.findByTestId(MORE_T.micStillLost)).toHaveTextContent(
-      moreCopy.player.micStillLost
-    );
+    expect(await screen.findByTestId(T.micStillLost)).toHaveTextContent(copy.player.micStillLost);
     expect(screen.getByTestId(T.micReconnect)).toBeEnabled();
 
     await user.click(screen.getByTestId(T.micReconnect));
@@ -253,9 +250,7 @@ describe('ReviewApp', () => {
     await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
     await user.click(screen.getByTestId(T.startButton));
     await user.click(await screen.findByTestId(T.micContinue));
-    expect(await screen.findByTestId(MORE_T.micNoDevice)).toHaveTextContent(
-      moreCopy.micDenied.noDevice
-    );
+    expect(await screen.findByTestId(T.micNoDevice)).toHaveTextContent(copy.micDenied.noDevice);
     expect(screen.getByTestId(T.micDenied)).not.toHaveTextContent(copy.micDenied.body);
     expect(screen.getByTestId(T.micRetry)).toBeInTheDocument();
   });

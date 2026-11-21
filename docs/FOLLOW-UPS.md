@@ -6,15 +6,12 @@ that task or a judgement call worth a second look.
 
 ## Shared files to fold in
 
-`lib/review/copy.ts`, `lib/testids.ts` and `lib/constants.ts` are frozen shared files, so Task 6.2
-added to them from the side:
+Folded in by the Talkie review plan (Task 2.1): `moreCopy` is now part of `copy`, `MORE_T` is part
+of `T`, `copy.micCheck.heard` has its full stop, and `CommentMeta` has `cutShort?: boolean`. Still
+open:
 
-- `lib/review/additions.ts` holds the new reviewer copy (`moreCopy`) and test ids (`MORE_T`).
-  Fold them into `copy.ts` and `testids.ts` and delete the file.
 - `lib/limits.ts` holds the new limits and time-outs. It can stay separate (tests lower the
   values on its one mutable object) or move into `constants.ts`.
-- `copy.micCheck.heard` is `'Got you, loud and clear'`. The spec has a full stop after it. One
-  character in `lib/review/copy.ts`.
 
 ## Not done
 
@@ -30,8 +27,9 @@ added to them from the side:
   offset the word timings.
 - **A flag for comments that were cut short.** A comment finished by the server sweep, or
   completed from the provisional IndexedDB record, has an estimated `endedAt` and
-  `durationMs` and may be missing its last two seconds. `CommentMeta` has no field to say so
-  (`lib/types.ts` is frozen). Add `cutShort?: boolean` and mention it in the export.
+  `durationMs` and may be missing its last two seconds. `CommentMeta` now has
+  `cutShort?: boolean`, but nothing sets it yet. Set it in both places and mention it in the
+  export.
 - **Bytes per session survive only in memory.** The 2GB per-session cap is counted since the
   server started. Comments per session (300) and the free-disk check bound the real damage. A
   persistent count would mean summing the session's folders on a timer.

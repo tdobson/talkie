@@ -2,7 +2,6 @@
 
 import { Button, Stack, Text, Title } from '@mantine/core';
 import { useEffect, useRef } from 'react';
-import { moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { CommentStoppedNotice, ListeningStatus } from '../player/ListeningOverlay';
@@ -33,10 +32,7 @@ export function GeneralComment({
       <div className={classes.panel}>
         <Stack gap="md">
           {stopped ? (
-            <CommentStoppedNotice
-              text={moreCopy.general.stopped}
-              help={moreCopy.general.stoppedHelp}
-            />
+            <CommentStoppedNotice text={copy.general.stopped} help={copy.general.stoppedHelp} />
           ) : micLost ? (
             <MicLostNotice {...mic} />
           ) : (

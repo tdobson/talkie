@@ -17,9 +17,11 @@ export const copy = {
   },
   micCheck: {
     title: 'Say hello so we know we can hear you',
-    heard: 'Got you, loud and clear',
+    heard: 'Got you, loud and clear.',
     startWatching: 'Start watching',
     startFailed: "We couldn't get started. Check your connection and try again.",
+    quietHelp:
+      "Can't see the meter move? Check the right microphone is selected and not muted, then speak up.",
   },
   micDenied: {
     title: "We can't hear you yet",
@@ -31,6 +33,7 @@ export const copy = {
     safari:
       'Safari: open Safari > Settings for This Website, set Microphone to Allow, then reload.',
     retry: 'Try again',
+    noDevice: "We couldn't find a microphone. Plug one in or switch it on, then try again.",
   },
   player: {
     hint: 'Spotted something? Pause and tell me.',
@@ -43,6 +46,17 @@ export const copy = {
     trouble: "Having trouble saving. Keep this tab open and we'll keep trying.",
     micLost: "We've lost your microphone",
     micReconnect: 'Reconnect',
+    videoError: "We couldn't load the video. Check your connection and reload.",
+    reload: 'Reload',
+    loading: 'Loading the video',
+    stopped: 'This comment is full, so we have stopped recording it.',
+    stoppedHelp: 'Press play, then pause again to carry on.',
+    fullscreen: 'Full screen',
+    exitFullscreen: 'Exit full screen',
+    micStillLost:
+      "Still can't reach a microphone. Check it's plugged in and allowed, then try again.",
+    captionsOn: 'Captions on',
+    captionsOff: 'Captions off',
   },
   end: {
     title: "That's the end of the video.",
@@ -56,6 +70,8 @@ export const copy = {
     prompt1: 'Was there anything missing?',
     prompt2: "Anything else you'd change, keep, or want to see?",
     finished: 'Finished, save that',
+    stopped: 'This comment is full, so we have stopped recording it.',
+    stoppedHelp: 'Press "Finished, save that" to keep what you said.',
   },
   thanks: {
     title: (name: string) => `Thanks, ${name}.`,
@@ -70,5 +86,10 @@ export const copy = {
   invalid: {
     title: "This link isn't valid",
     body: 'Check you have the whole link, or ask whoever sent it for a new one.',
+  },
+  admin: {
+    filmInvalid: 'This film did not pass validation: {errors}',
+    filmVersion: 'This film needs Talkie version {major}, which this tool does not read yet.',
+    chromiumMissing: 'Chromium is not installed for Talkie stills; see DEPLOY.md',
   },
 } as const;

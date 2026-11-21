@@ -1,5 +1,4 @@
 import { MIC_SPEECH_HOLD_MS } from '@/lib/constants';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { act, render, screen, userEvent } from '@/test/helpers/render';
@@ -80,13 +79,11 @@ describe('MicCheck', () => {
     vi.useFakeTimers();
     try {
       render(<MicCheck stream={stream} onHeard={() => {}} onStart={() => {}} />);
-      expect(screen.queryByTestId(MORE_T.micCheckHelp)).toBeNull();
+      expect(screen.queryByTestId(T.micCheckHelp)).toBeNull();
       act(() => {
         vi.advanceTimersByTime(QUIET_HELP_AFTER_MS + 200);
       });
-      expect(screen.getByTestId(MORE_T.micCheckHelp)).toHaveTextContent(
-        moreCopy.micCheck.quietHelp
-      );
+      expect(screen.getByTestId(T.micCheckHelp)).toHaveTextContent(copy.micCheck.quietHelp);
       expect(screen.getByTestId(T.startWatching)).toBeDisabled();
     } finally {
       vi.useRealTimers();

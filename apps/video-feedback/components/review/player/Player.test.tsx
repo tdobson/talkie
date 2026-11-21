@@ -1,7 +1,6 @@
 import { type Dispatch, useReducer } from 'react';
 import { HOLD_TO_ZOOM_MS } from '@/lib/constants';
 import type { PendingChunk } from '@/lib/capture/uploader';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { initialState, type ReviewAction, type ReviewState, reducer } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
@@ -596,7 +595,7 @@ describe('Player hardening', () => {
     rejectingPlay('NotSupportedError');
     playPause();
     await settle();
-    expect(screen.getByTestId(MORE_T.videoError)).toHaveTextContent(moreCopy.player.videoError);
+    expect(screen.getByTestId(T.videoError)).toHaveTextContent(copy.player.videoError);
     expect(screen.queryByTestId(T.listening)).toBeNull();
     expect(FakeMediaRecorder.instances).toHaveLength(0);
     expect(chunks).toHaveLength(0);
@@ -609,7 +608,7 @@ describe('Player hardening', () => {
     rejectingPlay('NotAllowedError');
     playPause();
     await settle();
-    expect(screen.queryByTestId(MORE_T.videoError)).toBeNull();
+    expect(screen.queryByTestId(T.videoError)).toBeNull();
     expect(screen.queryByTestId(T.listening)).toBeNull();
     expect(FakeMediaRecorder.instances).toHaveLength(0);
     expect(screen.getByTestId(T.playPause)).toHaveAccessibleName('Play');
@@ -620,18 +619,18 @@ describe('Player hardening', () => {
     playPause();
     fireEvent.error(video);
     await settle();
-    expect(screen.getByTestId(MORE_T.videoError)).toBeInTheDocument();
+    expect(screen.getByTestId(T.videoError)).toBeInTheDocument();
     expect(screen.queryByTestId(T.listening)).toBeNull();
     expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
 
   it('shows a loading indicator while the video is buffering', () => {
     const { video } = setup();
-    expect(screen.queryByTestId(MORE_T.videoLoading)).toBeNull();
+    expect(screen.queryByTestId(T.videoLoading)).toBeNull();
     fireEvent.waiting(video);
-    expect(screen.getByTestId(MORE_T.videoLoading)).toBeInTheDocument();
+    expect(screen.getByTestId(T.videoLoading)).toBeInTheDocument();
     fireEvent.playing(video);
-    expect(screen.queryByTestId(MORE_T.videoLoading)).toBeNull();
+    expect(screen.queryByTestId(T.videoLoading)).toBeNull();
   });
 
   it('scrolling back from the end screen starts listening at the frame it lands on', async () => {
@@ -683,7 +682,7 @@ describe('Player hardening', () => {
     rerender(ui(cid));
     await settle();
     expect(screen.queryByTestId(T.listening)).toBeNull();
-    expect(screen.getByTestId(MORE_T.commentStopped)).toHaveTextContent(moreCopy.player.stopped);
+    expect(screen.getByTestId(T.commentStopped)).toHaveTextContent(copy.player.stopped);
     expect(screen.getByTestId(T.saveTroubleBanner)).toBeInTheDocument();
     expect(FakeMediaRecorder.instances[0].state).toBe('inactive');
 
@@ -727,6 +726,6 @@ describe('Player hardening', () => {
     rerender(ui(true, false));
     expect(screen.getByTestId(T.micReconnect)).toHaveAttribute('data-loading', 'true');
     rerender(ui(false, true));
-    expect(screen.getByTestId(MORE_T.micStillLost)).toHaveTextContent(moreCopy.player.micStillLost);
+    expect(screen.getByTestId(T.micStillLost)).toHaveTextContent(copy.player.micStillLost);
   });
 });

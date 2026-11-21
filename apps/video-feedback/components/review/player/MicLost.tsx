@@ -1,7 +1,6 @@
 'use client';
 
 import { Button } from '@mantine/core';
-import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from './player.module.css';
@@ -35,8 +34,8 @@ export function MicLostNotice({
         </Button>
       </div>
       {reconnectFailed && !reconnecting && (
-        <div className={classes.help} data-testid={MORE_T.micStillLost}>
-          {moreCopy.player.micStillLost}
+        <div className={classes.help} data-testid={T.micStillLost}>
+          {copy.player.micStillLost}
         </div>
       )}
     </div>
