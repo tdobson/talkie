@@ -1,0 +1,50 @@
+{
+  "talkie": 1,
+  "title": "GSE in-roof: battens and the reference line",
+  "duration": 60,
+  "size": [
+    1920,
+    1080
+  ],
+  "scenes": [
+    {
+      "id": "s01",
+      "src": "a/s01.json",
+      "start": 0,
+      "end": 18.4
+    },
+    {
+      "id": "s02",
+      "src": "a/s02.json",
+      "start": 18.4,
+      "end": 41
+    },
+    {
+      "id": "s03",
+      "src": "a/s03.json",
+      "start": 41,
+      "end": 60
+    }
+  ],
+  "chapters": [
+    {
+      "title": "Setting out",
+      "start": 0
+    },
+    {
+      "title": "Battens",
+      "start": 18.4
+    }
+  ],
+  "captions": [
+    {
+      "lang": "en",
+      "label": "English",
+      "src": "captions/en.vtt"
+    }
+  ],
+  "poster": {
+    "svg": "poster.svg",
+    "png": "poster.png"
+  }
+}
