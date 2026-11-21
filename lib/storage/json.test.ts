@@ -41,3 +41,15 @@ it('cleans up the tmp file when the rename fails', async () => {
   await expect(writeJsonAtomic(join(dir, 'd/target.json'), { x: 1 })).rejects.toThrow();
   expect((await readdir(join(dir, 'd'))).filter((f) => f.includes('.tmp'))).toEqual([]);
 });
+
+it('readJson rethrows errors other than missing file (e.g. EISDIR)', async () => {
+  await mkdir(join(dir, 'isdir.json'));
+  await expect(readJson(join(dir, 'isdir.json'))).rejects.toThrow();
+});
+
+it('writeJsonAtomic cleans up its tmp file when the rename fails', async () => {
+  const target = join(dir, 'target.json');
+  await mkdir(join(target, 'child'), { recursive: true });
+  await expect(writeJsonAtomic(target, { x: 1 })).rejects.toThrow();
+  expect((await readdir(dir)).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+});
