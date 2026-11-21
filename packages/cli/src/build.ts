@@ -51,7 +51,7 @@ export interface BuildResult {
 }
 
 /** Raise this when a change to the build makes old cache entries wrong. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /** What the cache remembers about a built scene, in `.talkie/build/<sceneId>.json`. */
 interface SceneRecord {

@@ -1,4 +1,11 @@
-import { compileScene, emitLottie, parseColour, scene, type LottieShape } from '../src/index';
+import {
+  compileScene,
+  emitLottie,
+  parseColour,
+  scene,
+  type LottieLayer,
+  type LottieShape,
+} from '../src/index';
 import { everything, gauge, golden } from './scenes';
 
 type Group = Extract<LottieShape, { ty: 'gr' }>;
@@ -164,6 +171,130 @@ describe('emitLottie on a full scene', () => {
     expect(
       numbers.filter((value) => Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-6)
     ).toEqual([]);
+  });
+});
+
+describe('emitLottie on a fading node with more than one paint', () => {
+  const BOTH = { fill: '#ff0000', stroke: '#0000ff', strokeWidth: 16 };
+  const emit = (build: Parameters<typeof scene>[1]) =>
+    emitLottie(compileScene(scene('fade', build), { size: [320, 180], lines: [], duration: 4 }));
+  const row = (layer: LottieLayer) => [layer.ind, layer.ty, layer.nm, layer.parent];
+
+  it('gives a fading child with a fill and a stroke a layer of its own, with the fade on the layer', () => {
+    const json = emit((c) => {
+      const back = c.rect(0, 0, 10, 10, { fill: '#000000' }, 'back');
+      const plate = c.rect(20, 20, 60, 60, BOTH, 'plate');
+      const front = c.rect(5, 5, 10, 10, { fill: '#000000' }, 'front');
+      const holder = c.node(
+        'holder',
+        [{ paths: c.rect(0, 0, 4, 4, {}).items[0].paths, style: { fill: '#00aa00' } }],
+        [back, plate, front]
+      );
+      holder.transform.position = [7, 9];
+      c.add(c.rect(0, 0, 320, 180, { fill: '#ffffff' }, 'sky'), holder);
+      c.fade(plate, 1);
+    });
+    // Lottie draws the first layer on top: the holder's own shapes, then its children from the
+    // front one to the back one. The holder itself is a null layer that carries its transform.
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [7, 4, 'holder shapes', 3],
+      [6, 4, 'front', 3],
+      [5, 4, 'plate', 3],
+      [4, 4, 'back', 3],
+      [3, 3, 'holder', 1],
+      [2, 4, 'sky', 1],
+    ]);
+    const [, own, , plate, , holder] = json.layers;
+    expect(holder.ks.p).toEqual({ a: 0, k: [7, 9] });
+    expect(holder).not.toHaveProperty('shapes');
+    // The fade is on the layer, which fades the finished picture of the node.
+    expect(plate.ks.o).toMatchObject({ a: 1 });
+    const group = plate.shapes?.[0] as Group;
+    expect(group.it.map((shape) => shape.ty)).toEqual(['sh', 'st', 'fl', 'tr']);
+    expect(only(group, 'tr')[0].o).toEqual({ a: 0, k: 100 });
+    expect(only(group, 'st')[0].o).toEqual({ a: 0, k: 100 });
+    expect(only(group, 'fl')[0].o).toEqual({ a: 0, k: 100 });
+    // The holder's own shapes stay where they were, with no children under them.
+    const ownGroup = own.shapes?.[0] as Group;
+    expect(ownGroup.it.map((shape) => shape.ty)).toEqual(['sh', 'fl', 'tr']);
+    expect(own.ks).toMatchObject({ p: { a: 0, k: [0, 0] }, o: { a: 0, k: 100 } });
+  });
+
+  it('does the same for a fading child whose own children overlap, however deep it is', () => {
+    const json = emit((c) => {
+      const pair = c.group('pair', [
+        c.rect(0, 0, 40, 40, { fill: '#ff0000' }, 'under'),
+        c.rect(20, 20, 40, 40, { fill: '#00aa00' }, 'over'),
+      ]);
+      const outer = c.group('outer', [c.group('inner', [pair])]);
+      c.add(outer);
+      c.fade(pair, 1, { from: 100, to: 0 });
+      c.tween(outer, 'position', [
+        { t: 0, v: [0, 0] },
+        { t: 2, v: [50, 0] },
+      ]);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [4, 4, 'pair', 3],
+      [3, 3, 'inner', 2],
+      [2, 3, 'outer', 1],
+    ]);
+    expect(json.layers[3].ks.p).toMatchObject({ a: 1 });
+    expect(json.layers[1].ks.o).toMatchObject({ a: 1 });
+    const pair = json.layers[1].shapes?.[0] as Group;
+    expect(only(pair, 'gr').map((child) => child.nm)).toEqual(['over', 'under']);
+  });
+
+  it('counts a still opacity below 100 as a fade', () => {
+    const json = emit((c) => {
+      const plate = c.rect(20, 20, 60, 60, BOTH, 'plate');
+      plate.transform.opacity = 40;
+      c.add(c.group('holder', [plate]));
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [3, 4, 'plate', 2],
+      [2, 3, 'holder', 1],
+    ]);
+    expect(json.layers[1].ks.o).toEqual({ a: 0, k: 40 });
+  });
+
+  it('leaves a child in its group when it has one paint or does not fade', () => {
+    const json = emit((c) => {
+      const one = c.rect(0, 0, 10, 10, { fill: '#000000' }, 'one');
+      const steady = c.rect(20, 20, 60, 60, BOTH, 'steady');
+      c.add(c.group('holder', [one, steady]));
+      c.fade(one, 1);
+      c.tween(steady, 'rotation', [
+        { t: 0, v: 0 },
+        { t: 1, v: 90 },
+      ]);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [2, 4, 'holder', 1],
+    ]);
+  });
+
+  it('leaves a child in its group when a node above it fades too', () => {
+    // Two fades, one inside the other, cannot be told apart by layers, which pass on a
+    // transform but not an opacity. The child keeps its fade on its group, as before.
+    const json = emit((c) => {
+      const plate = c.rect(20, 20, 60, 60, BOTH, 'plate');
+      const holder = c.group('holder', [plate]);
+      c.add(c.group('outer', [holder]));
+      c.fade(plate, 1);
+      c.fade(holder, 2, { from: 100, to: 0 });
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [3, 4, 'holder', 2],
+      [2, 3, 'outer', 1],
+    ]);
+    const holder = json.layers[1].shapes?.[0] as Group;
+    expect(only(only(holder, 'gr')[0], 'tr')[0].o).toMatchObject({ a: 1 });
   });
 });
 

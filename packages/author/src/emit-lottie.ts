@@ -246,15 +246,40 @@ function group(node: Node, tr: LottieTransform): LottieShape {
   return { ty: 'gr', nm: node.name, it: [...items, ...children, transformShape(tr)] };
 }
 
+/** How many fills and strokes a node paints, its children included. */
+function paints(node: Node): number {
+  const own = node.items.reduce(
+    (sum, { style }) =>
+      sum +
+      (style.fill !== undefined && style.fill !== 'none' ? 1 : 0) +
+      (style.stroke !== undefined && style.stroke !== 'none' ? 1 : 0),
+    0
+  );
+  return node.children.reduce((sum, child) => sum + paints(child), own);
+}
+
+const fades = (node: Node): boolean =>
+  node.transform.opacity !== 100 || trackOf(node, 'opacity') !== undefined;
+
+/**
+ * True for a node that has to fade as one finished picture: it fades, and it has more than one
+ * paint, so one could show through another. An opacity on a group is handed down to each paint,
+ * which fades them one by one. An opacity on a layer fades the picture, as the SVG mirror does.
+ */
+const fadesWhole = (node: Node): boolean => fades(node) && paints(node) > 1;
+
+/**
+ * True for a node that is taken apart into layers, so that a node under it can have a layer of
+ * its own. A node that fades is never taken apart: a layer passes its transform on to the layers
+ * under it but not its opacity, so the fade would be lost. Nodes under a fading node stay in its
+ * group, and a node with several paints that fades inside another fade still fades paint by paint.
+ */
+const splits = (node: Node): boolean =>
+  !fades(node) && node.children.some((child) => fadesWhole(child) || splits(child));
+
 /** The scene as a Lottie animation at 60 frames a second. The output is the same for the same model. */
 export function emitLottie(model: SceneModel): LottieAnimation {
   const op = Math.round(model.duration * FPS);
-  const layer = (ind: number, ty: 3 | 4, node: Node) => ({
-    ddd: 0 as const,
-    ind,
-    ty,
-    nm: node.name,
-  });
   const rest = {
     sr: 1 as const,
     ao: 0 as const,
@@ -263,22 +288,45 @@ export function emitLottie(model: SceneModel): LottieAnimation {
     st: 0 as const,
     bm: 0 as const,
   };
+  const CAMERA = 1;
   const cameraLayer: LottieLayer = {
-    ...layer(1, 3, model.camera),
+    ddd: 0,
+    ind: CAMERA,
+    ty: 3,
+    nm: model.camera.name,
     ks: transform(model.camera),
     ...rest,
   };
-  // Lottie draws layers[0] on top, so the last node added comes straight after the camera.
-  const shapeLayers = model.nodes
-    .map((node, n): LottieLayer => ({
-      ...layer(n + 2, 4, node),
-      parent: 1,
-      ks: transform(node),
+  // In draw order, the back one first.
+  const drawn: LottieLayer[] = [];
+  const shapeLayer = (nm: string, parent: number, ks: LottieTransform, node: Node): void => {
+    drawn.push({
+      ddd: 0,
+      ind: drawn.length + 2,
+      ty: 4,
+      nm,
+      parent,
+      ks,
       ...rest,
       // The layer carries the node's transform, so its group stays put.
       shapes: [group(node, still(identity()))],
-    }))
-    .reverse();
+    });
+  };
+  const place = (node: Node, parent: number): void => {
+    if (!splits(node)) {
+      shapeLayer(node.name, parent, transform(node), node);
+      return;
+    }
+    // A null layer carries the node's transform. Its children follow as layers of their own,
+    // then its own shapes, which are painted over the children.
+    const ind = drawn.length + 2;
+    drawn.push({ ddd: 0, ind, ty: 3, nm: node.name, parent, ks: transform(node), ...rest });
+    node.children.forEach((child) => place(child, ind));
+    if (node.items.length > 0) {
+      shapeLayer(`${node.name} shapes`, ind, still(identity()), { ...node, children: [] });
+    }
+  };
+  model.nodes.forEach((node) => place(node, CAMERA));
   return {
     v: '5.12.0',
     fr: FPS,
@@ -289,6 +337,7 @@ export function emitLottie(model: SceneModel): LottieAnimation {
     nm: model.id,
     ddd: 0,
     assets: [],
-    layers: [cameraLayer, ...shapeLayers],
+    // Lottie draws layers[0] on top, so the last node added comes straight after the camera.
+    layers: [cameraLayer, ...drawn.toReversed()],
   };
 }

@@ -95,7 +95,7 @@ The scene library. It never touches the file system: the caller hands it loaders
 | `planLines(lines, opts?): { lines, duration }` | Places voice lines on the scene clock and gives the scene's length. |
 | `readHold(words): number` | How long a caption of that many words stays up. |
 | `compileScene(def, input): SceneModel` | Runs a scene's `build` and returns the model. |
-| `emitLottie(model): LottieAnimation` | The model as Lottie JSON, 60 frames a second. |
+| `emitLottie(model): LottieAnimation` | The model as Lottie JSON, 60 frames a second. Each top level node is a layer. A node below that which fades and has more than one paint gets a layer of its own, so it fades as one picture. |
 | `svgAt(model, t): string` | The picture at time `t` as an SVG string. |
 | `importSvg(svg, file, base?): ArtNode` | Turns an SVG drawing into plain shapes. Throws `UnsupportedSvgError`. |
 | `labelPaths(font, text, options): BezierPath[]` | Text as outlines. |
