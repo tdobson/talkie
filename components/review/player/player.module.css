@@ -1,0 +1,251 @@
+.player {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  background: #0b0b0f;
+  color: var(--mantine-color-gray-1);
+  overflow: hidden;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0b0f;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  cursor: default;
+}
+
+.stage[data-playing='true'] {
+  cursor: pointer;
+}
+
+.stage[data-zoomed='true'] {
+  cursor: zoom-in;
+}
+
+/* The picture. Sized to the letterboxed picture rectangle, so zoom origins are in picture units. */
+.layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  pointer-events: none;
+}
+
+/* Top of the picture, never the centre, and invisible to the pointer. */
+.listening {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 60%;
+  padding: 0.6rem 1rem 0.7rem;
+  border-radius: var(--mantine-radius-md);
+  background: rgba(11, 11, 15, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.listening[data-interactive='true'] {
+  pointer-events: auto;
+  cursor: default;
+}
+
+.listeningRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.listeningLabel {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.listeningMeter {
+  width: 10rem;
+  flex: none;
+}
+
+.dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--mantine-color-red-6);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
+
+.help {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.tips {
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--mantine-color-gray-4);
+}
+
+.toast {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(11, 11, 15, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.toast[data-kind='saved'] {
+  color: var(--mantine-color-teal-3);
+}
+
+.banner {
+  padding: 0.5rem 1rem;
+  background: var(--mantine-color-yellow-4);
+  color: var(--mantine-color-dark-9);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.endOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(11, 11, 15, 0.78);
+  overflow: auto;
+  cursor: default;
+  z-index: 4;
+}
+
+.generalOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(11, 11, 15, 0.96);
+  overflow: auto;
+  z-index: 10;
+}
+
+.panel {
+  width: 100%;
+  max-width: 32rem;
+  padding: 1.75rem 2rem;
+  border-radius: var(--mantine-radius-lg);
+  background: #16161d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--mantine-color-gray-1);
+}
+
+.panelHeading {
+  color: #fff;
+  line-height: 1.25;
+}
+
+.panelHeading:focus {
+  outline: none;
+}
+
+.panelText {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+}
+
+.controls {
+  flex: none;
+  background: #14141a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.controlRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem 0.25rem;
+}
+
+.scroll {
+  flex: 1;
+  min-width: 0;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 7.5rem;
+  flex: none;
+  color: var(--mantine-color-gray-4);
+}
+
+.volumeSlider {
+  flex: 1;
+  min-width: 0;
+}
+
+.footRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.25rem;
+  padding: 0.25rem 1rem 0.6rem;
+}
+
+.hint {
+  color: var(--mantine-color-gray-4);
+  font-size: 0.95rem;
+}
+
+/* Clear focus rings on the dark player, whatever the component's own colour. */
+.player :is(button, [role='slider']):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
