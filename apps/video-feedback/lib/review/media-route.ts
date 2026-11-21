@@ -7,7 +7,7 @@ import { notFound } from './http';
 import { parseRange, resolveToken } from './service';
 
 // Shared by the routes that serve a version's media to the reviewer: `video` for an MP4 version
-// and `film/<path>` for a Talkie version. Both make the same token and version checks, here.
+// and `film/<version>/<path>` for a Talkie version. Both make the same token and version checks, here.
 
 export interface MediaVersion {
   video: VideoRecord;
@@ -16,17 +16,20 @@ export interface MediaVersion {
 }
 
 /**
- * The video behind `token` and the version named by `?version=<n>`, or null when the link is not
- * valid or that version is not on the video. The caller answers null with `notFound()`.
+ * The video behind `token` and the version asked for, or null when the link is not valid or that
+ * version is not on the video. The version is `fromPath` when the route carries it as a path
+ * segment (the film route), and `?version=<n>` otherwise (the video route). The caller answers
+ * null with `notFound()`.
  */
 export async function resolveMediaVersion(
   req: Request,
-  token: string
+  token: string,
+  fromPath?: string
 ): Promise<MediaVersion | null> {
   const video = await resolveToken(token);
   if (video === null) return null;
 
-  const wanted = new URL(req.url).searchParams.get('version') ?? '';
+  const wanted = fromPath ?? new URL(req.url).searchParams.get('version') ?? '';
   const version = /^\d{1,6}$/.test(wanted) ? Number(wanted) : null;
   const record = video.versions.find((v) => v.version === version);
   if (version === null || record === undefined) return null;

@@ -133,7 +133,7 @@ read unchanged).
 
 ## 6. Serving the film
 
-`GET /api/r/<token>/film/<path...>?version=<n>` serves one file from `film/` for a `talkie`
+`GET /api/r/<token>/film/<version>/<path...>` serves one file from `film/` for a `talkie`
 version. It shares token and session checks with the video route. It allows only paths listed in
 `talkie.json` plus `talkie.json` itself, each checked with `isSafeRelativePath`. The
 Content-Type comes from `mimeFor`. Audio supports HTTP Range (`lib/review/range.ts`), and responses

@@ -50,8 +50,10 @@ const nextConfig = {
   turbopack: { root: repoRoot },
   // playwright-core starts the headless browser for Talkie stills; it must not be bundled.
   serverExternalPackages: ['sharp', 'playwright-core'],
+  // The Talkie render page (built by `yarn build:render-page`) is read from disk at run time, so
+  // file tracing cannot see it. This copies it into the standalone output at the same path.
   outputFileTracingIncludes: {
-    '/*': [playwrightBrowsersJson],
+    '/*': ['./lib/media/talkie-render-page/dist/**/*', playwrightBrowsersJson],
   },
   experimental: {
     // Build workers are capped so background builds cannot hog the machine.

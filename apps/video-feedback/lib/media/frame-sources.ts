@@ -1,19 +1,11 @@
 import { join } from 'node:path';
 import { mediaKindOf } from '@/lib/media-kind';
 import { readJson } from '@/lib/storage/json';
-import { sourcePath, versionDir } from '@/lib/storage/paths';
+import { filmDir, sourcePath } from '@/lib/storage/paths';
 import { getVideo } from '@/lib/storage/repo';
 import type { FrameSource, FrameSourceFactory } from './frame-source';
 import { ffmpegFrameSource } from './frame-source-ffmpeg';
 import { talkieFrameSource } from './frame-source-talkie';
-
-/**
- * The unpacked film of a talkie version. Task 3.1 adds `filmDir` to `lib/storage/paths.ts`
- * with the same layout; the integration step can switch this to that one.
- */
-function filmDirOf(videoId: string, version: number): string {
-  return join(versionDir(videoId, version), 'film');
-}
 
 async function filmSize(dir: string, version: number): Promise<{ width: number; height: number }> {
   const film = await readJson<{ size?: unknown }>(join(dir, 'talkie.json')).catch(() => null);
@@ -42,7 +34,7 @@ export function frameSourceFactory(
     const record = video?.versions.find((v) => v.version === version);
     // A version with no record, or one written before Talkie support, is an MP4.
     if (!record || mediaKindOf(record) === 'mp4') return ffmpegFrameSource(mp4);
-    const dir = filmDirOf(videoId, version);
+    const dir = filmDir(videoId, version);
     return talkie(dir, await filmSize(dir, version));
   };
 }

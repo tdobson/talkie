@@ -8,7 +8,7 @@ import { FILM_JSON, listedPaths } from '@/lib/videos/film';
 
 export const runtime = 'nodejs';
 
-type Ctx = { params: Promise<{ token: string; path?: string[] }> };
+type Ctx = { params: Promise<{ token: string; version: string; path?: string[] }> };
 
 /**
  * A film file is only ever data for the player. If one is opened as a page of its own (an SVG
@@ -32,15 +32,16 @@ async function servable(dir: string): Promise<Set<string> | null> {
 }
 
 /**
- * GET /api/r/<token>/film/<path...>?version=<n>: one file of a Talkie version's film, with HTTP
- * Range support. The token and version checks are the video route's. The only paths served are
+ * GET /api/r/<token>/film/<version>/<path...>: one file of a Talkie version's film, with HTTP
+ * Range support. The version is a path segment because the player resolves every file relative
+ * to the folder URL, which drops a query string. The token and version checks are the video route's. The only paths served are
  * talkie.json and the files it lists, so nothing else in the version directory can be reached,
  * however the path is spelled.
  */
 export function GET(req: Request, { params }: Ctx): Promise<Response> {
   return guarded(async () => {
-    const { token, path: segments } = await params;
-    const media = await resolveMediaVersion(req, token);
+    const { token, version, path: segments } = await params;
+    const media = await resolveMediaVersion(req, token, version);
     if (media === null || media.kind !== 'talkie') return notFound();
 
     // Next hands the segments over already decoded, so an encoded ".." or "/" shows up here as

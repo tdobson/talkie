@@ -35,7 +35,7 @@ export interface ReviewPageData {
 /** The URL of one file of a Talkie version's film, as the film route serves it. */
 export function filmFileUrl(token: string, version: number, path: string): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/');
-  return `/api/r/${encodeURIComponent(token)}/film/${encoded}?version=${version}`;
+  return `/api/r/${encodeURIComponent(token)}/film/${version}/${encoded}`;
 }
 
 async function posterUrlOf(

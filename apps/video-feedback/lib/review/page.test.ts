@@ -93,7 +93,7 @@ describe('loadReviewPage with Talkie versions', () => {
       frameDuration: 1 / 30,
       frameDurations: { 1: DEFAULT_FRAME_DURATION, 2: 1 / 30 },
       mediaKinds: { 1: 'mp4', 2: 'talkie' },
-      posterUrls: { 2: `/api/r/${video.token}/film/poster.png?version=2` },
+      posterUrls: { 2: `/api/r/${video.token}/film/2/poster.png` },
     });
   });
 
@@ -104,7 +104,7 @@ describe('loadReviewPage with Talkie versions', () => {
       await talkieJsonWith({ poster: { png: 'art/poster_one+two.png' } })
     );
     expect((await loadReviewPage(video.token))?.posterUrls).toEqual({
-      2: `/api/r/${video.token}/film/art/poster_one%2Btwo.png?version=2`,
+      2: `/api/r/${video.token}/film/2/art/poster_one%2Btwo.png`,
     });
   });
 

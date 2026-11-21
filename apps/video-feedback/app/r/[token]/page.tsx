@@ -28,6 +28,7 @@ export default async function ReviewPage({ params }: Props) {
       latestVersion={page.latestVersion}
       frameDuration={page.frameDuration}
       frameDurations={page.frameDurations}
+      mediaKinds={page.mediaKinds}
     />
   );
 }

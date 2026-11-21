@@ -41,9 +41,9 @@ interface Opts {
 function get(path: string | string[], opts: Opts = {}): Promise<Response> {
   const { version = '2', range, token = video.token } = opts;
   const segments = typeof path === 'string' ? path.split('/') : path;
-  const url = `http://localhost/api/r/${token}/film/${segments.map(encodeURIComponent).join('/')}`;
-  const req = new Request(`${url}?version=${version}`, { headers: range ? { Range: range } : {} });
-  return GET(req, { params: Promise.resolve({ token, path: segments }) });
+  const url = `http://localhost/api/r/${token}/film/${encodeURIComponent(version)}/${segments.map(encodeURIComponent).join('/')}`;
+  const req = new Request(url, { headers: range ? { Range: range } : {} });
+  return GET(req, { params: Promise.resolve({ token, version, path: segments }) });
 }
 
 const fixture = (path: string) => readFile(join(TALKIE_MINI_DIR, path));

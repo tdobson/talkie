@@ -7,7 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "predeps": "yarn workspace talkie exec yarn workspaces foreach -Rpt --from video-feedback --exclude video-feedback run build",
+    "predeps": "yarn workspace talkie exec yarn workspaces foreach -Rpt --from video-feedback --exclude video-feedback run build && yarn build:render-page",
+    "build:render-page": "./scripts/lowprio.sh tsx lib/media/talkie-render-page/build.ts",
     "dev": "yarn predeps && ./scripts/lowprio.sh next dev",
     "build": "yarn predeps && ./scripts/lowprio.sh next build",
     "start": "next start",
@@ -19,6 +20,7 @@
     "test": "./scripts/lowprio.sh vitest run",
     "test:watch": "./scripts/lowprio.sh vitest",
     "test:coverage": "./scripts/lowprio.sh vitest run --coverage",
+    "test:chromium": "TEST_CHROMIUM=1 ./scripts/lowprio.sh vitest run --project node .chromium.test",
     "test:e2e": "yarn predeps && ./scripts/lowprio.sh playwright test",
     "fixtures": "./scripts/lowprio.sh ./scripts/make-fixtures.sh",
     "fixtures:talkie": "./scripts/lowprio.sh tsx scripts/make-talkie-fixture.ts",
@@ -41,6 +43,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "sharp": "^0.35.5",
+    "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
   },
   "devDependencies": {
@@ -57,6 +60,7 @@
     "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
     "@vitest/coverage-v8": "^5",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.8",
     "jsdom": "^31.0.1",
     "postcss": "^8.5.6",
@@ -66,8 +70,7 @@
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5",
-    "yauzl": "^3.4.0"
+    "vitest": "^5"
   },
   "packageManager": "yarn@4.18.1"
 }
