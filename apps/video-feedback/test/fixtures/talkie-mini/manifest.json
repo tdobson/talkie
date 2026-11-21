@@ -1,0 +1,12 @@
+{
+  "version": "2",
+  "generator": "talkie",
+  "animations": [
+    {
+      "id": "s01"
+    },
+    {
+      "id": "s02"
+    }
+  ]
+}

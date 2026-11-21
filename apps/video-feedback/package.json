@@ -21,6 +21,7 @@
     "test:coverage": "./scripts/lowprio.sh vitest run --coverage",
     "test:e2e": "yarn predeps && ./scripts/lowprio.sh playwright test",
     "fixtures": "./scripts/lowprio.sh ./scripts/make-fixtures.sh",
+    "fixtures:talkie": "./scripts/lowprio.sh tsx scripts/make-talkie-fixture.ts",
     "check": "yarn format:check && yarn lint && yarn typecheck && yarn test",
     "import": "./scripts/lowprio.sh tsx scripts/cli/import.ts",
     "export": "./scripts/lowprio.sh tsx scripts/cli/export.ts",

@@ -10,3 +10,4 @@ data/
 docs
 coverage
 next-env.d.ts
+test/fixtures/talkie-mini

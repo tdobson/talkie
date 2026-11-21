@@ -31,7 +31,12 @@ export default defineConfig({
           name: 'node',
           globals: true,
           environment: 'node',
-          include: ['lib/**/*.test.ts', 'scripts/**/*.test.ts', 'app/**/*.test.ts'],
+          include: [
+            'lib/**/*.test.ts',
+            'scripts/**/*.test.ts',
+            'app/**/*.test.ts',
+            'test/**/*.test.ts',
+          ],
           exclude: [...ignored, 'lib/capture/**/*.test.ts', 'lib/review/machine.test.ts'],
         },
       },

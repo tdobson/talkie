@@ -1,0 +1,53 @@
+{
+  "talkie": 1,
+  "title": "Talkie mini",
+  "duration": 4,
+  "size": [
+    320,
+    180
+  ],
+  "audio": [
+    {
+      "src": "u/narration.opus",
+      "type": "audio/ogg"
+    },
+    {
+      "src": "u/narration.m4a",
+      "type": "audio/mp4"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "s01",
+      "src": "a/s01.json",
+      "start": 0,
+      "end": 2
+    },
+    {
+      "id": "s02",
+      "src": "a/s02.json",
+      "start": 2,
+      "end": 4
+    }
+  ],
+  "chapters": [
+    {
+      "title": "Red",
+      "start": 0
+    },
+    {
+      "title": "Blue",
+      "start": 2
+    }
+  ],
+  "captions": [
+    {
+      "lang": "en",
+      "label": "English",
+      "src": "captions/en.vtt"
+    }
+  ],
+  "poster": {
+    "png": "poster.png"
+  }
+}
