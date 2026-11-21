@@ -98,7 +98,7 @@ data/
         audio.webm | audio.mp4             # assembled, untouched
         audio16k.wav                       # transcription copy
         events.json                        # merged event log
-        transcript.json                    # Groq verbose_json
+        transcript.json                    # normalised transcript from Groq verbose_json
         moments.json                       # chosen key moments with reasons
         render/overview.jpg
         render/moment-01.jpg ...
@@ -233,6 +233,8 @@ Want to look at something again? Scroll back and pause on it.
 - The session ID is stored in `localStorage` keyed by token. Reopening the link in the same browser resumes the session (skipping the name screen but still doing the mic check). "I'm done" marks the session done; reopening after that starts the player again on the same session, so they can add more.
 - A session is pinned to the version it started on. New sessions get the latest version.
 - Recording happens only while paused (or during a general comment). Nothing is recorded during playback.
+- Scrolling back from the end screen counts as a pause on the frame the reviewer lands on: the Listening overlay appears and a moment comment starts there. While the scroll bar is still being dragged, each tick moves that frame instead of being logged as a seek.
+- During a general comment (screen 5b) the stage and controls underneath are `inert`: nothing there can be focused or pressed, and "I'm done" does nothing until the comment is finished.
 
 ## 6. Capture (client)
 
@@ -278,15 +280,19 @@ All reviewer endpoints are under `/api/r/<token>/`. The token must match a video
 - Chunk PUTs are idempotent: a seq already on disk is acknowledged without rewriting.
 - The client keeps unacknowledged chunks in IndexedDB and retries with backoff (1s, 2s, 4s ... capped at 30s). If any chunk has been failing for more than 20s, the banner "Having trouble saving. Keep this tab open and we'll keep trying." appears.
 - On page load with pending IndexedDB chunks for this token, the client resumes uploading them before anything else.
-- Limits: 5MB per chunk, 50MB per comment, 120 chunk requests per minute per session. Over the limit returns 413/429; the client stops recording that comment and shows the saving banner.
+- Limits: 5MB per chunk, 50MB per comment, 120 chunk requests per minute per session. Over a size limit returns 413: the client stops recording that comment at once, replaces "Listening" with "This comment is full, so we have stopped recording it.", shows the saving banner, and completes the comment with the chunks the server accepted. Over a rate limit returns 429.
+- **Decision (Task 6.2): 429 does not stop the comment.** A rate limit is temporary, and stopping would throw away speech the reviewer is in the middle of giving. The client keeps the chunk in IndexedDB and retries it with the usual backoff, like a 5xx; the saving banner appears after 20s if it is still being refused. The same goes for 507 (see below).
+- Hardening limits (Task 6.2, `lib/limits.ts`): JSON bodies are read to at most 64KB (413 beyond that). New sessions are limited to 120 per review link and 40 per client address (`CF-Connecting-IP`) per hour, and 1000 per video in total (429). A session holds at most 300 comments and 2GB (413), and a review link is limited to 1200 chunk requests per minute across all its sessions (429). When `DATA_DIR` has less than 1GB free, new sessions and chunks are refused with 507, which the client retries.
+- Reviewer names are stored as one line: control characters, line breaks and bidirectional overrides become spaces. The export also escapes Markdown characters in names.
+- **A comment nobody completed.** If the tab closes mid-comment, the client's `complete` call never happens. Two things cover it. The uploader keeps a provisional complete record in IndexedDB, updated as each chunk is stored; on the next visit, a provisional record that has not changed for 15s is sent as the `complete` call. And the server finishes any comment that has been `receiving` with no new chunk for 30 minutes: it closes it with the unbroken run of chunks from 0 and queues it (checked at startup and every 5 minutes).
 
 ## 7. Processing pipeline (server)
 
 Triggered by a successful `complete`. Jobs are processed one at a time. On startup the server scans for comments whose `status.state` is `queued` or `processing` and re-queues them.
 
-1. **Assemble audio.** Concatenate `chunks/0..n` in order into `audio.webm` or `audio.mp4` (MediaRecorder timeslice chunks concatenate into a valid file). Merge `events/*.json` into `events.json`, sorted by `t`. Produce `audio16k.wav` (mono, 16kHz) with ffmpeg.
+1. **Assemble audio.** Concatenate `chunks/0..n` in order into `audio.webm` or `audio.mp4` (MediaRecorder timeslice chunks concatenate into a valid file). Merge `events/*.json` into `events.json`, sorted by `t`. Produce `audio16k.wav` (mono, 16kHz) with ffmpeg, cut at 20 minutes: longer comments are processed up to that point. A comment with no audio at all (the microphone was lost for all of it) keeps its events: the silence check, transcription and clip are `skipped`, the key moments and stills are still made, and the export says "No audio: the microphone was lost". Every ffmpeg and ffprobe call has a time limit.
 2. **Silence check.** Run ffmpeg `silencedetect` (noise -40dB, d=0.5). If no non-silent region of 0.3s or longer exists, set state `empty` and stop (no transcription, no renders).
-3. **Transcribe.** Groq `whisper-large-v3`, `response_format=verbose_json`, `timestamp_granularities=[word, segment]`, language from `WHISPER_LANGUAGE`. Save the full response as `transcript.json`. On failure: retry 3 times with backoff (5s, 30s, 120s), then state `failed` with the error. The remaining steps still run without word timings.
+3. **Transcribe.** Groq `whisper-large-v3`, `response_format=verbose_json`, `timestamp_granularities=[word, segment]`, language from `WHISPER_LANGUAGE`. Save the response, normalised to the `Transcript` shape (text, language, duration, words, segments with start, end and text), as `transcript.json`. Per-segment extras from Groq (`avg_logprob`, `no_speech_prob`, ids) are not kept. A WAV over 24MB is sent as FLAC instead; if that is still too large the step fails with a clear message. On failure: retry 3 times with backoff (5s, 30s, 120s), then state `failed` with the error. The remaining steps still run without word timings.
 4. **Choose key moments.** Candidates, with reason labels:
    - `pause`: the first pointer position after `t = 0` (or centre if none), at `pausedAtVideoTime`.
    - `click`: every click.
@@ -320,6 +326,8 @@ Triggered by a successful `complete`. Jobs are processed one at a time. On start
 - `/admin*` and `/api/admin/*` are protected by a Cloudflare Access application. People sign in with email; machines use an Access service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers).
 - The app also verifies the `Cf-Access-Jwt-Assertion` header against the team's JWKS and `CF_ACCESS_AUD` (using `jose`). Requests without a valid JWT get 401.
 - The app listens only on `127.0.0.1`, so the tunnel is the only way in.
+- State-changing admin requests (anything but GET) are also checked for cross-site forgery: an `Origin` other than `PUBLIC_BASE_URL`, or `Sec-Fetch-Site` other than `same-origin`, is refused with 403, and a body that is not `application/json` with 415. Service-token clients send neither header and pass. The Access application's session cookie should be set to `SameSite=Lax` or `Strict` in the Cloudflare dashboard as a second layer.
+- Every response carries `X-Frame-Options: DENY`, `frame-ancestors 'none'` and `X-Content-Type-Options: nosniff`. `/r/*`, `/api/*` and `/admin*` also carry `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex, nofollow`.
 - Shell CLIs on geriatrix read `DATA_DIR` directly and need no auth.
 
 ## 9. Export
@@ -346,7 +354,7 @@ GET /api/admin/videos/<videoId>/export.json   (same query params; feedback.json 
 ```
 CLI: `yarn export <videoId> [--version n|all] [--clips] [--since ISO] [--out path]`.
 
-Clip rendering is part of normal processing, so `pendingProcessing` counts comments whose clip is not yet rendered. Without `clips=1`, a comment only waiting for its clip does not cause a 202.
+Clip rendering is part of normal processing, so `pendingProcessing` counts comments whose clip is not yet rendered. It also counts an upload that has been quiet for 30 minutes and is waiting for the server to finish it. Without `clips=1`, a comment only waiting for its clip does not cause a 202.
 
 ### Zip layout
 ```
@@ -419,7 +427,10 @@ Every transcript word carries the pointer position at the moment it was spoken.
 | Mic permission denied | Browser-specific steps and Try again; cannot proceed |
 | Mic track ends mid-session | Reconnect prompt on next pause; comment flagged `micLost` |
 | Upload failure | IndexedDB retry; banner after 20s of failure; resume on reload |
-| Over size/rate limit | 413/429; stop that comment; banner |
+| Over size limit | 413; stop that comment at once; stopped notice and banner; what was accepted is kept |
+| Over rate limit, or disk nearly full | 429/507; keep retrying; banner after 20s |
+| Video fails to load | "We couldn't load the video. Check your connection and reload." with a Reload button; no comment is opened |
+| Tab closed mid-comment | Completed from IndexedDB on the next visit, or by the server after 30 minutes |
 | Invalid video in inbox | Rejected with reason; file stays in inbox |
 | Groq failure | 3 retries, then `failed`; stills still rendered; README flags it; `yarn reprocess` |
 | ffmpeg/sharp failure on one step | That step marked failed in `status.json`; other comments continue; admin UI shows it |

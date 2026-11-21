@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { T } from '@/lib/testids';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { notifyCommentComplete, setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
 
@@ -20,6 +21,14 @@ describe('contracts', () => {
   });
   it('reviewer copy has no em-dashes', () => {
     for (const s of strings(copy)) expect(s).not.toContain('—');
+  });
+  it('the added copy has no em-dashes or timecodes, and the added test ids clash with nothing', () => {
+    for (const text of strings(moreCopy)) {
+      expect(text).not.toContain('—');
+      expect(text).not.toMatch(/\d+:\d{2}/);
+    }
+    const ids = [...Object.values(T), ...Object.values(MORE_T)];
+    expect(new Set(ids).size).toBe(ids.length);
   });
   it('copy functions interpolate', () => {
     expect(copy.pageTitle('Promo')).toBe('Feedback: Promo');

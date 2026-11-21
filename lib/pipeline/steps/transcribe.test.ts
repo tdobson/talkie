@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { fx } from '@/lib/media/testutil';
+import { limits } from '@/lib/limits';
 import { fakeTranscriber, groqTranscriber } from './transcribe';
 
 const wav = fx('speech-like.wav');
@@ -129,4 +130,38 @@ it('fakeTranscriber spreads the fixed sentence across the audio', async () => {
     expect(t.words[i].start).toBeGreaterThanOrEqual(t.words[i - 1].end);
   }
   expect(await fakeTranscriber.transcribe(wav, 'en')).toEqual(t);
+});
+
+describe('recordings too large to send as WAV', () => {
+  const saved = limits.transcribeUploadBytes;
+  afterEach(() => {
+    limits.transcribeUploadBytes = saved;
+  });
+
+  it('sends FLAC instead when the WAV is over the upload limit', async () => {
+    const wavBytes = (await readFile(wav)).length;
+    limits.transcribeUploadBytes = wavBytes - 1;
+    const body = await readFile(fixture, 'utf8');
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { status: 200 }));
+    const t = await groqTranscriber('k', 'https://api.groq.test', fetchImpl).transcribe(wav, 'en');
+    expect(t.words).toHaveLength(15);
+    const file = (fetchImpl.mock.calls[0][1].body as FormData).get('file') as File;
+    expect(file.name).toBe('audio.flac');
+    expect(file.type).toBe('audio/flac');
+    expect(file.size).toBeLessThan(wavBytes);
+    expect(
+      Buffer.from(await file.arrayBuffer())
+        .subarray(0, 4)
+        .toString('latin1')
+    ).toBe('fLaC');
+  });
+
+  it('fails at once, saying why, when even the FLAC is too large', async () => {
+    limits.transcribeUploadBytes = 1000;
+    const fetchImpl = vi.fn();
+    await expect(
+      groqTranscriber('k', 'https://api.groq.test', fetchImpl).transcribe(wav, 'en')
+    ).rejects.toThrow(/too large to transcribe/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

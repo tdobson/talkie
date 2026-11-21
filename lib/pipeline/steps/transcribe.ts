@@ -1,8 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '@/lib/config';
 import { GROQ_MODEL, TRANSCRIBE_BACKOFF_MS, TRANSCRIBE_TIMEOUT_MS } from '@/lib/constants';
+import { limits } from '@/lib/limits';
 import { audioDuration } from '@/lib/media/ops';
+import { runOk } from '@/lib/media/run';
 import { writeJsonAtomic } from '@/lib/storage/json';
 import type { Transcript, TranscriptSegment, TranscriptWord } from '@/lib/types';
 import { FILES, type StepFn } from './types';
@@ -69,6 +72,44 @@ async function errorDetail(res: Response): Promise<string> {
   return text.trim().slice(0, 300);
 }
 
+interface Upload {
+  bytes: Buffer;
+  name: string;
+  type: string;
+}
+
+/**
+ * The file to send. The WAV as it is while it fits Groq's upload limit; a long comment is
+ * re-encoded as FLAC (lossless, about half the size). If that is still too large the step
+ * fails here with the reason, instead of on every attempt with a bare 413.
+ */
+async function uploadFor(wavPath: string): Promise<Upload> {
+  const wav = await readFile(wavPath);
+  if (wav.length <= limits.transcribeUploadBytes) {
+    return { bytes: wav, name: 'audio.wav', type: 'audio/wav' };
+  }
+  const tmp = await mkdtemp(join(tmpdir(), 'vf-flac-'));
+  try {
+    const out = join(tmp, 'audio.flac');
+    await runOk(
+      'ffmpeg',
+      ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y', '-i', wavPath, '-c:a', 'flac', out],
+      { timeoutMs: limits.audioTimeoutMs }
+    );
+    const flac = await readFile(out);
+    if (flac.length > limits.transcribeUploadBytes) {
+      const mb = (n: number) => (n / (1024 * 1024)).toFixed(1);
+      throw new GroqError(
+        `The recording is too large to transcribe: ${mb(flac.length)}MB, and the limit is ${mb(limits.transcribeUploadBytes)}MB.`,
+        false
+      );
+    }
+    return { bytes: flac, name: 'audio.flac', type: 'audio/flac' };
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -83,9 +124,12 @@ export function groqTranscriber(
 ): Transcriber {
   const url = `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 
-  async function attempt(wav: Buffer, language: string): Promise<Transcript> {
+  async function attempt(upload: Upload, language: string): Promise<Transcript> {
     const form = new FormData();
-    form.append('file', new File([new Uint8Array(wav)], 'audio.wav', { type: 'audio/wav' }));
+    form.append(
+      'file',
+      new File([new Uint8Array(upload.bytes)], upload.name, { type: upload.type })
+    );
     form.append('model', GROQ_MODEL);
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'word');
@@ -123,10 +167,10 @@ export function groqTranscriber(
 
   return {
     async transcribe(wavPath, language) {
-      const wav = await readFile(wavPath);
+      const upload = await uploadFor(wavPath);
       for (let tries = 0; ; tries++) {
         try {
-          return await attempt(wav, language);
+          return await attempt(upload, language);
         } catch (err) {
           const delay = TRANSCRIBE_BACKOFF_MS[tries];
           if (!(err instanceof GroqError && err.retryable) || delay === undefined) throw err;

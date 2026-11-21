@@ -30,6 +30,12 @@ export const limits = {
    */
   commentDurationMs: 20 * MINUTE,
 
+  /**
+   * Largest file sent to Groq in one request. Their limit is 25MB; a 16 kHz WAV reaches that
+   * after about 13 minutes, so anything larger is sent as FLAC, which is about half the size.
+   */
+  transcribeUploadBytes: 24 * MB,
+
   /** A comment still `receiving` with no new chunk for this long is finished by the server. */
   staleReceivingMs: 30 * MINUTE,
   /** How often the server looks for such comments. */

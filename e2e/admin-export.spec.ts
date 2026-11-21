@@ -26,6 +26,8 @@ test('admin imports from the inbox and downloads a zip with the feedback', async
   page,
   request,
 }) => {
+  // pendingProcessing now also waits for the comment's clip, which renders at low priority.
+  test.setTimeout(240_000);
   const filename = `inbox-film-${Date.now()}.mp4`;
   const inbox = join(state().dataDir, 'inbox');
   mkdirSync(inbox, { recursive: true });
@@ -61,7 +63,7 @@ test('admin imports from the inbox and downloads a zip with the feedback', async
         const v = all.find((x) => x.videoId === video.videoId);
         return v?.versions.reduce((n, ver) => n + ver.pendingProcessing, 0);
       },
-      { timeout: 60_000, intervals: [1000] }
+      { timeout: 150_000, intervals: [1000] }
     )
     .toBe(0);
 
