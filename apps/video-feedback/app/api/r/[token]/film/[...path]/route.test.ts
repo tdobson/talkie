@@ -144,10 +144,9 @@ it('has the video route 404 for a talkie version', async () => {
   // Even with a source.mp4 sitting there, the recorded kind decides.
   await writeFile(sourcePath(video.videoId, 2), 'mp4 bytes');
   const call = (version: number) =>
-    getVideoRoute(
-      new Request(`http://localhost/api/r/${video.token}/video?version=${version}`),
-      { params: Promise.resolve({ token: video.token }) }
-    );
+    getVideoRoute(new Request(`http://localhost/api/r/${video.token}/video?version=${version}`), {
+      params: Promise.resolve({ token: video.token }),
+    });
   expect((await call(2)).status).toBe(404);
   expect((await call(1)).status).toBe(200);
 });

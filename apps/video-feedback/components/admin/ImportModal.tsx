@@ -16,7 +16,22 @@ export interface ImportModalProps {
   fetchImpl?: typeof fetch;
 }
 
-/** Imports one inbox file, as a new video or as a new version of an existing one. */
+/**
+ * What an inbox entry is, for the line under the modal title. The inbox lists video files, packed
+ * Talkie films (`.lottie`) and Talkie film folders, so a name with neither extension is a folder.
+ * This is only a label: the server decides the kind by what the entry is on disk.
+ */
+export function inboxEntryLabel(filename: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.lottie')) return 'Talkie film';
+  if (/\.(mp4|m4v|mov)$/.test(lower)) return 'Video file';
+  return 'Talkie film folder';
+}
+
+/**
+ * Imports one inbox entry (an MP4, a packed Talkie film or a Talkie film folder) as a new video
+ * or as a new version of an existing one.
+ */
 export function ImportModal({
   file,
   videos,
@@ -82,7 +97,7 @@ export function ImportModal({
       <form onSubmit={onSubmit} noValidate>
         <Stack>
           <Text size="sm" c="dimmed">
-            File: {file.filename}
+            {inboxEntryLabel(file.filename)}: {file.filename}
           </Text>
           {mode === 'new' ? (
             <TextInput
