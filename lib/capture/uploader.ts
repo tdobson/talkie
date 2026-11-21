@@ -33,7 +33,16 @@ const MAX_COMPLETE_ROUNDS = 5;
  * Kept below SAVE_TROUBLE_AFTER_MS so a hung connection gets one retry before the banner shows.
  */
 export const REQUEST_TIMEOUT_MS = 15_000;
-/** Statuses that will never succeed on retry. 429 and 5xx are retried. */
+/**
+ * How long a provisional complete record must have gone without a new chunk before a page
+ * load treats its comment as abandoned and completes it. A comment that is being recorded
+ * (in another tab, say) writes a chunk every 2 seconds, so it never looks this old.
+ */
+export const PROVISIONAL_GRACE_MS = 15_000;
+/**
+ * Statuses that will never succeed on retry. 429 (slow down) and 5xx, 507 (disk nearly full)
+ * included, are retried: the audio stays queued here and nothing the reviewer said is dropped.
+ */
 const REFUSED = new Set([400, 404, 413]);
 
 function backoffMs(attempts: number): number {
@@ -65,6 +74,14 @@ export class Uploader {
 
   private readonly entries = new Map<string, Entry>();
   private readonly completeFailing = new Map<string, number>();
+  /** Comments being recorded now: what a provisional complete record needs to know of them. */
+  private readonly recording = new Map<
+    string,
+    { player: CompleteBody['player']; startedAt: number; total: number }
+  >();
+  /** Comments whose complete call is under way in this page. */
+  private readonly completing = new Set<string>();
+  private recheck: ReturnType<typeof setTimeout> | null = null;
   private waiters: Array<{ ready: () => boolean; resolve: () => void }> = [];
   private storeQueue: Promise<unknown> = Promise.resolve();
   private inFlight = 0;
@@ -94,8 +111,47 @@ export class Uploader {
     const full: PendingChunk = { ...chunk, key, token: this.token };
     // Storage failing (private mode, quota) must not stop the upload itself.
     await this.storeOp((s) => s.putChunk({ ...full, acked: false }));
+    await this.noteProgress(full);
     this.entries.set(key, this.entry(full, false, false));
     this.pump();
+  }
+
+  /**
+   * Keeps a provisional complete record in step with the chunks stored so far. The page's own
+   * complete() needs async work that a closing tab never gets to finish; with this record the
+   * next visit can still tell the server where the comment ended.
+   */
+  private async noteProgress(chunk: PendingChunk): Promise<void> {
+    const ck = commentKey(chunk.sid, chunk.cid);
+    if (this.completing.has(ck)) return;
+    const now = this.now();
+    let info = this.recording.get(ck);
+    if (!info && chunk.meta) {
+      const startedAt = Date.parse(chunk.meta.startedAt);
+      info = {
+        player: chunk.meta.player,
+        startedAt: Number.isFinite(startedAt) ? startedAt : now,
+        total: 0,
+      };
+      this.recording.set(ck, info);
+    }
+    if (!info) return;
+    info.total = Math.max(info.total, chunk.seq + 1);
+    const rec: PendingComplete = {
+      key: `${this.token}/${ck}`,
+      token: this.token,
+      sid: chunk.sid,
+      cid: chunk.cid,
+      provisional: true,
+      updatedAt: now,
+      body: {
+        totalChunks: info.total,
+        endedAt: new Date(now).toISOString(),
+        durationMs: Math.max(0, now - info.startedAt),
+        player: info.player,
+      },
+    };
+    await this.storeOp((s) => s.putComplete(rec));
   }
 
   /** Waits for all chunks of the comment, then tells the server it is complete. */
@@ -107,21 +163,40 @@ export class Uploader {
       cid,
       body,
     };
-    await this.storeOp((s) => s.putComplete(rec));
-    await this.runComplete(rec);
+    const ck = commentKey(sid, cid);
+    this.completing.add(ck);
+    this.recording.delete(ck);
+    try {
+      await this.storeOp((s) => s.putComplete(rec));
+      await this.runComplete(rec);
+    } finally {
+      this.completing.delete(ck);
+    }
   }
 
-  /** Loads whatever a previous page load left in IndexedDB for this token and starts sending it. */
+  /**
+   * Loads whatever a previous page load left in IndexedDB for this token and starts sending it.
+   *
+   * A comment with a complete record is completed once its chunks are in. That includes a
+   * comment the tab was closed on mid-recording, which only has the provisional record written
+   * as its chunks arrived: it is completed with the chunks that were stored. A provisional
+   * record that is still being updated belongs to a comment being recorded right now, so it is
+   * left alone and looked at again later.
+   */
   async resumePending(): Promise<void> {
+    if (this.disposed) return;
     const loaded = await this.storeOp(async (s) => ({
       chunks: await s.chunksForToken(this.token),
       completes: await s.completesForToken(this.token),
     }));
-    if (!loaded) return;
+    if (!loaded || this.disposed) return;
     const waiting = new Set(loaded.completes.map((c) => commentKey(c.sid, c.cid)));
     for (const { acked, ...chunk } of loaded.chunks) {
       if (this.entries.has(chunk.key)) continue;
-      const orphan = !waiting.has(commentKey(chunk.sid, chunk.cid));
+      const ck = commentKey(chunk.sid, chunk.cid);
+      // Chunks this page is recording are queued by enqueue(), not from here.
+      if (this.recording.has(ck) || this.completing.has(ck)) continue;
+      const orphan = !waiting.has(ck);
       if (acked && orphan) {
         void this.storeOp((s) => s.deleteChunk(chunk.key));
         continue;
@@ -129,9 +204,27 @@ export class Uploader {
       this.entries.set(chunk.key, this.entry(chunk, acked, orphan));
     }
     this.pump();
+    const now = this.now();
+    let lookAgain = false;
     for (const rec of loaded.completes) {
+      const ck = commentKey(rec.sid, rec.cid);
+      if (this.completing.has(ck)) continue;
+      if (rec.provisional && now - (rec.updatedAt ?? 0) < PROVISIONAL_GRACE_MS) {
+        lookAgain = true;
+        continue;
+      }
+      this.completing.add(ck);
+      this.recording.delete(ck);
       // The comment's own UI is gone after a reload: nobody is left to hear a failure.
-      void this.runComplete(rec).catch(() => {});
+      void this.runComplete(rec)
+        .catch(() => {})
+        .finally(() => this.completing.delete(ck));
+    }
+    if (lookAgain && this.recheck === null) {
+      this.recheck = setTimeout(() => {
+        this.recheck = null;
+        void this.resumePending().catch(() => {});
+      }, PROVISIONAL_GRACE_MS);
     }
   }
 
@@ -145,6 +238,8 @@ export class Uploader {
     this.disposed = true;
     if (this.wake) clearTimeout(this.wake);
     this.wake = null;
+    if (this.recheck) clearTimeout(this.recheck);
+    this.recheck = null;
     this.waiters = [];
   }
 
@@ -341,7 +436,8 @@ export class Uploader {
     }
   }
 
-  private async runComplete(rec: PendingComplete): Promise<void> {
+  private async runComplete(first: PendingComplete): Promise<void> {
+    let rec = first;
     const ck = commentKey(rec.sid, rec.cid);
     try {
       for (let round = 0; ; round++) {
@@ -359,11 +455,23 @@ export class Uploader {
         if (missing.length === 0) {
           throw new Error(`Could not complete comment ${rec.cid}: HTTP 409 with no missing list`);
         }
+        // A chunk the server refused (too large, say) is gone for good. Everything before it
+        // is still worth keeping, so the comment is completed as far as the first such gap.
+        const gone = (missing as unknown[]).find(
+          (seq) => !this.entries.has(`${this.token}/${ck}/${seq}`)
+        );
+        if (gone !== undefined) {
+          const upTo = typeof gone === 'number' && Number.isInteger(gone) ? gone : 0;
+          if (upTo < 1 || upTo >= rec.body.totalChunks) {
+            throw new Error(`Could not complete comment ${rec.cid}: missing chunk ${gone} is gone`);
+          }
+          rec = { ...rec, body: { ...rec.body, totalChunks: upTo } };
+          await this.storeOp((s) => s.putComplete(rec));
+          continue;
+        }
         for (const seq of missing) {
           const e = this.entries.get(`${this.token}/${ck}/${seq}`);
-          if (!e) {
-            throw new Error(`Could not complete comment ${rec.cid}: missing chunk ${seq} is gone`);
-          }
+          if (!e) continue;
           e.acked = false;
           e.retryAt = 0;
           void this.storeOp((s) => s.putChunk({ ...e.chunk, acked: false }));

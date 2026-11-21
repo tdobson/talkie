@@ -1,7 +1,7 @@
 import { SAVE_TROUBLE_AFTER_MS } from '@/lib/constants';
 import type { CaptureEvent, CommentMeta, CompleteBody, PlayerInfo } from '@/lib/types';
 import { ChunkStoreIdb } from './idb';
-import { Uploader } from './uploader';
+import { PROVISIONAL_GRACE_MS, Uploader } from './uploader';
 
 const player: PlayerInfo = {
   containerWidth: 800,
@@ -239,9 +239,111 @@ describe('Uploader', () => {
     expect(JSON.parse(form.get('events') as string)).toEqual([ev]);
     expect(JSON.parse(form.get('meta') as string)).toEqual(meta);
     expect(second.pendingCount).toBe(0);
+    // The comment was never completed, so once it has clearly stopped it is completed here.
+    await vi.advanceTimersByTimeAsync(PROVISIONAL_GRACE_MS + 1000);
     const store = new ChunkStoreIdb();
     await vi.waitFor(async () => expect(await store.chunksForToken(token)).toEqual([]));
     expect(await store.chunksForToken(otherToken)).toHaveLength(1);
+    second.dispose();
+  });
+
+  it('completes a comment that was still open when the tab closed, on the next visit', async () => {
+    const token = freshToken();
+    const store = new ChunkStoreIdb();
+    const first = new Uploader({
+      token,
+      fetchImpl: vi.fn().mockResolvedValue(ok()),
+      store,
+      onTrouble: () => {},
+    });
+    vi.setSystemTime(new Date('2026-11-21T10:00:02.000Z'));
+    await first.enqueue({ sid, cid, seq: 0, audio: new Blob(['aa']), events: [ev], meta });
+    vi.setSystemTime(new Date('2026-11-21T10:00:04.000Z'));
+    await first.enqueue({ sid, cid, seq: 1, audio: new Blob(['bb']), events: [] });
+    await first.whenIdle();
+    // The tab goes away here: no complete() is ever called.
+    first.dispose();
+    await vi.waitFor(async () => expect(await store.completesForToken(token)).toHaveLength(1));
+
+    vi.setSystemTime(new Date('2026-11-21T11:00:00.000Z'));
+    const fetchImpl = vi.fn().mockResolvedValue(ok());
+    const second = new Uploader({ token, fetchImpl, store, onTrouble: () => {} });
+    await second.resumePending();
+    await vi.waitFor(() => expect(calls(fetchImpl)).toEqual([completeUrl(token)]));
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string)).toEqual({
+      totalChunks: 2,
+      endedAt: '2026-11-21T10:00:04.000Z',
+      durationMs: 4000,
+      player,
+    });
+    await vi.waitFor(async () => {
+      expect(await store.completesForToken(token)).toEqual([]);
+      expect(await store.chunksForToken(token)).toEqual([]);
+    });
+    second.dispose();
+  });
+
+  it('leaves a comment alone while another tab may still be recording it, then completes it', async () => {
+    const token = freshToken();
+    const store = new ChunkStoreIdb();
+    const offline = vi.fn().mockRejectedValue(new TypeError('offline'));
+    const first = new Uploader({ token, fetchImpl: offline, store, onTrouble: () => {} });
+    await first.enqueue({ sid, cid, seq: 0, audio: new Blob(['aa']), events: [], meta });
+    first.dispose();
+
+    const fetchImpl = vi.fn().mockResolvedValue(ok());
+    const second = new Uploader({ token, fetchImpl, store, onTrouble: () => {} });
+    await second.resumePending();
+    await second.whenIdle();
+    await vi.advanceTimersByTimeAsync(PROVISIONAL_GRACE_MS - 2000);
+    expect(calls(fetchImpl)).toEqual([chunkUrl(token, 0)]);
+    await vi.advanceTimersByTimeAsync(4000);
+    await vi.waitFor(() =>
+      expect(calls(fetchImpl)).toEqual([chunkUrl(token, 0), completeUrl(token)])
+    );
+    second.dispose();
+  });
+
+  it('a real complete replaces the provisional one, and is the only one sent', async () => {
+    const token = freshToken();
+    const store = new ChunkStoreIdb();
+    const fetchImpl = vi.fn().mockResolvedValue(ok());
+    const up = new Uploader({ token, fetchImpl, store, onTrouble: () => {} });
+    await up.enqueue({ sid, cid, seq: 0, audio: new Blob(['aa']), events: [], meta });
+    await up.complete(sid, cid, { ...completeBody, totalChunks: 1 });
+    await vi.advanceTimersByTimeAsync(PROVISIONAL_GRACE_MS * 2);
+    expect(calls(fetchImpl)).toEqual([chunkUrl(token, 0), completeUrl(token)]);
+    await vi.waitFor(async () => expect(await store.completesForToken(token)).toEqual([]));
+    up.dispose();
+  });
+
+  it('completes with the chunks the server has when a later chunk was refused', async () => {
+    const token = freshToken();
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/chunks/0')) return ok(0);
+      if (url.endsWith('/chunks/1')) return new Response('too big', { status: 413 });
+      const body = JSON.parse(init?.body as string) as CompleteBody;
+      return body.totalChunks > 1
+        ? Response.json({ ok: false, missing: [1] }, { status: 409 })
+        : Response.json({ ok: true });
+    });
+    const onRejected = vi.fn();
+    const up = new Uploader({
+      token,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onTrouble: () => {},
+      onRejected,
+    });
+    await up.enqueue({ sid, cid, seq: 0, audio: new Blob(['a']), events: [], meta });
+    await up.enqueue({ sid, cid, seq: 1, audio: new Blob(['b']), events: [] });
+    await up.whenIdle();
+    expect(onRejected).toHaveBeenCalledTimes(1);
+    await expect(up.complete(sid, cid, completeBody)).resolves.toBeUndefined();
+    const completes = fetchImpl.mock.calls
+      .filter(([url]) => url.endsWith('/complete'))
+      .map(([, init]) => (JSON.parse(init?.body as string) as CompleteBody).totalChunks);
+    expect(completes).toEqual([2, 1]);
+    up.dispose();
   });
 
   it('resumePending finishes a comment whose complete call was still waiting', async () => {

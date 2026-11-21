@@ -13,6 +13,14 @@ export interface PendingComplete {
   sid: string;
   cid: string;
   body: CompleteBody;
+  /**
+   * True for a record the uploader wrote itself as chunks arrived, before the page asked for
+   * the comment to be completed. If the tab goes away mid-comment this is all that is left to
+   * say where the comment ended, and the next visit completes the comment from it.
+   */
+  provisional?: boolean;
+  /** Date.now() when a provisional record was last written. */
+  updatedAt?: number;
 }
 
 // Audio is stored as bytes plus a type: not every engine can structured-clone a Blob into IndexedDB.
