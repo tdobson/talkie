@@ -4,3 +4,4 @@ out/*.wav
 out/*.mp4
 out/concat.txt
 out/tmp
+audio/n-x24.*

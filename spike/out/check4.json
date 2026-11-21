@@ -1,0 +1,50 @@
+{
+  "file": "out/scene.lottie",
+  "bytes": 319410,
+  "entries": [
+    {
+      "name": "manifest.json",
+      "bytes": 80
+    },
+    {
+      "name": "talkie.json",
+      "bytes": 333
+    },
+    {
+      "name": "a/g01-s01.json",
+      "bytes": 265155
+    },
+    {
+      "name": "u/n.webm",
+      "bytes": 102280
+    },
+    {
+      "name": "u/n.m4a",
+      "bytes": 190153
+    }
+  ],
+  "browser": "chromium 159.0.8154.6",
+  "loaded": true,
+  "loadError": null,
+  "frame": 120,
+  "totalFrames": 1635,
+  "manifest": {
+    "version": "2",
+    "generator": "talkie-spike 0.0.0",
+    "initial": null,
+    "animations": [
+      {
+        "id": "g01-s01",
+        "name": null,
+        "themes": null,
+        "background": null,
+        "initialTheme": null
+      }
+    ],
+    "themes": null,
+    "stateMachines": null
+  },
+  "distinctColours": 226,
+  "errors": [],
+  "pass": true
+}

@@ -24,6 +24,11 @@ two headings, a label with a drawn leader, 60 rain streaks and two water drops. 
 | `sync.html` | The sync harness. |
 | `proto/check-pages.mjs` | Loads both pages headless and fails on any console error. |
 | `proto/serve.mjs` | A small static server with byte ranges. |
+| `REPORT.md` | The Task S2 results: the four checks with their numbers, and the manual steps. |
+| `sync.mjs` | Check 2: drives `sync.html` in Chromium, Firefox and WebKit and writes `out/sync-<browser>.json`. |
+| `sizes.mjs` | Check 3: Talkie sizes against the H.264 and H.265 files on asterix, into `out/check3.json`. |
+| `pack.mjs`, `compat.html` | Check 4: packs `out/scene.lottie` and opens it with stock dotlottie-web. |
+| `proto/probe-clock.mjs` | Diagnostic: how a browser reports `audio.currentTime`, frame by frame. |
 
 ## Running it
 

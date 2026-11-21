@@ -82,7 +82,7 @@ await new Promise((resolve, reject) => {
 // ---- the loop: each animation frame, read the clock, set the frame, measure
 const clock = new SmoothClock();
 const samples = [];   // { wall, audio, film, drift, rate, render } with times in seconds, render in ms
-let lastDraw = -1;
+let lastDraw = -1, lastRaw = -1;
 function draw(t) {
   // film time to scene and frame, as the player will do it: scene index, then the frame inside the scene
   const index = Math.min(REPEATS - 1, Math.floor(t / SCENE_SECONDS));
@@ -91,8 +91,12 @@ function draw(t) {
   return index * SCENE_SECONDS + frame / FR;   // the film time now on the canvas
 }
 function tick() {
+  const raw = audio.currentTime;
   const t = clock.read(audio);
-  const playing = !audio.paused && !audio.seeking && !audio.ended && audio.readyState >= 3;
+  // Playing means the sound is moving. WebKit's GStreamer port reports readyState 2 for long spells
+  // after a seek or a speed change while the sound plays on, so a moving currentTime counts as well.
+  const playing = !audio.paused && !audio.seeking && !audio.ended && (audio.readyState >= 3 || raw !== lastRaw);
+  lastRaw = raw;
   if (playing || t !== lastDraw) {
     const before = performance.now();
     const film = draw(t);
