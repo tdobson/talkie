@@ -2,6 +2,8 @@
 
 import { ActionIcon, Button, Slider } from '@mantine/core';
 import {
+  IconBadgeCc,
+  IconBadgeCcFilled,
   IconMaximize,
   IconMinimize,
   IconPlayerPauseFilled,
@@ -33,6 +35,9 @@ export interface ControlsProps {
   fullscreen?: boolean;
   /** False where the browser cannot go full screen at all: the button is not shown. */
   canFullscreen?: boolean;
+  /** Whether captions are showing. Leave out for media with no captions: no toggle is shown. */
+  captions?: boolean;
+  onCaptions?: () => void;
   onPlayPause: () => void;
   /** New position in seconds. */
   onSeek: (time: number) => void;
@@ -51,6 +56,8 @@ export function Controls({
   finishing = false,
   fullscreen = false,
   canFullscreen = true,
+  captions,
+  onCaptions,
   onPlayPause,
   onSeek,
   onVolume,
@@ -111,6 +118,19 @@ export function Controls({
             data-testid={T.volume}
           />
         </div>
+        {captions !== undefined && (
+          <ActionIcon
+            size="lg"
+            variant="subtle"
+            color="gray.3"
+            aria-label={captions ? copy.player.captionsOn : copy.player.captionsOff}
+            aria-pressed={captions}
+            onClick={onCaptions}
+            data-testid={T.captionsToggle}
+          >
+            {captions ? <IconBadgeCcFilled size={20} /> : <IconBadgeCc size={20} />}
+          </ActionIcon>
+        )}
         {canFullscreen && (
           <ActionIcon
             size="lg"

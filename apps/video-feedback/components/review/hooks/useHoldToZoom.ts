@@ -4,11 +4,13 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { pointerToFrame } from '@/lib/capture/eventLog';
 import { HOLD_TO_ZOOM_MS, ZOOM_SCALE } from '@/lib/constants';
 import type { ZoomState } from '@/lib/types';
-import { isOffPicture } from './usePointerCapture';
+import type { MediaAdapter } from '../media/adapter';
+import { isOffPicture, pictureSize } from './usePointerCapture';
 
 export interface HoldToZoomOptions {
   stageRef: RefObject<HTMLElement | null>;
-  videoRef: RefObject<HTMLVideoElement | null>;
+  /** The media being shown: its picture size, and for pointer events its current time. */
+  adapterRef: RefObject<MediaAdapter | null>;
   /** Zoom is only offered while paused on the player. Turning this off ends any zoom. */
   enabled: boolean;
   onStart: (zoom: ZoomState) => void;
@@ -38,12 +40,11 @@ export function useHoldToZoom(options: HoldToZoomOptions): void {
     let zoom: ZoomState | null = null;
 
     const originAt = (clientX: number, clientY: number) => {
-      const video = latest.current.videoRef.current;
       const at = pointerToFrame(
         clientX,
         clientY,
         stage.getBoundingClientRect(),
-        { videoWidth: video?.videoWidth ?? 0, videoHeight: video?.videoHeight ?? 0 },
+        pictureSize(latest.current.adapterRef.current),
         null
       );
       return { originX: clamp01(at.x), originY: clamp01(at.y) };

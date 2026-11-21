@@ -85,4 +85,25 @@ describe('Controls', () => {
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
     expect(handlers.onSeek).not.toHaveBeenCalled();
   });
+
+  it('has no captions toggle unless the media has captions', () => {
+    render(<Controls currentTime={0} duration={900} playing={false} {...makeHandlers()} />);
+    expect(screen.queryByTestId(T.captionsToggle)).toBeNull();
+  });
+
+  it('the captions toggle says whether captions are on, and asks to change it', () => {
+    const onCaptions = vi.fn();
+    const props = { currentTime: 0, duration: 900, playing: false, ...makeHandlers(), onCaptions };
+    const { rerender } = render(<Controls {...props} captions />);
+    const toggle = screen.getByTestId(T.captionsToggle);
+    expect(toggle).toHaveAccessibleName(copy.player.captionsOn);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    expect(onCaptions).toHaveBeenCalledTimes(1);
+
+    rerender(<Controls {...props} captions={false} />);
+    expect(screen.getByTestId(T.captionsToggle)).toHaveAccessibleName(copy.player.captionsOff);
+    expect(screen.getByTestId(T.captionsToggle)).toHaveAttribute('aria-pressed', 'false');
+    expect(document.body.textContent).not.toMatch(/\d+:\d{2}/);
+  });
 });

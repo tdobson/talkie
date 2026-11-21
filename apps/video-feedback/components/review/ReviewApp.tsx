@@ -4,6 +4,7 @@ import { Transition } from '@mantine/core';
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Uploader, type UploaderOptions } from '@/lib/capture/uploader';
 import { initialState, reducer } from '@/lib/review/machine';
+import type { MediaKind } from '@/lib/types';
 import { useSession } from './hooks/useSession';
 import { Player, type PlayerUploader } from './player/Player';
 import classes from './review.module.css';
@@ -26,6 +27,8 @@ export interface ReviewAppProps {
   frameDuration: number;
   /** Seconds per frame of each version, for a session resumed on an older one. */
   frameDurations?: Record<number, number>;
+  /** What each version is, by version number. A version not listed is an mp4. */
+  mediaKinds?: Record<number, MediaKind>;
   /** Test seam. Defaults to the real IndexedDB-backed uploader. */
   createUploader?: (options: UploaderOptions) => ReviewUploader;
 }
@@ -69,6 +72,7 @@ export function ReviewApp({
   latestVersion,
   frameDuration,
   frameDurations,
+  mediaKinds,
   createUploader,
 }: ReviewAppProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -280,6 +284,7 @@ export function ReviewApp({
           <Player
             token={token}
             frameDuration={frameDurations?.[state.version ?? latestVersion] ?? frameDuration}
+            mediaKind={mediaKinds?.[state.version ?? latestVersion] ?? 'mp4'}
             state={state}
             dispatch={dispatch}
             stream={stream}
