@@ -15,7 +15,7 @@ jest.setTimeout(180_000);
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 // without ffmpeg these show as skipped
-const testFfmpeg = hasFfmpeg ? test : test.skip;
+const describeFfmpeg = hasFfmpeg ? describe : describe.skip;
 
 const FIXTURE = resolve(__dirname, 'fixtures/mini-film');
 const ALIAS = {
@@ -229,17 +229,19 @@ describe('openrouter provider', () => {
     await expect(quiet.synthesize('Hello.', o)).rejects.toThrow(/almost no audio/);
   });
 
-  testFfmpeg('trims the silence at both ends with ffmpeg', async () => {
-    const rate = 24000;
-    const samples = new Int16Array(rate * 3);
-    for (let i = rate; i < rate * 2; i++) {
-      samples[i] = Math.round(6000 * Math.sin((2 * Math.PI * 220 * i) / rate));
-    }
-    const trimmed = readWav(await trimSilence(writeWav(samples, rate)));
-    expect(trimmed.sampleRate).toBe(rate);
-    const seconds = trimmed.samples.length / rate;
-    expect(seconds).toBeGreaterThan(0.95);
-    expect(seconds).toBeLessThan(1.5);
+  describeFfmpeg('trimming', () => {
+    test('trims the silence at both ends with ffmpeg', async () => {
+      const rate = 24000;
+      const samples = new Int16Array(rate * 3);
+      for (let i = rate; i < rate * 2; i++) {
+        samples[i] = Math.round(6000 * Math.sin((2 * Math.PI * 220 * i) / rate));
+      }
+      const trimmed = readWav(await trimSilence(writeWav(samples, rate)));
+      expect(trimmed.sampleRate).toBe(rate);
+      const seconds = trimmed.samples.length / rate;
+      expect(seconds).toBeGreaterThan(0.95);
+      expect(seconds).toBeLessThan(1.5);
+    });
   });
 });
 
@@ -317,11 +319,7 @@ describe('talkie voice', () => {
   });
 
   test('--check flags the lines Whisper hears differently', async () => {
-    const heard = [
-      'This is a roof tile.',
-      'It sits under the soffit.',
-      'One snail folds it gown.',
-    ];
+    const heard = ['This is a roof tile.', 'It sits under the soffit.', 'One snail folds it gown.'];
     const result = await voiceFilm(dir, {
       alias: ALIAS,
       check: true,
@@ -332,7 +330,9 @@ describe('talkie voice', () => {
     expect(result.rows[2].similarity).toBeCloseTo(0.4, 6);
     const table = voiceTable(result);
     expect(table).toContain('3 new, 0 cached, 1 flagged');
-    expect(table).toMatch(/two-a\s+two\s+new\s+2\.44\s+0\.40 FLAG\s+One snail folds it gown\./);
+    expect(table).toMatch(
+      /two-a\s+two\s+new\s+2\.44\s+0\.40 FLAG\s+heard: One snail folds it gown\./
+    );
     expect(table).not.toMatch(/[–—]/);
   });
 
@@ -344,9 +344,11 @@ describe('talkie voice', () => {
     expect(table).toContain('0 new, 3 cached\n');
   });
 
-  testFfmpeg('the film builds from what the fake provider voiced', async () => {
-    await voiceFilm(dir, { alias: ALIAS });
-    const { film } = await buildFilm(dir, { alias: ALIAS });
-    expect(film.scenes).toHaveLength(2);
+  describeFfmpeg('building', () => {
+    test('the film builds from what the fake provider voiced', async () => {
+      await voiceFilm(dir, { alias: ALIAS });
+      const { film } = await buildFilm(dir, { alias: ALIAS });
+      expect(film.scenes).toHaveLength(2);
+    });
   });
 });
