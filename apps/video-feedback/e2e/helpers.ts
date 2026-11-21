@@ -2,8 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { type APIRequestContext, expect, type Page } from '@playwright/test';
+import sharp from 'sharp';
+import yauzl from 'yauzl';
 import { T } from '@/lib/testids';
 import type {
+  AdminVideoSummary,
   CaptureEvent,
   CommentMeta,
   CommentRef,
@@ -213,4 +216,64 @@ export async function apiReview(
   const finish = await request.post(`/api/r/${token}/sessions/${sessionId}/done`);
   expect(finish.ok()).toBe(true);
   return { videoId, sessionId, commentId };
+}
+
+/** Every file in a zip, by name. */
+export function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return reject(err);
+      const files = new Map<string, Buffer>();
+      zip.on('entry', (entry: yauzl.Entry) => {
+        if (entry.fileName.endsWith('/')) return zip.readEntry();
+        zip.openReadStream(entry, (e, stream) => {
+          if (e || !stream) return reject(e);
+          const parts: Buffer[] = [];
+          stream.on('data', (b: Buffer) => parts.push(b));
+          stream.on('end', () => {
+            files.set(entry.fileName, Buffer.concat(parts));
+            zip.readEntry();
+          });
+          stream.on('error', reject);
+        });
+      });
+      zip.on('end', () => resolve(files));
+      zip.on('error', reject);
+      zip.readEntry();
+    });
+  });
+}
+
+/** The RGB of an image's centre pixel. */
+export async function centrePixel(image: Buffer): Promise<[number, number, number]> {
+  const { data, info } = await sharp(image)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const x = Math.floor(info.width / 2);
+  const y = Math.floor(info.height / 2);
+  const i = (y * info.width + x) * info.channels;
+  return [data[i], data[i + 1], data[i + 2]];
+}
+
+/** Waits until nothing of a video is still processing, then downloads its export zip. */
+export async function exportWhenReady(
+  request: APIRequestContext,
+  videoId: string,
+  timeout = 150_000
+): Promise<Map<string, Buffer>> {
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get('/api/admin/videos');
+        const all = (await res.json()) as AdminVideoSummary[];
+        const v = all.find((x) => x.videoId === videoId);
+        return v ? v.versions.reduce((n, ver) => n + ver.pendingProcessing, 0) : -1;
+      },
+      { timeout, intervals: [1000] }
+    )
+    .toBe(0);
+  const zip = await request.get(`/api/admin/videos/${videoId}/export.zip`);
+  expect(zip.status()).toBe(200);
+  return unzip(await zip.body());
 }

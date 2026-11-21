@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { E2E_BASE_URL, E2E_DATA_DIR } from '../playwright.config';
-import { FIXTURES, ROOT, STATE_FILE, type E2EState } from './paths';
+import { FIXTURES, ROOT, TALKIE_FIXTURES, STATE_FILE, type E2EState } from './paths';
 
 /** Runs `yarn import` against the E2E data directory and returns what it printed. */
 export function cliImport(file: string, opts: { title: string } | { video: string }): string {
@@ -19,11 +19,12 @@ export function cliImport(file: string, opts: { title: string } | { video: strin
 }
 
 /** Copies a fixture under a unique name, so the inbox never holds two files with one name. */
-export function uniqueCopy(fixture: string, label: string): string {
+export function uniqueCopy(fixture: string, label: string, from = FIXTURES): string {
   const dir = join(E2E_DATA_DIR, '..', 'video-feedback-e2e-src');
   mkdirSync(dir, { recursive: true });
-  const dest = join(dir, `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`);
-  copyFileSync(join(FIXTURES, fixture), dest);
+  const ext = extname(fixture) || '.mp4';
+  const dest = join(dir, `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+  copyFileSync(join(from, fixture), dest);
   return dest;
 }
 
@@ -41,6 +42,11 @@ export default function globalSetup(): void {
 
   const v1 = parseImport(cliImport(uniqueCopy('h264.mp4', 'e2e-film'), { title: 'E2E film' }));
   const v2 = parseImport(cliImport(uniqueCopy('h264.mp4', 'e2e-film'), { video: v1.videoId }));
+  const film = parseImport(
+    cliImport(uniqueCopy('talkie-mini.lottie', 'e2e-talkie', TALKIE_FIXTURES), {
+      title: 'E2E Talkie film',
+    })
+  );
   const state: E2EState = {
     dataDir: E2E_DATA_DIR,
     baseUrl: E2E_BASE_URL,
@@ -48,6 +54,11 @@ export default function globalSetup(): void {
     version: v2.version,
     reviewUrl: v1.reviewUrl,
     token: v1.reviewUrl.split('/r/')[1],
+    talkie: {
+      videoId: film.videoId,
+      reviewUrl: film.reviewUrl,
+      token: film.reviewUrl.split('/r/')[1],
+    },
   };
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
