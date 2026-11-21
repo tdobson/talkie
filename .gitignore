@@ -1,0 +1,9 @@
+node_modules
+dist
+.talkie
+.next
+test-results
+playwright-report
+spike/node_modules
+spike/out/*.mp4
+.yarn

@@ -1,0 +1,4 @@
+const swc = ['@swc/jest', { jsc: { parser: { syntax: 'typescript', tsx: true }, transform: { react: { runtime: 'automatic' } } } }];
+const map = { '^@talkie/([a-z-]+)$': '<rootDir>/packages/$1/src/index', '^@talkie/player/define$': '<rootDir>/packages/player/src/define.ts', '^@lottiefiles/dotlottie-web$': '<rootDir>/test/fakes/dotlottie.ts' };
+const project = (name, env) => ({ displayName: name, testEnvironment: env, transform: { '^.+\\.(t|j)sx?$': swc }, moduleNameMapper: map, transformIgnorePatterns: ['/node_modules/(?!commander/)'], testMatch: [`<rootDir>/packages/${name}/test/**/*.test.ts?(x)`], setupFilesAfterEnv: env === 'jsdom' ? ['<rootDir>/jest.setup.cjs'] : [] });
+module.exports = { projects: [project('format', 'node'), project('author', 'node'), project('cli', 'node'), project('player', 'jsdom'), project('react', 'jsdom')] };

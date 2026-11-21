@@ -1,0 +1,27 @@
+{
+  "name": "@talkie/react",
+  "version": "0.1.0",
+  "description": "Talkie player for React 19",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "../../scripts/low esbuild ./src/index --bundle --format=esm --platform=browser --banner:js='\"use client\";' --external:react --external:react-dom --external:@talkie/player --outfile=dist/index.js && ../../scripts/low tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@talkie/player": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  }
+}
