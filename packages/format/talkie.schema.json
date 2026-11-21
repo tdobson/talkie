@@ -88,10 +88,10 @@
   },
   "$defs": {
     "path": {
-      "description": "A relative path inside the film: no leading slash, no backslash, no URL scheme, and no empty, '.' or '..' segments.",
+      "description": "A relative path inside the film: no leading slash, no backslash, no URL scheme, no empty, '.' or '..' segments, and no space, control character, '%', '?' or '#'.",
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\\\)(?!.*//)(?!(.*/)?\\.{1,2}(/|$))(?!.*/$).+$"
+      "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?![\\s\\S]*[\\u0000-\\u0020\\u007f%?#])(?!.*\\\\)(?!.*//)(?!(.*/)?\\.{1,2}(/|$))(?!.*/$).+$"
     }
   }
 }

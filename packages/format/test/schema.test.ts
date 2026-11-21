@@ -44,3 +44,22 @@ it('ignores unknown keys, as the validator does', () => {
   expect(check(film)).toBe(true);
   expect(validateFilm(film).ok).toBe(true);
 });
+
+it.each([
+  '../x.json',
+  '%2e%2e/secret.json',
+  '.%2E/secret.json',
+  '.\t./secret.json',
+  '..\n/secret.json',
+  'a/%2e%2e/%2e%2e/x.json',
+  'a/b.json?x=1',
+  'a/b.json#frag',
+  'a b.json',
+  'a\u0000.json',
+  'a\u007f.json',
+])('rejects unsafe path %j, as the validator does', (p) => {
+  const film = read('valid.json');
+  film.scenes[0].src = p;
+  expect(check(film)).toBe(false);
+  expect(validateFilm(film).ok).toBe(false);
+});

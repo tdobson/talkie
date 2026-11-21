@@ -43,12 +43,33 @@ it.each([
   'a\\b.json',
   './a.json',
   '',
-])('rejects unsafe path %s', (p) => {
+  '%2e%2e/secret.json',
+  '.%2E/secret.json',
+  '.\t./secret.json',
+  '..\n/secret.json',
+  'a/%2e%2e/%2e%2e/x.json',
+  'a/b.json?x=1',
+  'a/b.json#frag',
+  'a b.json',
+  ' a.json',
+  'a\u0000.json',
+  'a\u007f.json',
+])('rejects unsafe path %j', (p) => {
   const f = structuredClone(valid);
   f.scenes[0].src = p;
   expect(validateFilm(f)).toMatchObject({ ok: false, errors: [{ rule: 'path' }] });
   expect(isSafeRelativePath(p)).toBe(false);
 });
+
+it.each(['scenes/intro.json', 'u/n.opus', 'poster.png', 'a/b-c_d/e.f.json', '..a/b..json'])(
+  'accepts safe path %s',
+  (p) => {
+    const f = structuredClone(valid);
+    f.scenes[0].src = p;
+    expect(validateFilm(f).ok).toBe(true);
+    expect(isSafeRelativePath(p)).toBe(true);
+  }
+);
 
 it('rejects duplicate scene ids', () => {
   const f = structuredClone(valid);

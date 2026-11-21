@@ -11,11 +11,24 @@ export type ValidationResult =
 
 const EPS = 1e-3;
 
-/** True for a relative path that stays inside the film root. */
+/**
+ * Characters a URL parser rewrites or treats as a delimiter: controls and space (tab and newline
+ * are stripped), '%' (encoded dots decode to '..'), and '?' and '#' (they end the path).
+ */
+const hasUnsafePathChar = (p: string): boolean => {
+  for (let i = 0; i < p.length; i++) {
+    const c = p.charCodeAt(i);
+    if (c <= 0x20 || c === 0x7f || c === 0x25 || c === 0x3f || c === 0x23) return true;
+  }
+  return false;
+};
+
+/** True for a relative path that stays inside the film root, also once resolved as a URL. */
 export function isSafeRelativePath(p: unknown): p is string {
   return (
     typeof p === 'string' &&
     p.length > 0 &&
+    !hasUnsafePathChar(p) &&
     !p.startsWith('/') &&
     !p.includes('\\') &&
     !/^[a-z][a-z0-9+.-]*:/i.test(p) &&
