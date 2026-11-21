@@ -1,6 +1,6 @@
 import { STILL_MAX_WIDTH } from '@/lib/constants';
 import { visibleRegion } from '@/lib/geometry';
-import { extractFrame } from '@/lib/media/ops';
+import type { FrameSource } from '@/lib/media/frame-source';
 import type { CaptureEvent, CommentMeta, Moment, ProbeInfo } from '@/lib/types';
 import {
   AMBER,
@@ -28,6 +28,11 @@ export function pointerSize(w: number, h: number): number {
   return Math.max(24, Math.round(Math.min(w, h) / 22));
 }
 
+/** Talkie films are drawn at whatever size is asked for: their probe says `pixFmt: 'vector'`. */
+export function isVector(probe: Pick<ProbeInfo, 'pixFmt'>): boolean {
+  return probe.pixFmt === 'vector';
+}
+
 export function ringRadius(w: number, h: number): number {
   return Math.max(10, Math.round(Math.min(w, h) / 30));
 }
@@ -52,12 +57,12 @@ async function composeJpeg(frame: Buffer, w: number, h: number, parts: string[])
  * shows the zoomed area as a box, and `zoom` is the crop they were looking at.
  */
 export async function renderMomentStill(
-  src: string,
+  source: FrameSource,
   m: Moment,
   events: CaptureEvent[],
   probe: ProbeInfo
 ): Promise<{ full: Buffer; zoom: Buffer | null }> {
-  const frame = await extractFrame(src, m.vt, STILL_MAX_WIDTH);
+  const frame = await source.frame(m.vt, STILL_MAX_WIDTH);
   const { w, h } = await frameSize(frame);
   const px = (p: { x: number; y: number }): Point => ({ x: p.x * w, y: p.y * h });
 
@@ -78,8 +83,11 @@ export async function renderMomentStill(
   ]);
   if (!region) return { full, zoom: null };
 
-  // The crop comes from source pixels: never upscaled, and not limited by STILL_MAX_WIDTH.
-  const native = probe.width > w ? await extractFrame(src, m.vt, probe.width) : frame;
+  // A video crop comes from source pixels: never upscaled, and not limited by STILL_MAX_WIDTH.
+  // A vector film has no source pixels, so the whole frame is drawn again at the still width
+  // times the zoom, and the crop is as sharp as the still.
+  const zoomWidth = isVector(probe) ? Math.ceil(w * (m.zoom?.scale ?? 1)) : probe.width;
+  const native = zoomWidth > w ? await source.frame(m.vt, zoomWidth) : frame;
   const { w: nw, h: nh } = native === frame ? { w, h } : await frameSize(native);
   const cw = Math.max(1, Math.min(nw, Math.round(region.width * nw)));
   const ch = Math.max(1, Math.min(nh, Math.round(region.height * nh)));
@@ -98,14 +106,14 @@ export async function renderMomentStill(
  * (from then on they were looking at a different frame), and every click as a ring.
  */
 export async function renderOverview(
-  src: string,
+  source: FrameSource,
   meta: CommentMeta,
   events: CaptureEvent[],
   probe: ProbeInfo
 ): Promise<Buffer> {
   // General comments have no paused frame; they are recorded at the end of the video.
   const vt = meta.pausedAtVideoTime ?? probe.duration;
-  const frame = await extractFrame(src, vt, STILL_MAX_WIDTH);
+  const frame = await source.frame(vt, STILL_MAX_WIDTH);
   const { w, h } = await frameSize(frame);
   const px = (p: { x: number; y: number }): Point => ({ x: p.x * w, y: p.y * h });
 

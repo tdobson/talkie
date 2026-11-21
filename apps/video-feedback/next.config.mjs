@@ -35,7 +35,8 @@ const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: repoRoot,
   turbopack: { root: repoRoot },
-  serverExternalPackages: ['sharp'],
+  // playwright-core starts the headless browser for Talkie stills; it must not be bundled.
+  serverExternalPackages: ['sharp', 'playwright-core'],
   experimental: {
     // Build workers are capped so background builds cannot hog the machine.
     cpus: 2,

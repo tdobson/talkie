@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { FrameSourceFactory } from '@/lib/media/frame-source';
 import type { CaptureEvent, CommentMeta, CommentRef, ProbeInfo } from '@/lib/types';
 
 /**
@@ -13,6 +14,8 @@ export interface RenderStepContext {
   meta: CommentMeta;
   probe: ProbeInfo;
   log?: (message: string) => void;
+  /** Where frames come from. The default picks by the version's media kind. */
+  frameSource?: FrameSourceFactory;
 }
 
 export const renderDir = (dir: string): string => join(dir, 'render');

@@ -1,7 +1,7 @@
 import { access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { frameSourceFor } from '@/lib/media/frame-sources';
 import { renderClip } from '@/lib/render/clip';
-import { sourcePath } from '@/lib/storage/paths';
 import { type RenderStepContext, readEvents, renderDir } from './renderContext';
 import { audioFileName, FILES } from './types';
 
@@ -17,13 +17,18 @@ export async function clipStep(ctx: RenderStepContext): Promise<void> {
   }
   const outDir = renderDir(dir);
   await mkdir(outDir, { recursive: true });
-  await renderClip({
-    src: sourcePath(ref.videoId, meta.version),
-    audio,
-    meta,
-    events: await readEvents(dir),
-    probe,
-    out: join(outDir, FILES.clip),
-  });
+  const source = await (ctx.frameSource ?? frameSourceFor)(ref.videoId, meta.version);
+  try {
+    await renderClip({
+      source,
+      audio,
+      meta,
+      events: await readEvents(dir),
+      probe,
+      out: join(outDir, FILES.clip),
+    });
+  } finally {
+    await source.close();
+  }
   ctx.log?.('clip');
 }
