@@ -143,11 +143,16 @@ c.tween(arrow, 'rotation', [
 c.fade(shelf, c.T('s03-b'), { from: 100, to: 0 }); // fade out
 ```
 
-Two rules the build enforces:
+Rules the build enforces:
 
-- Every key must be inside the scene, or you get a `TimingError`.
+- Every key must be inside the scene, and every `dur` must be above 0, or you get a `TimingError`.
 - Two motions must not change the same property of the same node at the same time, or you get a
   `MotionConflictError`. `rise` and `pop` already include a fade.
+- One motion may start at the instant another ends, but only if both give the same value there.
+  A fade that ends at 100 followed by a tween that starts at 50 is a `MotionConflictError`.
+- Every `c.camera` call in a scene must use the same `origin`. The camera is one node, so a second
+  origin would move the first push as well. It is a `MotionConflictError` too.
+- `c.rect`, `c.line` and `c.circle` take finite numbers. `NaN` or `Infinity` is a `TypeError`.
 
 ## Art rules
 
@@ -174,7 +179,8 @@ you export from a drawing tool: convert text to outlines, expand gradients to fl
 save as plain SVG.
 
 Keep art above y 845 on a 1080 stage. Below that is the caption band, and `talkie qa` fails art
-that reaches into it.
+that reaches into it. A background is the exception: a node that covers the whole stage, such as
+`c.rect(0, 0, 1920, 1080, ...)`, should fill the frame, and `qa` lets it through.
 
 ## The fact gate
 

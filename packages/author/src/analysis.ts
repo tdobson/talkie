@@ -66,7 +66,8 @@ export interface BandHit {
  * The top level nodes whose bounding box, children and camera included, reaches below `band.y` at
  * a key time: the scene start, its end, or the time of any key of any track. The foot of the stage
  * is kept for captions, so art should stay above it. A node is passed over at a time when its own
- * opacity, or the camera's, is 0. In draw order, each node once.
+ * opacity, or the camera's, is 0. A background, which is a node that covers the whole stage, is
+ * not art and is passed over too: captions are drawn on top of it. In draw order, each node once.
  */
 export function outOfBand(model: SceneModel, band: { y: number }): BandHit[] {
   const times = new Set<number>([0, model.duration]);
@@ -91,6 +92,10 @@ export function outOfBand(model: SceneModel, band: { y: number }): BandHit[] {
       const box = bboxAt(node, t);
       if (!box) {
         break;
+      }
+      const [w, h] = model.size;
+      if (box.x <= 0 && box.y <= 0 && box.x + box.width >= w && box.y + box.height >= h) {
+        continue;
       }
       const m = matrixOf(camera);
       const bottom = Math.max(

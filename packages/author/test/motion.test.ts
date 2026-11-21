@@ -264,6 +264,133 @@ describe('motion rules', () => {
     });
   });
 
+  it('pop after rise, and rise after pop, both settle at the drawn box', () => {
+    build((ctx) => {
+      const a = box(ctx);
+      const b = box(ctx);
+      ctx.add(a, b);
+      ctx.rise(a, 1);
+      ctx.pop(a, 5);
+      ctx.pop(b, 1);
+      ctx.rise(b, 5);
+      const drawn = { x: 100, y: 200, width: 40, height: 20 };
+      expect(bboxAt(a, 9)).toEqual(drawn);
+      expect(bboxAt(b, 9)).toEqual(drawn);
+      // The rise still starts 40 below.
+      expect(keys(a, 'position')?.map((k) => k.v)).toEqual([
+        [120, 250],
+        [120, 210],
+      ]);
+    });
+  });
+
+  it('throws MotionConflictError naming the node, prop and time when two motions meet at one instant with different values', () => {
+    build((ctx) => {
+      const n = ctx.rect(0, 0, 10, 10, { fill: '#000000' }, 'plate');
+      ctx.add(n);
+      ctx.fade(n, 2, { from: 100, to: 0 });
+      const before = structuredClone(keys(n, 'opacity'));
+      let thrown: unknown;
+      try {
+        ctx.tween(n, 'opacity', [
+          { t: 1, v: 0 },
+          { t: 2, v: 50 },
+        ]);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(MotionConflictError);
+      const conflict = thrown as MotionConflictError;
+      expect(conflict.node).toBe(n);
+      expect(conflict.prop).toBe('opacity');
+      expect(conflict.message).toContain('opacity on "plate" (n1)');
+      expect(conflict.message).toContain('at 2 s');
+      // The refused motion left nothing behind.
+      expect(keys(n, 'opacity')).toEqual(before);
+      expect(() =>
+        ctx.tween(n, 'opacity', [
+          { t: 1, v: 0 },
+          { t: 2, v: 100 },
+        ])
+      ).not.toThrow();
+
+      const m = ctx.rect(0, 0, 10, 10, { fill: '#000000' }, 'tile');
+      ctx.add(m);
+      ctx.tween(m, 'position', [
+        { t: 1, v: [0, 0] },
+        { t: 2, v: [10, 0] },
+      ]);
+      expect(() =>
+        ctx.tween(m, 'position', [
+          { t: 2, v: [10, 5] },
+          { t: 3, v: [0, 0] },
+        ])
+      ).toThrow(MotionConflictError);
+    });
+  });
+
+  it('throws TimingError for a duration that is not a positive finite number', () => {
+    build((ctx) => {
+      const n = ctx.rect(0, 0, 10, 10, { fill: '#000000' }, 'plate');
+      ctx.add(n);
+      for (const dur of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => ctx.fade(n, 1, { dur })).toThrow(TimingError);
+        expect(() => ctx.rise(n, 1, { dur })).toThrow(TimingError);
+        expect(() => ctx.pop(n, 1, { dur })).toThrow(TimingError);
+        expect(() => ctx.draw(n, 1, dur)).toThrow(TimingError);
+        expect(() => ctx.camera(1, { dur })).toThrow(TimingError);
+      }
+      expect(() => ctx.fade(n, 1, { dur: 0 })).toThrow(
+        'fade on "plate" (n1) needs a duration above 0 s, got 0'
+      );
+      expect(() => ctx.camera(1, { dur: 0 })).toThrow('camera needs a duration above 0 s, got 0');
+      // Nothing was left behind by the refused calls.
+      expect(n.tracks).toEqual([]);
+      expect(n.trimmed).toBe(false);
+      expect(n.transform.opacity).toBe(100);
+    });
+  });
+
+  it('refuses a second camera move about a different origin', () => {
+    const model = build((ctx) => {
+      ctx.camera(0, { dur: 2, origin: [100, 100] });
+      expect(() => ctx.camera(2, { dur: 2, scaleTo: 110, origin: [100, 100] })).not.toThrow();
+      let thrown: unknown;
+      try {
+        ctx.camera(4, { dur: 2, origin: [500, 300] });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(MotionConflictError);
+      expect((thrown as Error).message).toBe(
+        'camera moves about [100, 100] already, and cannot also move about [500, 300]'
+      );
+      // Leaving the origin out means the scene centre, which is a different origin here.
+      expect(() => ctx.camera(4, { dur: 2 })).toThrow(MotionConflictError);
+    });
+    expect(model.camera.transform.anchor).toEqual([100, 100]);
+    expect(keys(model.camera, 'scale')).toHaveLength(3);
+  });
+
+  it('rect, line and circle refuse coordinates that are not finite numbers', () => {
+    build((ctx) => {
+      expect(() => ctx.rect(Number.NaN, 0, 1, 1, {})).toThrow(TypeError);
+      expect(() => ctx.rect(0, 0, Number.POSITIVE_INFINITY, 1, {}, 'wall')).toThrow(
+        'scene test: rect "wall" needs finite numbers, got w Infinity'
+      );
+      expect(() => ctx.rect(0, 0, 1, Number.NaN, {})).toThrow(TypeError);
+      expect(() => ctx.line([0, Number.NaN], [1, 1], {})).toThrow(TypeError);
+      expect(() => ctx.line([0, 0], [Number.NEGATIVE_INFINITY, 1], {})).toThrow(
+        'scene test: line "line" needs finite numbers, got to[0] -Infinity'
+      );
+      expect(() => ctx.circle([Number.NaN, 0], 1, {})).toThrow(TypeError);
+      expect(() => ctx.circle([0, 0], Number.NaN, {}, 'knob')).toThrow(
+        'scene test: circle "knob" needs finite numbers, got r NaN'
+      );
+      expect(() => ctx.rect(-5, 0.5, 1, 1, {})).not.toThrow();
+    });
+  });
+
   it('throws TimingError for any key past the duration or before zero', () => {
     build((ctx) => {
       const n = box(ctx);

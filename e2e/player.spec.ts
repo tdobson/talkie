@@ -4,6 +4,7 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import type { TalkieFilm } from '@talkie/format';
 import type { TalkiePlayerElement } from '../packages/player/src/element';
 import { FILM_DIR, startServer, WASM_FILE, type StaticServer } from './serve';
+import { silence } from './silence';
 
 // The standalone page, examples/watch.html, played in every Playwright project.
 //
@@ -65,6 +66,7 @@ async function open(
   await page.route(/^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com)\/.*\.wasm$/, (route) =>
     route.fulfill({ path: WASM_FILE, contentType: 'application/wasm' })
   );
+  await silence(page);
   await page.goto(`${site.url}/watch.html`);
   if (opts.debug) {
     // The element reads "debug" when it joins the page, so take it out and put it back.
@@ -98,17 +100,6 @@ async function pause(page: Page): Promise<void> {
   await player(page).evaluate((el: TalkiePlayerElement) => el.pause());
   await expect.poll(() => paused(page)).toBe(true);
   await page.waitForTimeout(300);
-}
-
-/**
- * Press "Try again" near its top edge. On a phone-width player the control bar lies over the
- * lower part of the button (see the test "the Try again button is clear of the control bar"),
- * and the top edge is the part a viewer can still reach.
- */
-async function pressRetry(page: Page): Promise<void> {
-  const retry = part(page, '.retry');
-  const box = (await retry.boundingBox())!;
-  await retry.click({ position: { x: box.width / 2, y: 4 } });
 }
 
 test('shows the poster and the play button before the first play', async ({ page, site }) => {
@@ -264,21 +255,14 @@ test('with every film request failing, the retry panel shows and retry loads the
   await expect(part(page, '.big-play')).toBeHidden();
 
   await page.unroute('**/film/**');
-  await pressRetry(page);
+  await part(page, '.retry').click();
   await expect.poll(() => readiness(page), { timeout: 20_000 }).toBe('ready');
   await expect(part(page, '.error')).toBeHidden();
   await part(page, '.big-play').click();
   await expect.poll(() => currentTime(page), { timeout: 5000 }).toBeGreaterThan(1);
 });
 
-test('the Try again button is clear of the control bar', async ({ page, site }, testInfo) => {
-  // Known defect, found by this test: where the player is about 400 px wide or less, the control
-  // bar lies over the lower two thirds of the button, so a tap on its middle does nothing. The
-  // fix belongs in packages/player/src/ui/template.ts. Take this line out when it is fixed.
-  test.fail(
-    testInfo.project.name.startsWith('mobile-'),
-    'the control bar covers most of the Try again button on a phone-width player'
-  );
+test('the Try again button is clear of the control bar', async ({ page, site }) => {
   await page.route('**/film/**', (route) => route.abort('internetdisconnected'));
   expect(await open(page, site)).toBe('error:network');
   await expect(part(page, '.retry')).toBeVisible();
@@ -318,7 +302,7 @@ test('a connection lost part way through shows the retry panel, and retry resume
     expect(stopped).toBeLessThan(film.duration - 5);
 
     slow.up();
-    await pressRetry(page);
+    await part(page, '.retry').click();
     await expect(part(page, '.error')).toBeHidden();
     // It carries on from where it stopped, not from the start.
     await expect.poll(() => currentTime(page), { timeout: 30_000 }).toBeGreaterThan(stopped + 1);

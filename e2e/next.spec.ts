@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import type { TalkieFilm } from '@talkie/format';
 import type { TalkiePlayerElement } from '../packages/player/src/element';
 import { FILM_DIR, REPO } from './serve';
+import { silence } from './silence';
 
 // The Next.js and Mantine example: a production build, started on a free port.
 //
@@ -102,6 +103,7 @@ test('/watch shows the film title and plays, with a clean console', async ({ pag
     }
   });
 
+  await silence(page);
   await page.goto(`${url}/watch`);
 
   // The title is a Mantine Title, drawn on the server from the film's talkie.json.
