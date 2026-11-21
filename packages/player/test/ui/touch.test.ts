@@ -12,9 +12,7 @@ describe('classifyTap', () => {
   });
 
   it('treats a quick second tap on the right third as skip forward', () => {
-    expect(classifyTap({ time: 1000, x: 800 }, { time: 1250, x: 780 }, width)).toBe(
-      'skip-forward'
-    );
+    expect(classifyTap({ time: 1000, x: 800 }, { time: 1250, x: 780 }, width)).toBe('skip-forward');
   });
 
   it('does not skip in the middle third', () => {
