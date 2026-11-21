@@ -12,6 +12,7 @@ import type {
   CaptureEvent,
   CommentKind,
   CommentMeta,
+  MediaKind,
   PlayerInfo,
   Rect,
   ZoomState,
@@ -23,6 +24,10 @@ import {
   isOffPicture,
   usePointerCapture,
 } from '../hooks/usePointerCapture';
+import { CaptionPlate } from '../media/CaptionPlate';
+import { filmFolderUrl } from '../media/filmUrl';
+import type { PlayerAdapter, SceneWarningDetail } from '../media/playerAdapter';
+import { VideoAdapter } from '../media/VideoAdapter';
 import { EndScreen } from '../screens/EndScreen';
 import { GeneralComment } from '../screens/GeneralComment';
 import { Controls } from './Controls';
@@ -35,10 +40,20 @@ import { VideoStage } from './VideoStage';
 /** The part of the uploader the player needs. */
 export type PlayerUploader = Pick<Uploader, 'enqueue' | 'complete'>;
 
+/** A Talkie adapter that has been mounted but has not opened its film yet. */
+export type TalkiePlayerAdapter = PlayerAdapter & { load(): Promise<void> };
+
+/** Mounts a Talkie engine in `container` for the film folder at `filmUrl`. */
+export type MountTalkie = (container: HTMLElement, filmUrl: string) => Promise<TalkiePlayerAdapter>;
+
 export interface PlayerProps {
   token: string;
-  /** Seconds per frame, for arrow-key stepping. */
+  /** Seconds per frame of an mp4, for arrow-key stepping. A film reads its own, scene by scene. */
   frameDuration: number;
+  /** What this version is. Versions from before Talkie support are mp4. */
+  mediaKind?: MediaKind;
+  /** Test seam. Defaults to the real engine, which is only ever loaded in the browser. */
+  mountTalkie?: MountTalkie;
   /** Machine state. The player shows the `player`, `end` and `general` screens. */
   state: ReviewState;
   dispatch: (action: ReviewAction) => void;
@@ -71,6 +86,8 @@ interface OpenComment {
   meta: CommentMeta;
   /** performance.now() at t=0 of the event log. */
   startedAt: number;
+  /** True once the event log has its t=0. Events pushed before that are thrown away. */
+  begun: boolean;
   micLost: boolean;
   /** Chunks handed to the uploader so far. */
   sent: number;
@@ -100,6 +117,20 @@ function micIsLive(stream: MediaStream | null): stream is MediaStream {
 const sameRect = (a: Rect | null, b: Rect) =>
   a !== null && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
+/** The adapter events the player acts on. */
+const ADAPTER_EVENTS = [
+  'loadedmetadata',
+  'timeupdate',
+  'seeked',
+  'ended',
+  'play',
+  'pause',
+  'error',
+  'buffering',
+  'scenewarning',
+] as const;
+type AdapterHandlers = Record<(typeof ADAPTER_EVENTS)[number], (e: Event) => void>;
+
 /**
  * The video, its controls and everything that happens while it is paused: each pause records
  * one comment (microphone plus pointer, click, zoom and seek events) and uploads it in chunks.
@@ -108,6 +139,8 @@ const sameRect = (a: Rect | null, b: Rect) =>
 export function Player({
   token,
   frameDuration,
+  mediaKind = 'mp4',
+  mountTalkie,
   state,
   dispatch,
   stream,
@@ -122,6 +155,19 @@ export function Player({
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  // The media, whichever kind it is. Everything below talks to this and never to the element.
+  const adapterRef = useRef<PlayerAdapter | null>(null);
+  // The film's adapter again, as state, for the caption plate to follow.
+  const [film, setFilm] = useState<PlayerAdapter | null>(null);
+  const [captionsOn, setCaptionsOn] = useState(true);
+  const frameDurationRef = useRef(frameDuration);
+  frameDurationRef.current = frameDuration;
+  const mountTalkieRef = useRef(mountTalkie);
+  mountTalkieRef.current = mountTalkie;
+  const volumeRef = useRef(1);
+  // Scenes that failed to load and have not been logged in a comment yet.
+  const sceneWarningsRef = useRef<string[]>([]);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -155,6 +201,7 @@ export function Player({
   uploaderRef.current = uploader;
   const sessionRef = useRef({ sid: state.sessionId ?? '', version: state.version ?? 0 });
   sessionRef.current = { sid: state.sessionId ?? '', version: state.version ?? 0 };
+  const { version } = sessionRef.current;
   const micLostRef = useRef(state.micLost);
   micLostRef.current = state.micLost;
 
@@ -162,11 +209,11 @@ export function Player({
 
   const measure = useCallback((): PlayerInfo => {
     const box = stageRef.current?.getBoundingClientRect();
-    const video = videoRef.current;
+    const size = adapterRef.current?.naturalSize;
     const containerWidth = box?.width ?? 0;
     const containerHeight = box?.height ?? 0;
-    const videoWidth = video?.videoWidth ?? 0;
-    const videoHeight = video?.videoHeight ?? 0;
+    const videoWidth = size?.width ?? 0;
+    const videoHeight = size?.height ?? 0;
     const contentRect = containRect(containerWidth, containerHeight, videoWidth, videoHeight);
     setPictureRect((prev) => (sameRect(prev, contentRect) ? prev : contentRect));
     return {
@@ -194,6 +241,14 @@ export function Player({
 
   const push = useCallback((event: CaptureEventInput) => {
     openRef.current?.log.push(event);
+  }, []);
+
+  /** Logs the scenes that failed to load, once the comment's event log has its t=0. */
+  const flushSceneWarnings = useCallback((o: OpenComment) => {
+    if (!o.begun) return;
+    for (const sceneId of sceneWarningsRef.current.splice(0)) {
+      o.log.push({ type: 'sceneWarning', sceneId });
+    }
   }, []);
 
   const sendChunk = useCallback(
@@ -229,8 +284,10 @@ export function Player({
           onStart: () => {
             // t=0 for the events is the moment the audio starts.
             o.log.begin();
+            o.begun = true;
             o.startedAt = performance.now();
             o.meta.startedAt = new Date().toISOString();
+            flushSceneWarnings(o);
           },
           onChunk: (blob, seq) => sendChunk(o, blob, seq, o.log.drain()),
         });
@@ -242,7 +299,7 @@ export function Player({
         return false;
       }
     },
-    [sendChunk]
+    [flushSceneWarnings, sendChunk]
   );
 
   const openComment = useCallback(
@@ -256,6 +313,7 @@ export function Player({
         recorder: null,
         mic: null,
         startedAt: performance.now(),
+        begun: false,
         micLost: false,
         sent: 0,
         landing: null,
@@ -265,7 +323,7 @@ export function Player({
           sessionId: sid,
           version,
           kind,
-          pausedAtVideoTime: kind === 'moment' ? (videoRef.current?.currentTime ?? 0) : null,
+          pausedAtVideoTime: kind === 'moment' ? (adapterRef.current?.currentTime ?? 0) : null,
           startedAt: new Date().toISOString(),
           endedAt: null,
           durationMs: null,
@@ -278,12 +336,14 @@ export function Player({
         // No microphone: the pointing is still worth keeping, and is flagged.
         o.micLost = true;
         o.log.begin();
+        o.begun = true;
+        flushSceneWarnings(o);
         if (!micLostRef.current) dispatch({ type: 'micLost' });
       }
       openRef.current = o;
       return cid;
     },
-    [attachRecorder, dispatch, measure]
+    [attachRecorder, dispatch, flushSceneWarnings, measure]
   );
 
   const track = useCallback((saving: Promise<void>) => {
@@ -408,7 +468,7 @@ export function Player({
   const failPlayback = useCallback(() => {
     if (!playingRef.current) return;
     playingRef.current = false;
-    videoRef.current?.pause();
+    adapterRef.current?.pause();
     dispatch({ type: 'playFailed' });
   }, [dispatch]);
 
@@ -420,14 +480,14 @@ export function Player({
       playingRef.current = true;
       void closeComment().catch(() => {});
       dispatch({ type: 'play' });
-      const video = videoRef.current;
-      if (!video || alreadyPlaying) return;
-      Promise.resolve(video.play()).catch((err: unknown) => {
+      const adapter = adapterRef.current;
+      if (!adapter || alreadyPlaying) return;
+      adapter.play().catch((err: unknown) => {
         // AbortError only means a pause arrived first. Anything else: playback did not start,
         // so there is nothing to pause on and nothing to comment on.
         const name = (err as { name?: string } | null)?.name;
         if (name === 'AbortError' || !mountedRef.current) return;
-        if (video.error || name === 'NotSupportedError') setVideoError(true);
+        if (adapter.failed || name === 'NotSupportedError') setVideoError(true);
         failPlayback();
       });
     },
@@ -437,11 +497,11 @@ export function Player({
   const pause = useCallback(() => {
     if (screenRef.current !== 'player' || !playingRef.current) return;
     playingRef.current = false;
-    const video = videoRef.current;
-    video?.pause();
+    const adapter = adapterRef.current;
+    adapter?.pause();
     const commentId = openComment('moment');
     dispatch({ type: 'pause', commentId });
-    if (video) setCurrentTime(video.currentTime);
+    if (adapter) setCurrentTime(adapter.currentTime);
   }, [dispatch, openComment]);
 
   const toggle = useCallback(() => {
@@ -451,13 +511,15 @@ export function Player({
 
   const seekTo = useCallback(
     (to: number, via: 'scrollbar' | 'key') => {
-      const video = videoRef.current;
-      if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+      const adapter = adapterRef.current;
+      if (!adapter) return;
+      const length = adapter.duration;
+      if (!Number.isFinite(length) || length <= 0) return;
       if (finishingRef.current) return;
-      const from = video.currentTime;
-      const target = Math.min(Math.max(to, 0), video.duration);
+      const from = adapter.currentTime;
+      const target = Math.min(Math.max(to, 0), length);
       if (target === from) return;
-      video.currentTime = target;
+      adapter.currentTime = target;
       setCurrentTime(target);
       const now = performance.now();
 
@@ -490,8 +552,17 @@ export function Player({
 
   const step = useCallback(
     (delta: number) => {
-      const video = videoRef.current;
-      if (video) seekTo(video.currentTime + delta, 'key');
+      const adapter = adapterRef.current;
+      if (adapter) seekTo(adapter.currentTime + delta, 'key');
+    },
+    [seekTo]
+  );
+
+  /** One frame forwards or back. The adapter says where that is: a film's scenes differ. */
+  const stepFrame = useCallback(
+    (direction: 1 | -1) => {
+      const adapter = adapterRef.current;
+      if (adapter) seekTo(adapter.stepFrame(direction), 'key');
     },
     [seekTo]
   );
@@ -499,16 +570,16 @@ export function Player({
   useKeyboard({
     screen: state.screen,
     paused: !state.playing,
-    frameDuration,
     onToggle: toggle,
     onStep: step,
+    onFrameStep: stepFrame,
   });
 
   // Zoom and pointer. The zoom hook is first so a pan is logged before the pointer position.
 
   useHoldToZoom({
     stageRef,
-    videoRef,
+    adapterRef,
     enabled: state.screen === 'player' && !state.playing,
     onStart: (zoom) => {
       zoomRef.current = zoom;
@@ -533,13 +604,13 @@ export function Player({
 
   usePointerCapture({
     stageRef,
-    videoRef,
+    adapterRef,
     getZoom: () => zoomRef.current,
     push,
     measure,
   });
 
-  // Video element events
+  // Media events, from the adapter
 
   const onStageClick = (e: MouseEvent<HTMLDivElement>) => {
     // Clicking the picture pauses. While paused it never resumes: clicks there are pointing.
@@ -548,15 +619,15 @@ export function Player({
   };
 
   const onLoadedMetadata = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+    setDuration(Number.isFinite(adapter.duration) ? adapter.duration : 0);
     measure();
   };
 
   const onTimeUpdate = () => {
-    const video = videoRef.current;
-    if (video) setCurrentTime(video.currentTime);
+    const adapter = adapterRef.current;
+    if (adapter) setCurrentTime(adapter.currentTime);
   };
 
   const onEnded = () => {
@@ -569,11 +640,11 @@ export function Player({
 
   // The video can be paused or played from outside the page (media keys, the system's controls).
   const onVideoPause = () => {
-    if (playingRef.current && !videoRef.current?.ended) pause();
+    if (playingRef.current && !adapterRef.current?.ended) pause();
   };
   const onVideoPlay = () => {
     if (playingRef.current) return;
-    if (screenRef.current === 'general' || finishing) videoRef.current?.pause();
+    if (screenRef.current === 'general' || finishing) adapterRef.current?.pause();
     else play(true);
   };
 
@@ -589,6 +660,87 @@ export function Player({
     if (!waiting) setVideoError(false);
   };
 
+  // A scene of a film could not be loaded. The reviewer carries on; the comment says so.
+  const onSceneWarning = (sceneId: string) => {
+    const pending = sceneWarningsRef.current;
+    if (!pending.includes(sceneId)) pending.push(sceneId);
+    if (openRef.current) flushSceneWarnings(openRef.current);
+  };
+
+  const handlersRef = useRef<AdapterHandlers | null>(null);
+  handlersRef.current = {
+    loadedmetadata: onLoadedMetadata,
+    timeupdate: onTimeUpdate,
+    seeked: onTimeUpdate,
+    ended: onEnded,
+    play: onVideoPlay,
+    pause: onVideoPause,
+    error: onVideoError,
+    buffering: (e) => onBuffering((e as CustomEvent<boolean>).detail),
+    scenewarning: (e) => onSceneWarning((e as CustomEvent<SceneWarningDetail>).detail.sceneId),
+  };
+
+  /** Starts listening to the media. The handlers called are always this render's. */
+  const listenTo = useCallback((adapter: PlayerAdapter): (() => void) => {
+    const listener = (e: Event) => handlersRef.current?.[e.type as keyof AdapterHandlers]?.(e);
+    for (const type of ADAPTER_EVENTS) adapter.addEventListener(type, listener);
+    return () => {
+      for (const type of ADAPTER_EVENTS) adapter.removeEventListener(type, listener);
+    };
+  }, []);
+
+  // An mp4: wrap the <video> element the stage rendered.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (mediaKind !== 'mp4' || !video) return;
+    const adapter = new VideoAdapter(video, () => frameDurationRef.current);
+    adapterRef.current = adapter;
+    const stop = listenTo(adapter);
+    return () => {
+      stop();
+      adapter.destroy();
+      if (adapterRef.current === adapter) adapterRef.current = null;
+    };
+  }, [mediaKind, listenTo]);
+
+  // A film: mount a Talkie engine in the stage. The engine is only ever imported here, in the
+  // browser, and only for a film, so it is never loaded on the server or for an mp4.
+  const filmUrl = mediaKind === 'talkie' ? filmFolderUrl(token, version) : null;
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (filmUrl === null || !surface) return;
+    let cancelled = false;
+    let mounted: PlayerAdapter | null = null;
+    let stop = () => {};
+    setBuffering(true);
+    void (async () => {
+      const mount =
+        mountTalkieRef.current ?? (await import('../media/TalkieAdapter')).mountTalkieAdapter;
+      const adapter = await mount(surface, filmUrl);
+      if (cancelled) {
+        adapter.destroy();
+        return;
+      }
+      mounted = adapter;
+      adapterRef.current = adapter;
+      adapter.setVolume(volumeRef.current);
+      stop = listenTo(adapter);
+      setFilm(adapter);
+      await adapter.load();
+    })().catch(() => {
+      if (cancelled) return;
+      setVideoError(true);
+      setBuffering(false);
+    });
+    return () => {
+      cancelled = true;
+      stop();
+      mounted?.destroy();
+      if (adapterRef.current === mounted) adapterRef.current = null;
+      setFilm(null);
+    };
+  }, [filmUrl, listenTo]);
+
   useEffect(() => {
     const update = () => setIsFullscreen(document.fullscreenElement != null);
     update();
@@ -602,11 +754,8 @@ export function Player({
 
   const changeVolume = (v: number) => {
     setVolume(v);
-    const video = videoRef.current;
-    if (video) {
-      video.volume = v;
-      video.muted = v === 0;
-    }
+    volumeRef.current = v;
+    adapterRef.current?.setVolume(v);
   };
 
   const toggleFullscreen = () => {
@@ -622,7 +771,7 @@ export function Player({
 
   const shareMore = () => {
     if (screenRef.current !== 'end' || finishing) return;
-    videoRef.current?.pause();
+    adapterRef.current?.pause();
     dispatch({ type: 'shareMore', commentId: openComment('general') });
   };
 
@@ -636,7 +785,7 @@ export function Player({
     if (finishing || screenRef.current === 'general') return;
     setFinishing(true);
     playingRef.current = false;
-    videoRef.current?.pause();
+    adapterRef.current?.pause();
     void closeComment().catch(() => {});
     // Thanks says it has all come through, so wait until it has.
     await Promise.allSettled([...savesRef.current]);
@@ -652,7 +801,6 @@ export function Player({
   const stopped = refusedCommentId !== null && state.commentId === refusedCommentId;
   const general = state.screen === 'general';
   const mic = { onReconnect: onReconnectMic, reconnecting, reconnectFailed };
-  const { version } = sessionRef.current;
 
   return (
     <div ref={containerRef} className={classes.player} data-testid={T.player}>
@@ -660,21 +808,21 @@ export function Player({
       <div className={classes.body} inert={general}>
         <VideoStage
           stageRef={stageRef}
+          kind={mediaKind}
           videoRef={videoRef}
-          src={`/api/r/${encodeURIComponent(token)}/video?version=${version}`}
+          surfaceRef={surfaceRef}
+          src={
+            mediaKind === 'mp4'
+              ? `/api/r/${encodeURIComponent(token)}/video?version=${version}`
+              : undefined
+          }
           playing={state.playing}
           zoom={state.zoom}
           lastOrigin={lastOriginRef.current}
           pictureRect={pictureRect}
           onClick={onStageClick}
-          onLoadedMetadata={onLoadedMetadata}
-          onTimeUpdate={onTimeUpdate}
-          onEnded={onEnded}
-          onPlay={onVideoPlay}
-          onPause={onVideoPause}
-          onError={onVideoError}
-          onBuffering={onBuffering}
         >
+          <CaptionPlate adapter={film} rect={pictureRect} on={captionsOn} />
           {listening &&
             (stopped ? (
               <CommentStopped />
@@ -700,6 +848,8 @@ export function Player({
           finishing={finishing}
           fullscreen={isFullscreen}
           canFullscreen={canFullscreen}
+          captions={mediaKind === 'talkie' ? captionsOn : undefined}
+          onCaptions={() => setCaptionsOn((on) => !on)}
           onPlayPause={toggle}
           onSeek={(time) => seekTo(time, 'scrollbar')}
           onVolume={changeVolume}

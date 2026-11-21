@@ -76,12 +76,16 @@ export class TalkieAdapter extends EventTarget implements PlayerAdapter {
   private readonly rates = new Map<number, number>();
   private readonly reading = new Set<number>();
   private hasFailed = false;
+  private hasMetadata = false;
   private destroyed = false;
 
   constructor(engine: TalkieEngineLike, options: TalkieAdapterOptions) {
     super();
     this.engine = engine;
     this.options = options;
+    this.listen('loadedmetadata', () => {
+      this.hasMetadata = true;
+    });
     for (const type of FORWARDED) {
       this.listen(type, () => this.dispatchEvent(new Event(type)));
     }
@@ -127,6 +131,9 @@ export class TalkieAdapter extends EventTarget implements PlayerAdapter {
       return;
     }
     this.readRates();
+    // The engine waits for the narration's metadata before it says so itself. The film's size
+    // and length are known now, from talkie.json, and the first frame is on screen.
+    if (!this.hasMetadata) this.dispatchEvent(new Event('loadedmetadata'));
     this.buffering(false);
   }
 
@@ -146,6 +153,9 @@ export class TalkieAdapter extends EventTarget implements PlayerAdapter {
   set currentTime(t: number) {
     if (this.destroyed) return;
     this.engine.currentTime = t;
+    // Before the narration has loaded the engine moves its picture without a seek event, so
+    // say that the time changed: the caption and the scroll bar follow this.
+    this.dispatchEvent(new Event('timeupdate'));
   }
 
   get paused(): boolean {

@@ -45,6 +45,15 @@
   pointer-events: none;
 }
 
+/* Where a Talkie engine mounts its canvases. They fill it, and it fills the picture layer. */
+.surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  pointer-events: none;
+}
+
 /* Top of the picture, never the centre, and invisible to the pointer. */
 .listening {
   position: absolute;

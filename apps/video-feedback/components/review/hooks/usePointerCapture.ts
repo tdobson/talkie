@@ -4,12 +4,14 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { type DistributiveOmit, pointerToFrame } from '@/lib/capture/eventLog';
 import { HOLD_TO_ZOOM_MS } from '@/lib/constants';
 import type { CaptureEvent, PlayerInfo, ZoomState } from '@/lib/types';
+import type { MediaAdapter } from '../media/adapter';
 
 export type CaptureEventInput = DistributiveOmit<CaptureEvent, 't'>;
 
 export interface PointerCaptureOptions {
   stageRef: RefObject<HTMLElement | null>;
-  videoRef: RefObject<HTMLVideoElement | null>;
+  /** The media being shown: its picture size, and for pointer events its current time. */
+  adapterRef: RefObject<MediaAdapter | null>;
   /** The zoom in force right now, or null. */
   getZoom: () => ZoomState | null;
   /** Adds an event to the open comment. Called whether or not one is open: the owner drops it. */
@@ -21,6 +23,15 @@ export interface PointerCaptureOptions {
 /** True for pointer events that start on something inside the stage that is not the picture. */
 export function isOffPicture(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-no-capture]') !== null;
+}
+
+/** The picture's own size in pixels, as zeros until the media has reported it. */
+export function pictureSize(adapter: MediaAdapter | null): {
+  videoWidth: number;
+  videoHeight: number;
+} {
+  const size = adapter?.naturalSize;
+  return { videoWidth: size?.width ?? 0, videoHeight: size?.height ?? 0 };
 }
 
 /**
@@ -43,16 +54,16 @@ export function usePointerCapture(options: PointerCaptureOptions): void {
 
     const locate = (clientX: number, clientY: number) => {
       const o = latest.current;
-      const video = o.videoRef.current;
+      const adapter = o.adapterRef.current;
       const zoom = o.getZoom();
       const at = pointerToFrame(
         clientX,
         clientY,
         stage.getBoundingClientRect(),
-        { videoWidth: video?.videoWidth ?? 0, videoHeight: video?.videoHeight ?? 0 },
+        pictureSize(adapter),
         zoom
       );
-      return { ...at, vt: video?.currentTime ?? 0, ...(zoom ? { zoomed: true } : {}) };
+      return { ...at, vt: adapter?.currentTime ?? 0, ...(zoom ? { zoomed: true } : {}) };
     };
 
     const flush = () => {

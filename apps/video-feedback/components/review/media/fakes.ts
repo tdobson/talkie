@@ -58,6 +58,8 @@ export class FakeEngine extends EventTarget implements TalkieEngineLike {
   loaded: string[] = [];
   /** Set to make load() fail the way the engine does: an error event, then a rejection. */
   failWith: Error | null = null;
+  /** Set to load as the engine does while the narration is still fetching: no metadata event. */
+  quietMetadata = false;
   /** Set to make play() reject, as a browser does when it refuses to start playback. */
   refusePlay: Error | null = null;
   private time = 0;
@@ -78,7 +80,7 @@ export class FakeEngine extends EventTarget implements TalkieEngineLike {
     }
     this.film = this.source;
     this.cues = this.sourceCues;
-    this.dispatchEvent(new Event('loadedmetadata'));
+    if (!this.quietMetadata) this.dispatchEvent(new Event('loadedmetadata'));
     return this.source;
   }
 

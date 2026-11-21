@@ -7,11 +7,16 @@ export interface KeyboardOptions {
   screen: Screen;
   /** Arrow keys only step while this is true. */
   paused: boolean;
-  /** Seconds per frame of the video. */
-  frameDuration: number;
+  /** Seconds per frame of the video. Not needed when `onFrameStep` is given. */
+  frameDuration?: number;
   onToggle: () => void;
   /** Seconds to move by: one frame, or one second with Shift. Negative is backwards. */
   onStep: (delta: number) => void;
+  /**
+   * Takes over the one-frame steps: 1 is forwards, -1 backwards. The player passes this so the
+   * media adapter decides where a frame away is (a film's scenes each have their own frame rate).
+   */
+  onFrameStep?: (direction: 1 | -1) => void;
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -60,8 +65,10 @@ export function useKeyboard(options: KeyboardOptions): void {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         claim(e);
         if (o.screen === 'general' || !o.paused) return;
-        const size = e.shiftKey ? 1 : o.frameDuration;
-        o.onStep(e.key === 'ArrowLeft' ? -size : size);
+        const direction = e.key === 'ArrowLeft' ? -1 : 1;
+        if (e.shiftKey) o.onStep(direction);
+        else if (o.onFrameStep) o.onFrameStep(direction);
+        else o.onStep(direction * (o.frameDuration ?? 0));
       }
     };
 

@@ -38,6 +38,33 @@ describe('TalkieAdapter', () => {
     expect(adapter.duration).toBe(4);
   });
 
+  it('says the metadata is known once the film is open, even before the narration has loaded', async () => {
+    const { engine, adapter } = make();
+    engine.quietMetadata = true;
+    const seen = vi.fn();
+    adapter.addEventListener('loadedmetadata', seen);
+    await adapter.load();
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(adapter.naturalSize).toEqual({ width: 320, height: 180 });
+  });
+
+  it('says so once only when the engine reports the metadata itself', async () => {
+    const { adapter } = make();
+    const seen = vi.fn();
+    adapter.addEventListener('loadedmetadata', seen);
+    await adapter.load();
+    expect(seen).toHaveBeenCalledTimes(1);
+  });
+
+  it('setting the time always reports a time update, for the caption and the scroll bar', async () => {
+    const { adapter } = make();
+    await adapter.load();
+    const seen = vi.fn();
+    adapter.addEventListener('timeupdate', seen);
+    adapter.currentTime = 2.5;
+    expect(seen).toHaveBeenCalledTimes(1);
+  });
+
   it('frame duration comes from the scene under the playhead, read once per scene', async () => {
     const rates: Record<string, number> = { 'a/s01.json': 30, 'a/s02.json': 12 };
     const { adapter, loads } = make(async (src) => ({ fr: rates[src] }));
@@ -127,20 +154,18 @@ describe('TalkieAdapter', () => {
     expect(cueText('a &lt; b&nbsp;&gt; c')).toBe('a < b > c');
   });
 
-  it.each([
-    'invalid-film',
-    'unsupported-version',
-    'network',
-    'no-playable-audio',
-  ])('a %s TalkieError becomes the error event, and the adapter has failed', async (code) => {
-    const { engine, adapter } = make();
-    engine.failWith = Object.assign(new Error('no'), { code });
-    const errors: unknown[] = [];
-    adapter.addEventListener('error', (e) => errors.push((e as CustomEvent).detail));
-    await adapter.load();
-    expect(errors).toEqual([code]);
-    expect(adapter.failed).toBe(true);
-  });
+  it.each(['invalid-film', 'unsupported-version', 'network', 'no-playable-audio'])(
+    'a %s TalkieError becomes the error event, and the adapter has failed',
+    async (code) => {
+      const { engine, adapter } = make();
+      engine.failWith = Object.assign(new Error('no'), { code });
+      const errors: unknown[] = [];
+      adapter.addEventListener('error', (e) => errors.push((e as CustomEvent).detail));
+      await adapter.load();
+      expect(errors).toEqual([code]);
+      expect(adapter.failed).toBe(true);
+    }
+  );
 
   it('is no longer failed once the film plays again', async () => {
     const { engine, adapter } = make();

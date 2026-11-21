@@ -21,6 +21,16 @@ function Harness(props: {
   );
 }
 
+/** The player's way of using the hook: no frame duration, the adapter decides the step. */
+function Stepper(props: {
+  paused: boolean;
+  onStep: (delta: number) => void;
+  onFrameStep: (direction: 1 | -1) => void;
+}) {
+  useKeyboard({ screen: 'player', onToggle: () => {}, ...props });
+  return null;
+}
+
 function setup(screenName: Screen, paused: boolean) {
   const onToggle = vi.fn();
   const onStep = vi.fn();
@@ -111,5 +121,26 @@ describe('useKeyboard', () => {
     fireEvent.keyDown(document.body, { key: ' ', code: 'Space', ctrlKey: true });
     expect(onToggle).not.toHaveBeenCalled();
     expect(onStep).not.toHaveBeenCalled();
+  });
+
+  it('with a frame stepper, the arrows ask it for the frame and Shift still moves a second', () => {
+    const onStep = vi.fn();
+    const onFrameStep = vi.fn();
+    render(<Stepper paused onStep={onStep} onFrameStep={onFrameStep} />);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(onFrameStep).toHaveBeenLastCalledWith(1);
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+    expect(onFrameStep).toHaveBeenLastCalledWith(-1);
+    expect(onStep).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft', shiftKey: true });
+    expect(onStep).toHaveBeenLastCalledWith(-1);
+    expect(onFrameStep).toHaveBeenCalledTimes(2);
+  });
+
+  it('a frame stepper is not asked during playback', () => {
+    const onFrameStep = vi.fn();
+    render(<Stepper paused={false} onStep={() => {}} onFrameStep={onFrameStep} />);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(onFrameStep).not.toHaveBeenCalled();
   });
 });
