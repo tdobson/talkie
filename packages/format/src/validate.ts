@@ -18,7 +18,9 @@ const EPS = 1e-3;
 const hasUnsafePathChar = (p: string): boolean => {
   for (let i = 0; i < p.length; i++) {
     const c = p.charCodeAt(i);
-    if (c <= 0x20 || c === 0x7f || c === 0x25 || c === 0x3f || c === 0x23) return true;
+    if (c <= 0x20 || c === 0x7f || c === 0x25 || c === 0x3f || c === 0x23) {
+      return true;
+    }
   }
   return false;
 };
