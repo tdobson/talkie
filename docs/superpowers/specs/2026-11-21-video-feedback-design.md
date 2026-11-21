@@ -381,14 +381,14 @@ Each comment:
 ![overview](media/<cid>/overview.jpg)
 
 "So this logo [📍 moment-02: top-left, 12%/8%] is the old one, and the text
-here [📍 moment-03: lower third, clicked] runs on too long..."
+here [📍 moment-03: bottom-centre, clicked] runs on too long..."
 
 Moments:
 - moment-01 at 0:12.4, pause, (50%, 50%) ![](media/<cid>/moment-01.jpg)
 - moment-02 at 0:12.4, word 'this' at 3.2s + dwell 0.9s, (12%, 8%) ![](media/<cid>/moment-02.jpg)
 - moment-03 at 0:12.4, click + word 'here' at 7.8s, (48%, 81%) ![](media/<cid>/moment-03.jpg)
 ```
-Moment references are placed inline after the transcript word nearest the moment's `t`. Position labels (top-left, lower third, etc.) come from a 3x3 grid. If the reviewer scrolled during the comment, the header notes the video-time range covered, e.g. `0:12.4 to 0:09.0`.
+Moment references are placed inline after the transcript word nearest the moment's `t`. Position labels come from a 3x3 grid: top-left, top-centre, top-right, middle-left, centre, middle-right, bottom-left, bottom-centre, bottom-right, or off-picture. If the reviewer scrolled during the comment, the header notes the video-time range covered, e.g. `0:12.4 to 0:09.0`.
 
 ### `feedback.json`
 ```json
