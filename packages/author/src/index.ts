@@ -11,3 +11,4 @@ export * from './loaders';
 export * from './svg-import';
 export * from './label';
 export * from './facts';
+export * from './analysis';
