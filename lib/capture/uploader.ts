@@ -28,6 +28,11 @@ const BACKOFF_BASE_MS = 1000;
 const BACKOFF_CAP_MS = 30_000;
 const MAX_IN_FLIGHT = 2;
 const MAX_COMPLETE_ROUNDS = 5;
+/**
+ * A request with no answer after this long is given up on and retried like any other failure.
+ * Kept below SAVE_TROUBLE_AFTER_MS so a hung connection gets one retry before the banner shows.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
 /** Statuses that will never succeed on retry. 429 and 5xx are retried. */
 const REFUSED = new Set([400, 404, 413]);
 
@@ -233,20 +238,41 @@ export class Uploader {
     this.onTrouble(trouble);
   }
 
+  /**
+   * fetch that cannot hang: after REQUEST_TIMEOUT_MS the request is aborted and this rejects,
+   * even if the fetch implementation ignores the abort signal.
+   */
+  private async timedFetch(url: string, init: RequestInit): Promise<Response> {
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctrl.abort();
+        reject(new Error('Request timed out'));
+      }, REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.fetchImpl(url, { ...init, signal: ctrl.signal }), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async send(e: Entry): Promise<void> {
     const { chunk } = e;
     e.inFlight = true;
     this.inFlight++;
+    const startedAt = this.now();
     let status: number | null = null;
     try {
       const form = new FormData();
       form.set('audio', chunk.audio, `${chunk.seq}.bin`);
       form.set('events', JSON.stringify(chunk.events));
       if (chunk.meta) form.set('meta', JSON.stringify(chunk.meta));
-      const res = await this.fetchImpl(this.chunkUrl(chunk), { method: 'PUT', body: form });
+      const res = await this.timedFetch(this.chunkUrl(chunk), { method: 'PUT', body: form });
       status = res.status;
     } catch {
-      // network error: retried below
+      // network error or timeout: retried below
     }
     e.inFlight = false;
     this.inFlight--;
@@ -274,7 +300,8 @@ export class Uploader {
     } else {
       e.attempts++;
       const now = this.now();
-      if (e.firstFailAt === null) e.firstFailAt = now;
+      // The trouble clock runs from when the failing request started: a hang counts in full.
+      if (e.firstFailAt === null) e.firstFailAt = startedAt;
       e.retryAt = now + backoffMs(e.attempts);
     }
     this.settleWaiters();
@@ -293,8 +320,9 @@ export class Uploader {
     const url = `/api/r/${this.token}/sessions/${rec.sid}/comments/${rec.cid}/complete`;
     for (let attempts = 1; ; attempts++) {
       if (this.disposed) throw new Error('Uploader disposed');
+      const startedAt = this.now();
       try {
-        const res = await this.fetchImpl(url, {
+        const res = await this.timedFetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(rec.body),
@@ -304,9 +332,10 @@ export class Uploader {
           return res;
         }
       } catch {
-        // network error: retried below
+        // network error or timeout: retried below
       }
-      if (!this.completeFailing.has(ck)) this.completeFailing.set(ck, this.now());
+      if (this.disposed) throw new Error('Uploader disposed');
+      if (!this.completeFailing.has(ck)) this.completeFailing.set(ck, startedAt);
       this.pump();
       await this.sleep(backoffMs(attempts));
     }

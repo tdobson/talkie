@@ -380,4 +380,90 @@ describe('Uploader', () => {
     await up.complete(sid, cid, { ...completeBody, totalChunks: 1 });
     expect(calls(fetchImpl)).toEqual([chunkUrl(token, 0), completeUrl(token)]);
   });
+
+  it('treats a chunk request that never settles as a failure: aborts it, retries, signals trouble', async () => {
+    const token = freshToken();
+    const onTrouble = vi.fn();
+    const fetchImpl = vi.fn(
+      (_url: unknown, _init?: RequestInit) => new Promise<Response>(() => {})
+    );
+    const up = new Uploader({
+      token,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onTrouble,
+    });
+    await up.enqueue({ sid, cid, seq: 0, audio: new Blob(['a']), events: [], meta });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const firstSignal = fetchImpl.mock.calls[0]?.[1]?.signal;
+    expect(firstSignal?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(SAVE_TROUBLE_AFTER_MS - 100);
+    expect(onTrouble).not.toHaveBeenCalled();
+    // the hung request was given up on and tried again well before the banner
+    expect(firstSignal?.aborted).toBe(true);
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // the trouble clock runs from when the request started, not from when it timed out
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onTrouble).toHaveBeenCalledExactlyOnceWith(true);
+    expect(up.pendingCount).toBe(1);
+    up.dispose();
+  });
+
+  it('recovers when a hung chunk request is followed by a working one', async () => {
+    const token = freshToken();
+    const onTrouble = vi.fn();
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValue(ok());
+    const up = new Uploader({ token, fetchImpl, onTrouble });
+    await up.enqueue({ sid, cid, seq: 0, audio: new Blob(['a']), events: [], meta });
+    await vi.advanceTimersByTimeAsync(SAVE_TROUBLE_AFTER_MS - 100);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(up.pendingCount).toBe(0);
+    expect(onTrouble).not.toHaveBeenCalled();
+  });
+
+  it('two hung requests do not block the queue for good', async () => {
+    const token = freshToken();
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValue(ok());
+    const up = new Uploader({ token, fetchImpl, onTrouble: () => {} });
+    for (const c of ['a', 'b', 'c']) {
+      await up.enqueue({ sid, cid: c, seq: 0, audio: new Blob(['a']), events: [], meta });
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(SAVE_TROUBLE_AFTER_MS - 100);
+    expect(up.pendingCount).toBe(0);
+  });
+
+  it('treats a complete request that never settles as a failure: retries and signals trouble', async () => {
+    const token = freshToken();
+    const onTrouble = vi.fn();
+    const fetchImpl = vi.fn(
+      (_url: unknown, _init?: RequestInit) => new Promise<Response>(() => {})
+    );
+    const up = new Uploader({
+      token,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onTrouble,
+    });
+    const done = up.complete(sid, cid, { ...completeBody, totalChunks: 0 });
+    done.catch(() => {});
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    const firstSignal = fetchImpl.mock.calls[0]?.[1]?.signal;
+
+    await vi.advanceTimersByTimeAsync(SAVE_TROUBLE_AFTER_MS - 100);
+    expect(onTrouble).not.toHaveBeenCalled();
+    expect(firstSignal?.aborted).toBe(true);
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onTrouble).toHaveBeenCalledExactlyOnceWith(true);
+    up.dispose();
+  });
 });
