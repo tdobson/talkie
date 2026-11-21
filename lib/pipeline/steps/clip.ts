@@ -3,11 +3,7 @@ import { join } from 'node:path';
 import { renderClip } from '@/lib/render/clip';
 import { sourcePath } from '@/lib/storage/paths';
 import { type RenderStepContext, readEvents, renderDir } from './renderContext';
-
-/** Name of the assembled comment audio, as written by the audio step. */
-export function audioFileName(audioMime: string): string {
-  return audioMime.toLowerCase().includes('mp4') ? 'audio.mp4' : 'audio.webm';
-}
+import { audioFileName, FILES } from './types';
 
 /** Writes render/clip.mp4: the reconstructed view of the comment, set to its audio. */
 export async function clipStep(ctx: RenderStepContext): Promise<void> {
@@ -27,7 +23,7 @@ export async function clipStep(ctx: RenderStepContext): Promise<void> {
     meta,
     events: await readEvents(dir),
     probe,
-    out: join(outDir, 'clip.mp4'),
+    out: join(outDir, FILES.clip),
   });
   ctx.log?.('clip');
 }

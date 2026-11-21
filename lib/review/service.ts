@@ -1,10 +1,15 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN, MAX_COMMENT_BYTES } from '@/lib/constants';
+import {
+  MAX_CHUNK_BYTES,
+  MAX_CHUNK_REQUESTS_PER_MIN,
+  MAX_COMMENT_BYTES,
+  MAX_EVENTS_BYTES,
+} from '@/lib/constants';
 import { notifyCommentComplete } from '@/lib/pipeline/enqueue';
+import { initialStatus, readStatus, updateStatus } from '@/lib/pipeline/status';
 import { missingChunks, putChunk, storedBytes } from '@/lib/storage/chunks';
 import { isUuid } from '@/lib/storage/ids';
-import { readJson, writeJsonAtomic } from '@/lib/storage/json';
 import { commentDir } from '@/lib/storage/paths';
 import {
   createSession,
@@ -18,7 +23,6 @@ import type {
   CaptureEvent,
   CommentMeta,
   CommentRef,
-  CommentStatus,
   CompleteBody,
   CompleteResult,
   CreateSessionBody,
@@ -36,11 +40,6 @@ export { parseRange } from './range';
 
 export const MAX_NAME_LENGTH = 80;
 export const MAX_EVENTS_PER_CHUNK = 20_000;
-/**
- * Most bytes of events one chunk may carry, as JSON. A chunk is 2 seconds, so a real batch is
- * a few kilobytes; this still lets a full batch of 20,000 pointer events through.
- */
-export const MAX_EVENTS_BYTES = 2 * 1024 * 1024;
 /** Far above any real comment (a chunk is 2 seconds), low enough to bound the work per request. */
 export const MAX_CHUNKS_PER_COMMENT = 10_000;
 const MAX_USER_AGENT_LENGTH = 512;
@@ -254,26 +253,8 @@ function parseCompleteBody(v: unknown): CompleteBody {
 }
 
 // Comment status. The pipeline owns this file once a comment is queued; the reviewer API only
-// creates it and moves it from `receiving` to `queued`.
-
-const statusPath = (ref: CommentRef) => join(commentDir(ref), 'status.json');
-
-function receivingStatus(): CommentStatus {
-  return {
-    state: 'receiving',
-    steps: {
-      audio: 'pending',
-      silence: 'pending',
-      transcribe: 'pending',
-      moments: 'pending',
-      stills: 'pending',
-      clip: 'pending',
-    },
-    error: null,
-    attempts: 0,
-    updatedAt: new Date().toISOString(),
-  };
-}
+// creates it and moves it from `receiving` to `queued`, through the pipeline's own helpers so
+// the shape always matches.
 
 // One writer at a time per comment, so "check then write" steps (size limit, first meta,
 // completion) cannot interleave. Shared on `globalThis` like the rate-limit store.
@@ -452,7 +433,7 @@ async function storeChunk(
     if (await exists(join(dir, 'chunks', `${seq}.bin`))) return received;
 
     // Raw captures are never changed once the comment has been handed to the pipeline.
-    const status = await readJson<CommentStatus>(statusPath(ref));
+    const status = await readStatus(ref);
     if (status !== null && status.state !== 'receiving') {
       return { status: 400, body: { error: 'comment is already complete' } };
     }
@@ -463,7 +444,7 @@ async function storeChunk(
 
     if (meta !== null) {
       if ((await readCommentMeta(ref)) === null) await writeCommentMeta(ref, meta);
-      if (status === null) await writeJsonAtomic(statusPath(ref), receivingStatus());
+      if (status === null) await updateStatus(ref, initialStatus());
     }
     await putChunk(dir, seq, Buffer.from(await audio.arrayBuffer()), events);
     return received;
@@ -513,7 +494,7 @@ export async function completeComment(
   const ok: CompleteResult = { ok: true };
 
   const outcome = await withCommentLock(ref, async () => {
-    const status = await readJson<CommentStatus>(statusPath(ref));
+    const status = await readStatus(ref);
     if (status !== null && status.state !== 'receiving') return 'already' as const;
 
     const missing = await missingChunks(dir, done.totalChunks);
@@ -528,11 +509,7 @@ export async function completeComment(
       ...rest,
       ...(micLost === undefined ? {} : { micLost }),
     });
-    await writeJsonAtomic(statusPath(ref), {
-      ...(status ?? receivingStatus()),
-      state: 'queued',
-      updatedAt: new Date().toISOString(),
-    } satisfies CommentStatus);
+    await updateStatus(ref, { ...(status ?? initialStatus()), state: 'queued' });
     return 'queued' as const;
   });
 

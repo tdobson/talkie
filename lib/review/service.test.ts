@@ -1,6 +1,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN, MAX_COMMENT_BYTES } from '@/lib/constants';
+import {
+  MAX_CHUNK_BYTES,
+  MAX_CHUNK_REQUESTS_PER_MIN,
+  MAX_COMMENT_BYTES,
+  MAX_EVENTS_BYTES,
+} from '@/lib/constants';
 import { setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
 import { commentDir } from '@/lib/storage/paths';
 import { createVideo, getSession, readCommentMeta, saveVideo } from '@/lib/storage/repo';
@@ -17,7 +22,6 @@ import { withTmpData } from '@/test/helpers/tmpData';
 import { resetRateLimits } from './ratelimit';
 import {
   completeComment,
-  MAX_EVENTS_BYTES,
   finishSession,
   ReviewInputError,
   readSession,

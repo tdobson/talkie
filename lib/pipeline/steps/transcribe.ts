@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { config } from '@/lib/config';
-import { TRANSCRIBE_BACKOFF_MS } from '@/lib/constants';
+import { GROQ_MODEL, TRANSCRIBE_BACKOFF_MS, TRANSCRIBE_TIMEOUT_MS } from '@/lib/constants';
 import { audioDuration } from '@/lib/media/ops';
 import { writeJsonAtomic } from '@/lib/storage/json';
 import type { Transcript, TranscriptSegment, TranscriptWord } from '@/lib/types';
@@ -10,9 +10,6 @@ import { FILES, type StepFn } from './types';
 export interface Transcriber {
   transcribe(wavPath: string, language: string): Promise<Transcript>;
 }
-
-const GROQ_MODEL = 'whisper-large-v3';
-const REQUEST_TIMEOUT_MS = 5 * 60_000;
 
 class GroqError extends Error {
   constructor(
@@ -102,7 +99,7 @@ export function groqTranscriber(
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
       });
     } catch (err) {
       throw new GroqError(`Groq transcription failed: ${(err as Error).message}`, true);

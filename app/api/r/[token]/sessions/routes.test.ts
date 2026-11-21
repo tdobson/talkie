@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN } from '@/lib/constants';
 import { setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
 import { resetRateLimits } from '@/lib/review/ratelimit';
-import { MAX_EVENTS_BYTES } from '@/lib/review/service';
+import { MAX_EVENTS_BYTES } from '@/lib/constants';
 import { commentDir } from '@/lib/storage/paths';
 import { createVideo, readCommentMeta, saveVideo } from '@/lib/storage/repo';
 import type { CommentRef, VideoRecord } from '@/lib/types';

@@ -1,6 +1,6 @@
-import { MAX_CHUNK_BYTES } from '@/lib/constants';
+import { MAX_CHUNK_BYTES, MAX_EVENTS_BYTES } from '@/lib/constants';
 import { guarded, json, readBodyCapped } from '@/lib/review/http';
-import { admitChunk, MAX_EVENTS_BYTES, ReviewInputError } from '@/lib/review/service';
+import { admitChunk, ReviewInputError } from '@/lib/review/service';
 import type { CaptureEvent, CommentMeta } from '@/lib/types';
 
 type Ctx = { params: Promise<{ token: string; sid: string; cid: string; seq: string }> };

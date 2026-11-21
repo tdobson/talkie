@@ -10,6 +10,11 @@ export const HOLD_TO_ZOOM_MS = 250;
 export const ZOOM_ANIM_MS = 150;
 export const CHUNK_MS = 2000;
 export const MAX_CHUNK_BYTES = 5 * 1024 * 1024;
+/**
+ * Most bytes of events one chunk may carry, as JSON. A chunk is 2 seconds, so a real batch is
+ * a few kilobytes; this still lets a full batch of 20,000 pointer events through.
+ */
+export const MAX_EVENTS_BYTES = 2 * 1024 * 1024;
 export const MAX_COMMENT_BYTES = 50 * 1024 * 1024;
 export const MAX_CHUNK_REQUESTS_PER_MIN = 120;
 export const SAVE_TROUBLE_AFTER_MS = 20_000;
@@ -21,3 +26,5 @@ export const CLIP_MAX_WIDTH = 1280;
 export const CLIP_FPS = 15;
 export const DEICTIC_WORDS = ['this', 'that', 'these', 'those', 'here', 'there', 'it'] as const;
 export const TRANSCRIBE_BACKOFF_MS = [5_000, 30_000, 120_000];
+export const GROQ_MODEL = 'whisper-large-v3';
+export const TRANSCRIBE_TIMEOUT_MS = 5 * 60_000;

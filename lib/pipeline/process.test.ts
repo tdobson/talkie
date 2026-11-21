@@ -184,18 +184,6 @@ it('keeps the first error when several steps fail', async () => {
   });
 });
 
-it('the render steps report "render not wired" until rendering is integrated', async () => {
-  Object.assign(steps, original);
-  const { ref } = await seedComment({ audio: speech, events });
-  await processComment(ref, { includeClip: false });
-
-  expect(await readStatus(ref)).toMatchObject({
-    state: 'failed',
-    steps: { moments: 'done', stills: 'failed', clip: 'pending' },
-    error: 'render not wired',
-  });
-});
-
 it('stops when the audio cannot be assembled', async () => {
   const { ref } = await seedComment({ audio: Buffer.from('this is not audio'), events });
   await processComment(ref);
