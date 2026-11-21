@@ -48,16 +48,33 @@ export function loadConfig(env: Env): Config {
     );
   }
 
+  const groqApiKey = value(env, 'GROQ_API_KEY');
+  const publicBaseUrl = value(env, 'PUBLIC_BASE_URL');
+
+  if (isProduction && transcriber === 'fake' && value(env, 'E2E_TEST_MODE') !== '1') {
+    throw new Error(
+      'TRANSCRIBER=fake is for tests only and is refused in production unless E2E_TEST_MODE=1.'
+    );
+  }
+  if (isProduction && transcriber === 'groq' && !groqApiKey) {
+    throw new Error('GROQ_API_KEY must be set when TRANSCRIBER=groq in production.');
+  }
+  if (isProduction && !publicBaseUrl) {
+    throw new Error(
+      'PUBLIC_BASE_URL must be set in production, for example https://feedback.example.com.'
+    );
+  }
+
   return {
     dataDir: resolve(value(env, 'DATA_DIR') ?? 'data'),
-    groqApiKey: value(env, 'GROQ_API_KEY'),
+    groqApiKey,
     groqBaseUrl: 'https://api.groq.com/openai/v1',
     whisperLanguage: value(env, 'WHISPER_LANGUAGE') ?? 'en',
     cfAccessTeamDomain,
     cfAccessAud,
     adminAuth,
     transcriber,
-    publicBaseUrl: (value(env, 'PUBLIC_BASE_URL') ?? 'http://localhost:3000').replace(/\/+$/, ''),
+    publicBaseUrl: (publicBaseUrl ?? 'http://localhost:3000').replace(/\/+$/, ''),
     isProduction,
   };
 }
