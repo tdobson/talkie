@@ -46,7 +46,53 @@ export async function checkAdmin(req: Request, opts: GuardOptions = {}): Promise
   }
 }
 
-/** Wraps a route handler so it only runs for an admin. */
+const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function refused(status: 403 | 415, error: string): Response {
+  return Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cross-site request forgery check for requests that change something. Cloudflare Access adds
+ * its token to any request that carries the admin's cookie, a form posted from another site
+ * included, so the token alone does not prove the admin meant to send it.
+ *
+ * - A browser says where a request came from (`Origin`, `Sec-Fetch-Site`): anything but this
+ *   site is refused.
+ * - A body must be JSON. The types a plain HTML form can send are refused, and JSON from
+ *   another site needs a CORS preflight, which this app never answers.
+ * - Clients that are not browsers (curl with a service token) send neither header and pass.
+ *
+ * Returns the refusal, or null when the request may go ahead.
+ */
+export function checkSameOrigin(req: Request): Response | null {
+  if (SAFE_METHODS.has(req.method.toUpperCase())) return null;
+
+  const site = req.headers.get('sec-fetch-site');
+  if (site !== null && site !== 'same-origin' && site !== 'none') {
+    return refused(403, 'cross-site request refused');
+  }
+  const origin = req.headers.get('origin');
+  if (origin !== null) {
+    const allowed = [originOf(config().publicBaseUrl), originOf(req.url)];
+    if (!allowed.includes(origin)) return refused(403, 'cross-site request refused');
+  }
+  const type = req.headers.get('content-type');
+  if (type !== null && !/^application\/json\b/i.test(type.trim())) {
+    return refused(415, 'the request body must be JSON');
+  }
+  return null;
+}
+
+/** Wraps a route handler so it only runs for an admin, and never for a forged request. */
 export function withAdmin<C>(
   handler: (req: Request, ctx: C) => Promise<Response>,
   opts: GuardOptions = {}
@@ -54,7 +100,7 @@ export function withAdmin<C>(
   return async (req, ctx) => {
     const check = await checkAdmin(req, opts);
     if (!check.ok) return check.response;
-    return handler(req, ctx);
+    return checkSameOrigin(req) ?? handler(req, ctx);
   };
 }
 

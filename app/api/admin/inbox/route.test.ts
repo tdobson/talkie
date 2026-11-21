@@ -38,6 +38,7 @@ const post = (body: unknown) =>
   POST(
     new Request('http://x/api/admin/inbox', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: typeof body === 'string' ? body : JSON.stringify(body),
     }),
     {}

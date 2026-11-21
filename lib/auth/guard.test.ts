@@ -119,3 +119,71 @@ describe('requireAdminPage', () => {
     expect(await requireAdminPage()).toBeNull();
   });
 });
+
+describe('cross-site requests to state-changing admin routes', () => {
+  const KEY = 'PUBLIC_BASE_URL';
+  let savedBase: string | undefined;
+  beforeEach(() => {
+    savedBase = process.env[KEY];
+    process.env.ADMIN_AUTH = 'off';
+    process.env[KEY] = 'https://feedback.example.com';
+    resetConfigForTests();
+  });
+  afterEach(() => {
+    if (savedBase === undefined) delete process.env[KEY];
+    else process.env[KEY] = savedBase;
+  });
+
+  const handler = vi.fn(async () => new Response('ok'));
+  const post = (headers: Record<string, string>, body: string | undefined = '{}') =>
+    withAdmin(handler)(
+      new Request('http://127.0.0.1:3000/api/admin/inbox', { method: 'POST', headers, body }),
+      {}
+    );
+  const json = { 'Content-Type': 'application/json' };
+
+  it('lets the admin page and service-token clients through', async () => {
+    handler.mockClear();
+    const sameOrigin = { ...json, Origin: 'https://feedback.example.com' };
+    expect((await post({ ...sameOrigin, 'Sec-Fetch-Site': 'same-origin' })).status).toBe(200);
+    // Behind no proxy (local development), the origin is the server's own address.
+    expect((await post({ ...json, Origin: 'http://127.0.0.1:3000' })).status).toBe(200);
+    // curl with a service token: no Origin, no Sec-Fetch-Site.
+    expect((await post(json)).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(3);
+  });
+
+  it('refuses a POST from another site', async () => {
+    handler.mockClear();
+    expect((await post({ ...json, Origin: 'https://evil.example' })).status).toBe(403);
+    expect((await post({ ...json, 'Sec-Fetch-Site': 'cross-site' })).status).toBe(403);
+    expect((await post({ ...json, 'Sec-Fetch-Site': 'same-site' })).status).toBe(403);
+    expect((await post({ ...json, Origin: 'null' })).status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('refuses the content types a plain HTML form can send', async () => {
+    handler.mockClear();
+    // A Request with a string body and no header says text/plain, as a form with that enctype does.
+    expect((await post({})).status).toBe(415);
+    const form = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    expect((await post(form, 'a=1')).status).toBe(415);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('does not apply to reads', async () => {
+    handler.mockClear();
+    const get = withAdmin(handler)(
+      new Request('http://127.0.0.1:3000/api/admin/videos', {
+        headers: { Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site' },
+      }),
+      {}
+    );
+    expect((await get).status).toBe(200);
+  });
+
+  it('still answers 401 first when there is no Access token', async () => {
+    cloudflare();
+    expect((await post({ ...json, Origin: 'https://evil.example' })).status).toBe(401);
+  });
+});

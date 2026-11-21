@@ -33,6 +33,7 @@ const call = (videoId: string, body?: unknown) =>
   POST(
     new Request(`http://localhost/api/admin/videos/${videoId}/reprocess`, {
       method: 'POST',
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
     { params: Promise.resolve({ videoId }) }
