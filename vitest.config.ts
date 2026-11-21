@@ -14,6 +14,9 @@ export default defineConfig({
     // Keep parallelism low: this project only ever uses background capacity.
     maxWorkers: 2,
     passWithNoTests: true,
+    // Tests spawn ffmpeg at nice +19 and IO level 7, so the 5s default is too tight on a busy machine.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // Generates media fixtures once per run (idempotent, low priority).
     globalSetup: ['./test/globalSetup.ts'],
     projects: [

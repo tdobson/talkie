@@ -96,7 +96,7 @@ export async function writeZip(
     }
     if (!raw) return;
     for (const name of RAW_FILES) {
-      const src = join(dir, name);
+      const src = join(/* turbopackIgnore: true */ dir, name);
       if (await isFile(src)) zip.addFile(src, `raw/${c.commentId}/${name}`);
     }
   };

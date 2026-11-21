@@ -39,8 +39,11 @@ export function loadConfig(env: Env): Config {
   const cfAccessTeamDomain = value(env, 'CF_ACCESS_TEAM_DOMAIN');
   const cfAccessAud = value(env, 'CF_ACCESS_AUD');
 
-  if (isProduction && adminAuth === 'off') {
-    throw new Error('ADMIN_AUTH=off is for local development only and is refused in production.');
+  // E2E_TEST_MODE=1 is the one escape hatch: Playwright runs the production (standalone) server.
+  if (isProduction && adminAuth === 'off' && value(env, 'E2E_TEST_MODE') !== '1') {
+    throw new Error(
+      'ADMIN_AUTH=off is for local development only and is refused in production unless E2E_TEST_MODE=1.'
+    );
   }
   if (isProduction && adminAuth === 'cloudflare' && !(cfAccessTeamDomain && cfAccessAud)) {
     throw new Error(
@@ -66,7 +69,8 @@ export function loadConfig(env: Env): Config {
   }
 
   return {
-    dataDir: resolve(value(env, 'DATA_DIR') ?? 'data'),
+    // DATA_DIR is a runtime location, not part of the build: keep it out of file tracing.
+    dataDir: resolve(/* turbopackIgnore: true */ value(env, 'DATA_DIR') ?? 'data'),
     groqApiKey,
     groqBaseUrl: 'https://api.groq.com/openai/v1',
     whisperLanguage: value(env, 'WHISPER_LANGUAGE') ?? 'en',

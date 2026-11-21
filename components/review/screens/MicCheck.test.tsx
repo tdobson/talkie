@@ -67,4 +67,11 @@ describe('MicCheck', () => {
     render(<MicCheck stream={stream} onHeard={vi.fn()} onStart={vi.fn()} starting />);
     expect(screen.getByTestId(T.startWatching)).toBeDisabled();
   });
+
+  it('says so when the session could not be started', () => {
+    const view = render(<MicCheck stream={stream} onHeard={() => {}} onStart={() => {}} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    view.rerender(<MicCheck stream={stream} onHeard={() => {}} onStart={() => {}} startFailed />);
+    expect(screen.getByRole('alert')).toHaveTextContent(copy.micCheck.startFailed);
+  });
 });

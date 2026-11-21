@@ -16,18 +16,21 @@ export const SPEECH_THRESHOLD = 0.08;
 
 /**
  * Live level meter. Start watching unlocks once speech has been heard for MIC_SPEECH_HOLD_MS,
- * and stays unlocked. `starting` is true while the session is being created.
+ * and stays unlocked. `starting` is true while the session is being created, and `startFailed`
+ * after an attempt to create it did not work.
  */
 export function MicCheck({
   stream,
   onHeard,
   onStart,
   starting = false,
+  startFailed = false,
 }: {
   stream: MediaStream | null;
   onHeard: () => void;
   onStart: () => void;
   starting?: boolean;
+  startFailed?: boolean;
 }) {
   const level = useMicLevel(stream);
   const gate = useRef<SpeechGate | null>(null);
@@ -77,6 +80,11 @@ export function MicCheck({
       >
         {copy.micCheck.startWatching}
       </Button>
+      {startFailed && (
+        <Text c="red.8" role="alert">
+          {copy.micCheck.startFailed}
+        </Text>
+      )}
     </ScreenCard>
   );
 }

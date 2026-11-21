@@ -76,6 +76,7 @@ export function ReviewApp({
   const [refusedCommentId, setRefusedCommentId] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [startFailed, setStartFailed] = useState(false);
   const session = useSession(token);
 
   const createUploaderRef = useRef(createUploader);
@@ -179,6 +180,7 @@ export function ReviewApp({
       return;
     }
     setStarting(true);
+    setStartFailed(false);
     try {
       const created = await session.start(state.name);
       dispatch({
@@ -188,6 +190,7 @@ export function ReviewApp({
       });
     } catch {
       // Could not reach the server: the button comes back so the reviewer can try again.
+      setStartFailed(true);
     } finally {
       setStarting(false);
     }
@@ -242,6 +245,7 @@ export function ReviewApp({
           <MicCheck
             stream={stream}
             starting={starting}
+            startFailed={startFailed}
             onHeard={() => dispatch({ type: 'micHeard' })}
             onStart={() => void startWatching()}
           />

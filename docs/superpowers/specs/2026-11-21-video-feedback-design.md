@@ -75,7 +75,7 @@ Main units (each independently testable):
 | `GROQ_API_KEY` | Groq key for Whisper |
 | `WHISPER_LANGUAGE` | Default `en` |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | For admin JWT verification |
-| `ADMIN_AUTH` | `cloudflare` (default) or `off` (local development only; refuses to start with `off` when `NODE_ENV=production`) |
+| `ADMIN_AUTH` | `cloudflare` (default) or `off` (local development only; refuses to start with `off` when `NODE_ENV=production`, unless `E2E_TEST_MODE=1` for the Playwright run) |
 | `HOSTNAME`, `PORT` | `127.0.0.1`, `3000` |
 
 ## 4. Storage layout

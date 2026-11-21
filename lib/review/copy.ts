@@ -19,6 +19,7 @@ export const copy = {
     title: 'Say hello so we know we can hear you',
     heard: 'Got you, loud and clear',
     startWatching: 'Start watching',
+    startFailed: "We couldn't get started. Check your connection and try again.",
   },
   micDenied: {
     title: "We can't hear you yet",

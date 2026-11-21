@@ -63,3 +63,10 @@ it('allows TRANSCRIBER=fake in production only with E2E_TEST_MODE=1, without a G
   expect(c.transcriber).toBe('fake');
   expect(c.groqApiKey).toBeNull();
 });
+it('allows ADMIN_AUTH=off in production only with E2E_TEST_MODE=1', () => {
+  const base = { NODE_ENV: 'production', PUBLIC_BASE_URL: 'http://127.0.0.1:3123' };
+  const e2e = { ...base, ADMIN_AUTH: 'off', TRANSCRIBER: 'fake', E2E_TEST_MODE: '1' };
+  expect(loadConfig(e2e).adminAuth).toBe('off');
+  expect(() => loadConfig({ ...e2e, E2E_TEST_MODE: '0' })).toThrow(/ADMIN_AUTH=off/);
+  expect(() => loadConfig({ ...e2e, E2E_TEST_MODE: undefined })).toThrow(/ADMIN_AUTH=off/);
+});

@@ -1690,7 +1690,7 @@ One `review` each for 4.1 (spec section 9 fidelity: every field, sort order, no 
 **Files:** `playwright.config.ts`, `e2e/global-setup.ts`, `e2e/helpers.ts`, `e2e/review-flow.spec.ts`, `e2e/zoom-and-frames.spec.ts`, `e2e/resume-and-retry.spec.ts`, `e2e/edge-cases.spec.ts`, `e2e/admin-export.spec.ts`, `e2e/cross-browser.spec.ts`, `e2e/a11y.spec.ts`.
 
 **Config:**
-- `webServer`: `yarn build && HOSTNAME=127.0.0.1 PORT=3123 DATA_DIR=<tmp> ADMIN_AUTH=off TRANSCRIBER=fake PUBLIC_BASE_URL=http://127.0.0.1:3123 ./scripts/lowprio.sh node .next/standalone/server.js` (copy `.next/static` and `public` into standalone first, as `next start` would), `reuseExistingServer: !process.env.CI`, timeout 240s.
+- `webServer`: `yarn build && HOSTNAME=127.0.0.1 PORT=3123 DATA_DIR=<tmp> ADMIN_AUTH=off TRANSCRIBER=fake E2E_TEST_MODE=1 PUBLIC_BASE_URL=http://127.0.0.1:3123 ./scripts/lowprio.sh node .next/standalone/server.js` (copy `.next/static` and `public` into standalone first, as `next start` would), `reuseExistingServer: !process.env.CI`, timeout 240s.
 - `globalSetup`: runs `yarn fixtures`, creates the temp `DATA_DIR`, imports `h264.mp4` as "E2E film" via `yarn import` (v1) and again as v2, writes the review URL to `e2e/.state.json`.
 - Projects: `chromium` (all specs) with `launchOptions.args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--use-file-for-fake-audio-capture=<abs>/test/fixtures/generated/e2e-voice.wav']` and `permissions: ['microphone']`; `firefox` and `webkit` run only `cross-browser.spec.ts`. `workers: 2`, `fullyParallel: false` per file that shares a session.
 - Every test uses `data-testid` selectors from `lib/testids.ts` (imported).

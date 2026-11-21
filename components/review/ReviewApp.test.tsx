@@ -6,10 +6,13 @@ import { ReviewApp, type ReviewUploader } from './ReviewApp';
 
 // The level meter needs real audio; the screen itself is covered by MicCheck.test.tsx.
 vi.mock('./screens/MicCheck', () => ({
-  MicCheck: (props: { onStart: () => void }) => (
-    <button type="button" data-testid="start-watching" onClick={props.onStart}>
-      Start watching
-    </button>
+  MicCheck: (props: { onStart: () => void; startFailed?: boolean }) => (
+    <>
+      <button type="button" data-testid="start-watching" onClick={props.onStart}>
+        Start watching
+      </button>
+      {props.startFailed && <p role="alert">start failed</p>}
+    </>
   ),
 }));
 
@@ -185,6 +188,7 @@ describe('ReviewApp', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await user.click(await screen.findByTestId(T.startWatching));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(await screen.findByRole('alert')).toHaveTextContent('start failed');
     expect(screen.queryByTestId(T.player)).toBeNull();
     await user.click(screen.getByTestId(T.startWatching));
     expect(await screen.findByTestId(T.player)).toBeInTheDocument();
