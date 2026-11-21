@@ -138,3 +138,4 @@ test/fixtures/generated/
 !.env.example
 playwright-report/
 test-results/
+e2e/.state.json

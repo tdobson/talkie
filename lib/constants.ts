@@ -17,7 +17,12 @@ export const MAX_CHUNK_BYTES = 5 * 1024 * 1024;
 export const MAX_EVENTS_BYTES = 2 * 1024 * 1024;
 export const MAX_COMMENT_BYTES = 50 * 1024 * 1024;
 export const MAX_CHUNK_REQUESTS_PER_MIN = 120;
-export const SAVE_TROUBLE_AFTER_MS = 20_000;
+/**
+ * The E2E build sets NEXT_PUBLIC_E2E_FAST_TIMERS=1 (inlined at build time) so the trouble banner
+ * shows after 2 seconds. Production builds never set it.
+ */
+export const SAVE_TROUBLE_AFTER_MS =
+  process.env.NEXT_PUBLIC_E2E_FAST_TIMERS === '1' ? 2_000 : 20_000;
 export const MIC_SPEECH_HOLD_MS = 300;
 export const SILENCE_NOISE_DB = -40;
 export const SILENCE_MIN_SPEECH_S = 0.3;
