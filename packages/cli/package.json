@@ -1,0 +1,32 @@
+{
+  "name": "@talkie/cli",
+  "version": "0.1.0",
+  "description": "Talkie command line: voice, build, check, qa, dev, export",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "talkie": "dist/bin.js"
+  },
+  "scripts": {
+    "build": "../../scripts/low esbuild src/index.ts --bundle --format=esm --platform=node --packages=external --outfile=dist/index.js && ../../scripts/low esbuild src/bin.ts --bundle --format=esm --platform=node --packages=external --banner:js='#!/usr/bin/env node' --outfile=dist/bin.js && ../../scripts/low tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@talkie/author": "workspace:*",
+    "@talkie/format": "workspace:*",
+    "@talkie/player": "workspace:*",
+    "commander": "^15.1.0",
+    "jiti": "^2.7.0",
+    "playwright-core": "^1.65.1"
+  }
+}

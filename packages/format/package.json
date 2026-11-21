@@ -1,0 +1,23 @@
+{
+  "name": "@talkie/format",
+  "version": "0.1.0",
+  "description": "Talkie film description: types, validation, timeline maths, reading and packing films",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "../../scripts/low esbuild src/index.ts --bundle --format=esm --platform=neutral --packages=external --outfile=dist/index.js && ../../scripts/low tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  }
+}

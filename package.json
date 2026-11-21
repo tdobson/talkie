@@ -1,0 +1,46 @@
+{
+  "name": "talkie",
+  "private": true,
+  "packageManager": "yarn@4.18.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "scripts/low yarn workspaces foreach -Apt --include '@talkie/*' --exclude '@talkie/example-*' run build",
+    "typecheck": "scripts/low tsc --noEmit -p tsconfig.json",
+    "lint": "scripts/low oxlint -c oxlint.config.mjs .",
+    "format:test": "scripts/low oxfmt -c oxfmt.config.mjs --check \"**/*.{ts,tsx,css}\"",
+    "format:write": "scripts/low oxfmt -c oxfmt.config.mjs --write \"**/*.{ts,tsx,css}\"",
+    "jest": "scripts/low jest --maxWorkers=2",
+    "test": "yarn format:test && yarn lint && yarn typecheck && yarn jest",
+    "e2e": "scripts/low playwright test --pass-with-no-tests",
+    "talkie": "node packages/cli/dist/bin.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@swc/core": "^1.16.22",
+    "@swc/jest": "^0.2.39",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "^19",
+    "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
+    "jest": "^30",
+    "jest-environment-jsdom": "^30",
+    "oxc-config-mantine": "^1.0.3",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2"
+  }
+}

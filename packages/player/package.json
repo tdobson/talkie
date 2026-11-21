@@ -1,0 +1,32 @@
+{
+  "name": "@talkie/player",
+  "version": "0.1.0",
+  "description": "Talkie reference player: the talkie-player web component",
+  "type": "module",
+  "sideEffects": [
+    "./dist/define.js",
+    "./src/define.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./define": {
+      "types": "./dist/define.d.ts",
+      "import": "./dist/define.js"
+    },
+    "./talkie-player.js": "./dist/talkie-player.js"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "../../scripts/low esbuild src/index.ts src/define.ts --bundle --splitting '--chunk-names=chunks/[name]-[hash]' --format=esm --platform=browser --external:@lottiefiles/dotlottie-web --outdir=dist && ../../scripts/low esbuild src/define.ts --bundle --format=esm --platform=browser --outfile=dist/talkie-player.js && ../../scripts/low tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lottiefiles/dotlottie-web": "^0.83.2",
+    "@talkie/format": "workspace:*"
+  }
+}
