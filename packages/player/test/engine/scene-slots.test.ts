@@ -37,7 +37,11 @@ describe('SceneSlots', () => {
     expect(shown).toEqual([0]);
     const slot = slots.show(0);
     expect(slot).toBe(slots.visible);
-    expect(slot).toMatchObject({ sceneIndex: 0, state: 'ready', timing: { fr: 60, ip: 0, op: 600 } });
+    expect(slot).toMatchObject({
+      sceneIndex: 0,
+      state: 'ready',
+      timing: { fr: 60, ip: 0, op: 600 },
+    });
   });
 
   test('crossing a boundary swaps slots without a reload when prefetched', async () => {

@@ -47,7 +47,8 @@ export const createDotLottieRenderer: CreateRenderer = (canvas) => {
         loop: false,
         renderConfig: { devicePixelRatio: window.devicePixelRatio, autoResize: true },
       };
-      const p = (player ??= new Player({ canvas, ...config }));
+      player ??= new Player({ canvas, ...config });
+      const p = player;
       await new Promise<void>((resolve, reject) => {
         const done = (error?: Error) => {
           p.removeEventListener('load', onLoad);

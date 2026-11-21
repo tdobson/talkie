@@ -32,7 +32,7 @@ describe('parseVtt', () => {
 
   test('gives no cues for empty or header-only input', () => {
     expect(parseVtt('')).toEqual([]);
-    expect(parseVtt('﻿WEBVTT\n')).toEqual([]);
+    expect(parseVtt('\uFEFFWEBVTT\n')).toEqual([]);
   });
 
   test('sorts cues by start time', () => {

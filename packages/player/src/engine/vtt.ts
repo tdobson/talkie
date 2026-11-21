@@ -18,7 +18,7 @@ function parseTime(s: string): number | null {
 export function parseVtt(text: string): Cue[] {
   const cues: Cue[] = [];
   const blocks = text
-    .replace(/^﻿/, '')
+    .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}/);
   for (const block of blocks) {
