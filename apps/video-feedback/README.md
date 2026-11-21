@@ -4,8 +4,8 @@ A reviewer opens a link, watches a video, pauses and talks while pointing at the
 turns that into timecoded, word-aligned, pointer-annotated feedback and exports it as a zip that an
 LLM can read.
 
-- Design spec: `docs/superpowers/specs/2026-11-21-video-feedback-design.md`
-- Implementation plan: `docs/plans/2026-11-21-video-feedback.md`
+- Design spec: `../../docs/superpowers/specs/2026-11-21-video-feedback-design.md`
+- Implementation plan: `../../docs/plans/2026-11-21-video-feedback.md`
 
 ## Stack
 
@@ -14,12 +14,19 @@ ffprobe, sharp, Groq Whisper for transcription.
 
 ## Getting started
 
+The app is a workspace of the monorepo. Install once at the repo root, then work in this folder
+(or use `yarn vf <script>` from the root).
+
 ```bash
-nvm use            # Node 24 (anything from 22 up works)
-yarn install
+nvm use                      # Node 22 or newer
+scripts/low yarn install     # at the repo root: one lockfile for every workspace
+cd apps/video-feedback
 cp .env.example .env.local
 yarn dev
 ```
+
+`yarn dev`, `yarn build` and `yarn test:e2e` first build the Talkie packages the app depends on
+(`yarn predeps`).
 
 `ffmpeg` and `ffprobe` must be on the `PATH`.
 
@@ -64,7 +71,7 @@ yarn reprocess <videoId>                      # retry failed comments
 yarn reprocess <videoId> --from-step moments  # rebuild from one step onwards
 ```
 
-Over HTTP, for scripts (behind Cloudflare Access in production, see `docs/DEPLOY.md`):
+Over HTTP, for scripts (behind Cloudflare Access in production, see `../../docs/DEPLOY.md`):
 
 | Request                                       | Answer                                   |
 | --------------------------------------------- | ---------------------------------------- |
@@ -90,7 +97,7 @@ Both are refused when `NODE_ENV=production`.
 ## Deployment
 
 Runs as one Node process under systemd behind a Cloudflare Tunnel, with Cloudflare Access on
-`/admin` and `/api/admin`. See `docs/DEPLOY.md`, `deploy/video-feedback.service` and
+`/admin` and `/api/admin`. See `../../docs/DEPLOY.md`, `deploy/video-feedback.service` and
 `deploy/cloudflared.md`.
 
 ## Commands
@@ -112,7 +119,8 @@ Runs as one Node process under systemd behind a Cloudflare Tunnel, with Cloudfla
 Every heavy script (install, build, lint, typecheck, tests, Playwright, ffmpeg, dev server) runs
 through `scripts/lowprio.sh`, which is `ionice -c2 -n7 nice -n19`: best-effort IO at its lowest
 level and the lowest CPU priority. The yarn scripts wrap themselves, so `yarn check` needs no
-prefix. For anything else, prefix it: `./scripts/lowprio.sh yarn install`.
+prefix. For anything else, prefix it: `./scripts/lowprio.sh <command>` here, or `scripts/low <command>`
+at the repo root.
 
 Parallelism is capped too: Vitest `maxWorkers: 2`, Next build `experimental.cpus: 2`, Playwright
 `workers: 2`. `yarn start` is the one exception and runs at normal priority.

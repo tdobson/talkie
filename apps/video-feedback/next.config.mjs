@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 // Response headers. The admin pages must not be framed by another site (clickjacking on
 // Import and Reprocess), and a review link is its own credential, so it must not leak through
 // the Referer header or end up in a search index.
@@ -19,6 +21,11 @@ export const securityHeaders = [
   { source: '/admin', headers: privatePages },
 ];
 
+// The app lives in a yarn workspace: dependencies are hoisted to the repo root, so file tracing
+// and Turbopack both start there. The standalone server lands in
+// .next/standalone/apps/video-feedback/ as a result.
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
@@ -26,6 +33,8 @@ const nextConfig = {
   },
   reactStrictMode: false,
   output: 'standalone',
+  outputFileTracingRoot: repoRoot,
+  turbopack: { root: repoRoot },
   serverExternalPackages: ['sharp'],
   experimental: {
     // Build workers are capped so background builds cannot hog the machine.

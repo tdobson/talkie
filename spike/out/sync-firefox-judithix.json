@@ -1,0 +1,212 @@
+{
+  "browser": "firefox",
+  "version": "159.0",
+  "startedAt": "2026-11-21T14:01:31.789Z",
+  "passMs": 40,
+  "plan": {
+    "repeats": 24,
+    "playSeconds": 600,
+    "seeks": 20,
+    "seekSeconds": 3,
+    "rateSeconds": 60,
+    "rates": [
+      0.5,
+      1.5,
+      2
+    ]
+  },
+  "canPlayType": {
+    "audio/webm; codecs=opus": "probably",
+    "audio/ogg; codecs=opus": "probably",
+    "audio/mp4; codecs=mp4a.40.2": "probably"
+  },
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:159.0) Gecko/20100101 Firefox/159.0",
+  "cpus": 12,
+  "tracks": {
+    "webm": {
+      "ran": true,
+      "errors": [],
+      "loadAtStart": [
+        0.71,
+        0.45,
+        0.28
+      ],
+      "type": "audio/webm; codecs=opus",
+      "canPlayType": "probably",
+      "duration": 653.77,
+      "play": {
+        "n": 35937,
+        "p50": 16,
+        "p95": 34,
+        "p99": 35,
+        "max": 56,
+        "over40": 54,
+        "meanSigned": 12.72,
+        "renderP50": 10,
+        "renderP99": 26,
+        "estimated": {
+          "n": 35937,
+          "p50": 7.16,
+          "p95": 18.03,
+          "p99": 24.93,
+          "max": 43.93,
+          "over40": 1
+        },
+        "wallSeconds": 600,
+        "audioTimeAtEnd": 600.55,
+        "audioAdvanced": 600.03,
+        "framesPerSecond": 59.89
+      },
+      "playLast30s": {
+        "n": 1797,
+        "p50": 16,
+        "p95": 34,
+        "p99": 35,
+        "max": 38,
+        "over40": 0,
+        "meanSigned": 12.63,
+        "renderP50": 10,
+        "renderP99": 26
+      },
+      "seeks": {
+        "n": 3601,
+        "p50": 16,
+        "p95": 34,
+        "p99": 34,
+        "max": 54,
+        "over40": 4,
+        "meanSigned": 12.67,
+        "renderP50": 11,
+        "renderP99": 26,
+        "estimated": {
+          "n": 3601,
+          "p50": 7.95,
+          "p95": 20.62,
+          "p99": 26.17,
+          "max": 38.83,
+          "over40": 0
+        },
+        "targets": [
+          431.27,
+          219.61,
+          335.82,
+          612.34,
+          368.63,
+          148.7,
+          494.52,
+          230.79,
+          572.19,
+          308.58,
+          203.66,
+          111.45,
+          605.06,
+          413.6,
+          155.11,
+          515.67,
+          434.77,
+          335.85,
+          168.33,
+          312.46
+        ],
+        "audioTimeAtEnd": 315.44
+      },
+      "rates": {
+        "0.5x": {
+          "n": 3599,
+          "p50": 16.5,
+          "p95": 33.5,
+          "p99": 34,
+          "max": 44,
+          "over40": 5,
+          "meanSigned": 16.18,
+          "renderP50": 10,
+          "renderP99": 26,
+          "estimated": {
+            "n": 3599,
+            "p50": 3.8,
+            "p95": 8.53,
+            "p99": 11.72,
+            "max": 22.2,
+            "over40": 0
+          },
+          "audioTimeAtEnd": 35.49,
+          "wallSeconds": 60.3,
+          "audioAdvanced": 30.01,
+          "measuredRate": 0.5
+        },
+        "1.5x": {
+          "n": 3598,
+          "p50": 0,
+          "p95": 27,
+          "p99": 30,
+          "max": 66,
+          "over40": 3,
+          "meanSigned": 9.21,
+          "renderP50": 11,
+          "renderP99": 26,
+          "estimated": {
+            "n": 3598,
+            "p50": 10.67,
+            "p95": 28.68,
+            "p99": 38.03,
+            "max": 57.33,
+            "over40": 25
+          },
+          "audioTimeAtEnd": 96.54,
+          "wallSeconds": 60.3,
+          "audioAdvanced": 90.05,
+          "measuredRate": 1.49
+        },
+        "2x": {
+          "n": 3597,
+          "p50": 0,
+          "p95": 34,
+          "p99": 36,
+          "max": 70,
+          "over40": 17,
+          "meanSigned": 5.94,
+          "renderP50": 11,
+          "renderP99": 26,
+          "estimated": {
+            "n": 3597,
+            "p50": 16.98,
+            "p95": 43.71,
+            "p99": 52.49,
+            "max": 71.7,
+            "over40": 290
+          },
+          "audioTimeAtEnd": 127.07,
+          "wallSeconds": 60.29,
+          "audioAdvanced": 120.05,
+          "measuredRate": 1.99
+        }
+      },
+      "overall": {
+        "n": 50332,
+        "p50": 15,
+        "p95": 34,
+        "p99": 35,
+        "max": 70,
+        "over40": 83,
+        "meanSigned": 12.23,
+        "renderP50": 10,
+        "renderP99": 26,
+        "estimated": {
+          "n": 50332,
+          "p50": 7.25,
+          "p95": 22.86,
+          "p99": 35.38,
+          "max": 71.7,
+          "over40": 316
+        }
+      },
+      "loadAtEnd": [
+        0.97,
+        0.91,
+        0.68
+      ],
+      "pass": true
+    }
+  },
+  "finishedAt": "2026-11-21T14:15:41.414Z"
+}

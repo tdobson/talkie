@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talkie spike: sync harness</title>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 12px; background: #1d2422; color: #f3efe4; }
+  h1 { font-size: 16px; margin: 0 0 8px; font-weight: 600; }
+  .frame { aspect-ratio: 16 / 9; max-width: 960px; background: #f6efde; position: relative; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; max-width: 960px; }
+  button { font: inherit; padding: 8px 12px; }
+  audio { width: 100%; max-width: 960px; display: block; }
+  pre { font-size: 13px; line-height: 1.4; white-space: pre-wrap; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<h1>Sync harness: the narration is the clock, the picture follows it</h1>
+<div class="frame"><canvas id="canvas"></canvas></div>
+<div class="bar">
+  <button id="play" type="button">Play</button>
+  <button data-rate="0.5" type="button">0.5x</button>
+  <button data-rate="1" type="button">1x</button>
+  <button data-rate="1.5" type="button">1.5x</button>
+  <button data-rate="2" type="button">2x</button>
+  <button id="jump" type="button">Random seek</button>
+  <button id="reset" type="button">Clear samples</button>
+</div>
+<audio id="audio" controls preload="auto"></audio>
+<pre id="readout">loading</pre>
+<script type="module">
+import { DotLottie } from './node_modules/@lottiefiles/dotlottie-web/dist/index.js';
+
+// ---- the smoothing clock, copied from the plan (Task T5, smooth-clock.ts), types removed
+/** audio.currentTime updates coarsely in some browsers; extrapolate between updates, never run ahead by more than 250 ms, never step backwards by less than 300 ms (a real seek). */
+class SmoothClock {
+  constructor(now = () => performance.now()) { this.now = now; this.media = 0; this.wall = 0; this.last = 0; }
+  read(m) {
+    const wall = this.now();
+    if (m.paused || m.seeking || m.currentTime !== this.media) { this.media = m.currentTime; this.wall = wall; }
+    let t = m.paused || m.seeking ? m.currentTime : Math.min(this.media + ((wall - this.wall) / 1000) * m.playbackRate, this.media + 0.25);
+    if (!m.paused && !m.seeking && t < this.last && this.last - t < 0.3) t = this.last;
+    this.last = t;
+    return t;
+  }
+}
+
+const q = new URLSearchParams(location.search);
+const REPEATS = parseInt(q.get('repeats') || '20', 10);   // the film is the scene, REPEATS times over
+const sceneId = q.get('scene') || 'g01-s01';
+const SCENE_SECONDS = 27.24;                               // scene length on the narration track
+const MAX_SAMPLES = 400000;
+const audio = document.getElementById('audio');
+const readout = document.getElementById('readout');
+
+// ---- pick the narration: ?audio=webm|ogg|m4a forces one, otherwise the first the browser says it can play
+const TRACKS = [
+  { key: 'webm', src: `audio/n-x${REPEATS}.webm`, type: 'audio/webm; codecs=opus' },
+  { key: 'ogg', src: `audio/n-x${REPEATS}.ogg`, type: 'audio/ogg; codecs=opus' },
+  { key: 'm4a', src: `audio/n-x${REPEATS}.m4a`, type: 'audio/mp4; codecs=mp4a.40.2' },
+];
+const canPlay = Object.fromEntries(TRACKS.map((t) => [t.type, audio.canPlayType(t.type)]));
+const forced = q.get('audio');
+const track = forced ? TRACKS.find((t) => t.key === forced) : TRACKS.find((t) => canPlay[t.type]);
+if (!track) throw new Error('no playable narration type');
+audio.src = track.src;
+
+DotLottie.setWasmUrl(new URL('./node_modules/@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm', location.href).href);
+const animation = await (await fetch(`scene/${sceneId}.json`)).json();
+const FR = animation.fr, lastFrame = animation.op - 1;
+const player = new DotLottie({
+  canvas: document.getElementById('canvas'), data: animation, autoplay: false, loop: false, useFrameInterpolation: true,
+  renderConfig: { devicePixelRatio: window.devicePixelRatio, autoResize: true },
+});
+await new Promise((resolve, reject) => {
+  player.addEventListener('load', () => resolve());
+  player.addEventListener('loadError', () => reject(new Error('dotlottie-web could not load the scene')));
+});
+
+// ---- the loop: each animation frame, read the clock, set the frame, measure
+const clock = new SmoothClock();
+const samples = [];   // { wall, audio, film, drift, rate, render } with times in seconds, render in ms
+let lastDraw = -1, lastRaw = -1;
+function draw(t) {
+  // film time to scene and frame, as the player will do it: scene index, then the frame inside the scene
+  const index = Math.min(REPEATS - 1, Math.floor(t / SCENE_SECONDS));
+  const frame = Math.min(lastFrame, Math.max(0, (t - index * SCENE_SECONDS) * FR));
+  player.setFrame(frame);
+  return index * SCENE_SECONDS + frame / FR;   // the film time now on the canvas
+}
+function tick() {
+  const raw = audio.currentTime;
+  const t = clock.read(audio);
+  // Playing means the sound is moving. WebKit's GStreamer port reports readyState 2 for long spells
+  // after a seek or a speed change while the sound plays on, so a moving currentTime counts as well.
+  const playing = !audio.paused && !audio.seeking && !audio.ended && (audio.readyState >= 3 || raw !== lastRaw);
+  lastRaw = raw;
+  if (playing || t !== lastDraw) {
+    const before = performance.now();
+    const film = draw(t);
+    const after = performance.now();
+    lastDraw = t;
+    if (playing && samples.length < MAX_SAMPLES) {
+      const now = audio.currentTime;   // where the sound is once the frame has been drawn
+      samples.push({ wall: after / 1000, audio: now, film, drift: Math.abs(film - now), rate: audio.playbackRate, render: after - before });
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+function stats(from = 0) {
+  const d = samples.slice(from).map((s) => s.drift * 1000).sort((a, b) => a - b);
+  if (!d.length) return { n: 0 };
+  const p = (x) => d[Math.min(d.length - 1, Math.floor(d.length * x))];
+  const r = (x) => Math.round(x * 100) / 100;
+  return { n: d.length, p50: r(p(0.5)), p95: r(p(0.95)), p99: r(p(0.99)), max: r(d[d.length - 1]) };
+}
+const waitFor = (name) => new Promise((resolve) => audio.addEventListener(name, resolve, { once: true }));
+
+window.__sync = {
+  samples,
+  info: { track: track.key, type: track.type, canPlayType: canPlay, repeats: REPEATS, sceneSeconds: SCENE_SECONDS, fr: FR, userAgent: navigator.userAgent },
+  stats,
+  reset() { samples.length = 0; },
+  play() { return audio.play(); },
+  pause() { audio.pause(); },
+  /** Seek the narration; resolves once the browser reports the seek done. */
+  seek(t) { const done = waitFor('seeked'); audio.currentTime = t; return done; },
+  rate(r) { audio.playbackRate = r; },
+  get duration() { return audio.duration; },
+  get time() { return audio.currentTime; },
+};
+
+document.getElementById('play').addEventListener('click', () => (audio.paused ? audio.play() : audio.pause()));
+audio.addEventListener('play', () => { document.getElementById('play').textContent = 'Pause'; });
+audio.addEventListener('pause', () => { document.getElementById('play').textContent = 'Play'; });
+for (const b of document.querySelectorAll('[data-rate]')) b.addEventListener('click', () => window.__sync.rate(parseFloat(b.dataset.rate)));
+document.getElementById('jump').addEventListener('click', () => window.__sync.seek(Math.random() * (audio.duration - 30)));
+document.getElementById('reset').addEventListener('click', () => window.__sync.reset());
+setInterval(() => {
+  const s = stats();
+  readout.textContent = [
+    `narration: ${track.src} (${track.type})`,
+    `canPlayType: ${TRACKS.map((t) => `${t.key} "${canPlay[t.type]}"`).join(', ')}`,
+    `time ${audio.currentTime.toFixed(2)} of ${(audio.duration || 0).toFixed(2)} s at ${audio.playbackRate}x`,
+    s.n ? `drift over ${s.n} frames: p50 ${s.p50} ms, p95 ${s.p95} ms, p99 ${s.p99} ms, max ${s.max} ms (pass is p99 at or under 40 ms)` : 'drift: press Play',
+  ].join('\n');
+}, 500);
+requestAnimationFrame(tick);
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>

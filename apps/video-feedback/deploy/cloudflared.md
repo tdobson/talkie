@@ -1,7 +1,7 @@
 # Cloudflare Tunnel and Access
 
 The app listens on `127.0.0.1:3000` only. The tunnel is the one way in, and Cloudflare Access
-guards the admin side. The full deployment procedure is in `docs/DEPLOY.md`; this file holds the
+guards the admin side. The full deployment procedure is in `docs/DEPLOY.md` at the repo root; this file holds the
 Cloudflare settings on their own.
 
 Hostname used below: `video-feedback.tdobson.net`. Change it everywhere if you pick another.

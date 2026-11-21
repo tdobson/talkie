@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  A standalone page that plays a Talkie film. No framework and no build step.
+
+  To use it, put three things in one folder on any web server:
+
+    watch.html         this file
+    talkie-player.js   from packages/player/dist/talkie-player.js (made by "yarn build")
+    film/              a built film folder, for example examples/sample-film/dist/film
+
+  Then open watch.html over http. It does not work from a file:// address, because the browser
+  will not load the film's files that way.
+
+  The player loads its drawing engine (a .wasm file) from a public CDN. To serve everything
+  yourself, copy node_modules/@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm next to this
+  file and add wasm-url="./dotlottie-player.wasm" to the talkie-player tag.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Watch a Talkie film</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px 16px;
+        font-family: system-ui, sans-serif;
+        background: #f4f6f7;
+        color: #1d3b47;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      talkie-player {
+        display: block;
+        width: 100%;
+      }
+    </style>
+    <script type="module" src="./talkie-player.js"></script>
+  </head>
+  <body>
+    <main>
+      <talkie-player src="./film/"></talkie-player>
+    </main>
+  </body>
+</html>

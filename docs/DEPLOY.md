@@ -78,21 +78,25 @@ No quotes and no `export` in this file: systemd reads it as plain `KEY=value` li
 
 ```bash
 cd /srv/video-feedback/app
-./scripts/lowprio.sh yarn install --immutable
-./scripts/lowprio.sh yarn build
+scripts/low yarn install --immutable        # one install at the repo root covers every workspace
+cd apps/video-feedback
+yarn build
 ```
 
-`lowprio.sh` is `ionice -c2 -n7 nice -n19`. `yarn build` wraps itself as well, so the prefix is
+`scripts/low` is `ionice -c2 -n7 nice -n19`. `yarn build` wraps itself as well, so the prefix is
 belt and braces. The build is capped at 2 workers. Expect it to take a few minutes, and never
 run two at once.
 
-The build writes a self-contained server to `.next/standalone/`. It leaves out the static assets,
+The app is one workspace of a monorepo, so `yarn build` first builds the Talkie packages it
+depends on. The build writes a self-contained server to
+`.next/standalone/apps/video-feedback/`. It leaves out the static assets,
 so copy them in after every build:
 
 ```bash
-rm -rf .next/standalone/.next/static .next/standalone/public
-cp -r .next/static .next/standalone/.next/static
-cp -r public .next/standalone/public
+S=.next/standalone/apps/video-feedback
+rm -rf $S/.next/static $S/public
+cp -r .next/static $S/.next/static
+cp -r public $S/public
 ```
 
 Miss this step and pages load with no styles or scripts (404s under `/_next/static/`).
@@ -101,7 +105,7 @@ Miss this step and pages load with no styles or scripts (404s under `/_next/stat
 
 ```bash
 command -v node      # the unit expects /usr/bin/node; edit ExecStart if this differs
-sudo cp deploy/video-feedback.service /etc/systemd/system/
+sudo cp apps/video-feedback/deploy/video-feedback.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now video-feedback
 systemctl status video-feedback
@@ -124,7 +128,7 @@ ffmpeg, ffprobe and the still and clip rendering are lowered per process by the 
 
 ## 5. Cloudflare Tunnel and Access
 
-The settings, with dashboard paths, are in [`deploy/cloudflared.md`](../deploy/cloudflared.md).
+The settings, with dashboard paths, are in [`apps/video-feedback/deploy/cloudflared.md`](../apps/video-feedback/deploy/cloudflared.md).
 In short:
 
 1. **Ingress rule**: `video-feedback.tdobson.net` to `http://127.0.0.1:3000`.
@@ -180,7 +184,7 @@ left in the inbox.
 The CLIs read `DATA_DIR` directly and need no auth. They do need the env file loaded:
 
 ```bash
-cd /srv/video-feedback/app
+cd /srv/video-feedback/app/apps/video-feedback
 set -a; . /srv/video-feedback/env; set +a
 
 yarn import /path/to/film.mp4 --title "Spring promo"     # prints the review link
@@ -197,11 +201,13 @@ avoid running it on a comment the server is processing at that moment.
 ```bash
 cd /srv/video-feedback/app
 git pull --ff-only
-./scripts/lowprio.sh yarn install --immutable
-./scripts/lowprio.sh yarn build
-rm -rf .next/standalone/.next/static .next/standalone/public
-cp -r .next/static .next/standalone/.next/static
-cp -r public .next/standalone/public
+scripts/low yarn install --immutable
+cd apps/video-feedback
+yarn build
+S=.next/standalone/apps/video-feedback
+rm -rf $S/.next/static $S/public
+cp -r .next/static $S/.next/static
+cp -r public $S/public
 sudo systemctl restart video-feedback
 ```
 

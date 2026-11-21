@@ -2,7 +2,12 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const alias = [{ find: /^@\//, replacement: root }];
+// Talkie packages are used from source, as in the root Jest config, so tests need no build.
+const packages = fileURLToPath(new URL('../../packages', import.meta.url));
+const alias = [
+  { find: /^@\//, replacement: root },
+  { find: /^@talkie\/([a-z-]+)$/, replacement: `${packages}/$1/src/index.ts` },
+];
 
 // Tests that need a browser-like environment. Everything else runs in plain node.
 const jsdomTests = ['**/*.test.tsx', 'lib/capture/**/*.test.ts', 'lib/review/machine.test.ts'];

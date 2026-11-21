@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talkie spike: the packed file in stock dotlottie-web</title>
+<style>
+  body { margin: 0; padding: 12px; background: #1d2422; color: #f3efe4; font-family: system-ui, sans-serif; }
+  .frame { aspect-ratio: 16 / 9; max-width: 960px; background: #f6efde; position: relative; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  pre { font-size: 13px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1 style="font-size:16px">out/scene.lottie opened by stock dotlottie-web, frame 120</h1>
+<div class="frame"><canvas id="canvas"></canvas></div>
+<pre id="readout">loading</pre>
+<script type="module">
+// Nothing here knows about Talkie. It is the stock player given the packed file's URL.
+import { DotLottie } from './node_modules/@lottiefiles/dotlottie-web/dist/index.js';
+DotLottie.setWasmUrl(new URL('./node_modules/@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm', location.href).href);
+const state = (window.__compat = { done: false, loaded: false, loadError: null, frame: null, totalFrames: null, manifest: null, colours: 0 });
+const finish = () => { state.done = true; document.getElementById('readout').textContent = JSON.stringify(state, null, 2); };
+const player = new DotLottie({ canvas: document.getElementById('canvas'), src: 'out/scene.lottie', autoplay: false, loop: false, renderConfig: { autoResize: true } });
+player.addEventListener('loadError', (e) => { state.loadError = String((e && e.error && e.error.message) || 'load error'); finish(); });
+player.addEventListener('load', async () => {
+  state.loaded = true;
+  state.totalFrames = player.totalFrames;
+  state.manifest = player.manifest;
+  player.setFrame(120);
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  state.frame = player.currentFrame;
+  // count distinct colours on a small copy of the canvas: a blank canvas has one
+  const probe = document.createElement('canvas');
+  probe.width = 160; probe.height = 90;
+  const g = probe.getContext('2d');
+  g.drawImage(document.getElementById('canvas'), 0, 0, 160, 90);
+  const d = g.getImageData(0, 0, 160, 90).data;
+  const seen = new Set();
+  for (let i = 0; i < d.length; i += 4) seen.add((d[i] >> 3) + ',' + (d[i + 1] >> 3) + ',' + (d[i + 2] >> 3) + ',' + d[i + 3]);
+  state.colours = seen.size;
+  finish();
+});
+</script>
+</body>
+</html>

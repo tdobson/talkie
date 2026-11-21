@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talkie spike: MP4 against Lottie</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 12px; background: #1d2422; color: #f3efe4; }
+  h1 { font-size: 16px; margin: 0 0 8px; font-weight: 600; }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  body.still .panes { display: block; }
+  figure { margin: 0; }
+  figcaption { font-size: 13px; padding: 4px 0; opacity: 0.85; }
+  .frame { aspect-ratio: 16 / 9; background: #f6efde; position: relative; overflow: hidden; }
+  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  input[type=range] { flex: 1 1 320px; min-width: 200px; }
+  button, select { font: inherit; padding: 6px 10px; }
+  #time { font-variant-numeric: tabular-nums; min-width: 9ch; }
+  #note { font-size: 13px; opacity: 0.8; margin-top: 8px; max-width: 80ch; }
+  /* still mode (used by stills.mjs): only the Lottie canvas, at exactly 1920 x 1080 */
+  body.still { padding: 0; background: #f6efde; }
+  body.still h1, body.still .bar, body.still #note, body.still #mp4pane, body.still figcaption { display: none; }
+  body.still .frame { width: 1920px; height: 1080px; aspect-ratio: auto; }
+</style>
+</head>
+<body>
+<h1>g01-s01 "In the roof, not on it": the rendered MP4 against the Lottie port</h1>
+<div class="panes">
+  <figure id="mp4pane"><div class="frame"><video id="video" playsinline preload="auto"></video></div><figcaption id="mp4cap">Original MP4 (25 fps)</figcaption></figure>
+  <figure><div class="frame"><canvas id="canvas"></canvas></div><figcaption id="lotcap">Lottie, drawn by dotlottie-web</figcaption></figure>
+</div>
+<div class="bar">
+  <button id="play" type="button">Play</button>
+  <input id="slider" type="range" min="0" max="27.24" step="0.01" value="0" aria-label="Scene time in seconds">
+  <span id="time">0.00 s</span>
+  <label>Scene <select id="variant"><option value="g01-s01">as the original</option><option value="g01-s01-camera">with a slow camera ease added</option></select></label>
+</div>
+<p id="note">The slider moves both pictures to the same scene time. Play runs the MP4 with its sound and the Lottie follows it.
+The MP4 also carries burned-in captions, the corner bug and its own sound mix. In Talkie those belong to the player, so the Lottie side leaves them out.</p>
+<script type="module">
+import { DotLottie } from './node_modules/@lottiefiles/dotlottie-web/dist/index.js';
+
+const q = new URLSearchParams(location.search);
+const sceneId = q.get('scene') || 'g01-s01';
+const mp4 = q.get('mp4') || 'media/g01.mp4';
+const sceneStart = parseFloat(q.get('start') || '23.88');   // where this scene starts inside the chapter MP4
+const still = q.has('still');
+const FR = 60, VIDEO_FPS = 25;
+if (still) document.body.classList.add('still');
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const slider = document.getElementById('slider');
+const timeEl = document.getElementById('time');
+const playBtn = document.getElementById('play');
+const variant = document.getElementById('variant');
+variant.value = sceneId;
+variant.addEventListener('change', () => { q.set('scene', variant.value); location.search = q.toString(); });
+
+// setWasmUrl is static and must run before the first player is made
+DotLottie.setWasmUrl(new URL('./node_modules/@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm', location.href).href);
+const animation = await (await fetch(`scene/${sceneId}.json`)).json();
+const duration = animation.op / animation.fr;
+slider.max = String(Math.floor(duration * 100) / 100);
+
+const player = new DotLottie({
+  canvas, data: animation, autoplay: false, loop: false, useFrameInterpolation: true,
+  renderConfig: { devicePixelRatio: still ? 1 : window.devicePixelRatio, autoResize: true },
+});
+const loaded = new Promise((resolve, reject) => {
+  player.addEventListener('load', () => resolve());
+  player.addEventListener('loadError', (e) => reject(new Error('dotlottie-web could not load the scene: ' + (e && e.error ? e.error.message : ''))));
+});
+
+const lastFrame = animation.op - 1;
+function show(t) {
+  player.setFrame(Math.min(lastFrame, Math.max(0, t * FR)));
+  timeEl.textContent = t.toFixed(2) + ' s';
+}
+function seekBoth(t) {
+  show(t);
+  // land in the middle of the MP4 frame that covers t, so a seek never shows the frame before
+  if (!still) video.currentTime = sceneStart + (Math.floor(t * VIDEO_FPS + 1e-6) + 0.5) / VIDEO_FPS;
+}
+
+if (!still) {
+  video.src = mp4;
+  video.addEventListener('error', () => { document.getElementById('mp4cap').textContent = `Original MP4: could not load ${mp4}. Copy the chapter file there (see README).`; });
+  slider.addEventListener('input', () => { video.pause(); seekBoth(parseFloat(slider.value)); });
+  playBtn.addEventListener('click', () => { if (video.paused) { if (video.currentTime >= sceneStart + duration - 0.05) seekBoth(0); video.play(); } else video.pause(); });
+  video.addEventListener('play', () => { playBtn.textContent = 'Pause'; requestAnimationFrame(tick); });
+  video.addEventListener('pause', () => { playBtn.textContent = 'Play'; });
+  function tick() {
+    if (video.paused) return;
+    const t = video.currentTime - sceneStart;
+    if (t >= duration) { video.pause(); return; }
+    show(Math.max(0, t));
+    slider.value = String(t);
+    requestAnimationFrame(tick);
+  }
+}
+
+await loaded;
+seekBoth(parseFloat(q.get('t') || '0'));
+slider.value = q.get('t') || '0';
+// for stills.mjs and for poking about in the console
+window.__compare = { player, duration, seek(t) { seekBoth(t); slider.value = String(t); return player.currentFrame; } };
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>

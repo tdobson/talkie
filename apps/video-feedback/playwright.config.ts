@@ -15,6 +15,9 @@ const fakeMic = (wav: string) => [
   `--use-file-for-fake-audio-capture=${join(fixtures, wav)}`,
 ];
 
+// In a workspace the standalone server is nested under the app's path from the repo root.
+const STANDALONE = '.next/standalone/apps/video-feedback';
+
 const serverEnv = [
   'HOSTNAME=127.0.0.1',
   `PORT=${PORT}`,
@@ -41,11 +44,13 @@ export default defineConfig({
   webServer: {
     command: [
       'NEXT_PUBLIC_E2E_FAST_TIMERS=1 yarn build',
-      'rm -rf .next/standalone/.next/static .next/standalone/public',
-      'cp -r .next/static .next/standalone/.next/static',
-      'cp -r public .next/standalone/public',
-      `${serverEnv} ./scripts/lowprio.sh node .next/standalone/server.js`,
+      `rm -rf ${STANDALONE}/.next/static ${STANDALONE}/public`,
+      `cp -r .next/static ${STANDALONE}/.next/static`,
+      `cp -r public ${STANDALONE}/public`,
+      `${serverEnv} ./scripts/lowprio.sh node ${STANDALONE}/server.js`,
     ].join(' && '),
+    // The commands are relative to the app, wherever Playwright was started from.
+    cwd: import.meta.dirname,
     url: E2E_BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,

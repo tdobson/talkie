@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <line id="batten" x1="10" y1="20" x2="90" y2="20" stroke="#333333" stroke-width="4" stroke-linecap="round"/>
+</svg>

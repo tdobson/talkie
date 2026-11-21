@@ -1,0 +1,13 @@
+{
+  "lines": [
+    {
+      "id": "gauge-a",
+      "text": "The gauge is the distance from the top of one batten to the top of the next."
+    },
+    {
+      "id": "gauge-b",
+      "text": "Take the tile length, subtract the headlap, and you have it. Here that is 300 millimetres.",
+      "caption": "Take the tile length, subtract the headlap, and you have it. Here that is 300 mm."
+    }
+  ]
+}

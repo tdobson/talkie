@@ -20,6 +20,8 @@ export const meta = {
 // Configuration
 // ---------------------------------------------------------------------------
 
+// Note: this workflow is finished. Since the monorepo merge the app it built lives in
+// apps/video-feedback, so these root-relative paths describe the old layout.
 const REPO = '/home/tdobson/dev/video-feedback.tdobson.net';
 const PLAN = `${REPO}/docs/plans/2026-11-21-video-feedback.md`;
 const SPEC = `${REPO}/docs/superpowers/specs/2026-11-21-video-feedback-design.md`;

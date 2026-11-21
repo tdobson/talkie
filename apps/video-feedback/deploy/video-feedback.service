@@ -1,4 +1,4 @@
-# Install: sudo cp deploy/video-feedback.service /etc/systemd/system/
+# Install: sudo cp apps/video-feedback/deploy/video-feedback.service /etc/systemd/system/
 #          sudo systemctl daemon-reload && sudo systemctl enable --now video-feedback
 # See docs/DEPLOY.md for the whole procedure.
 
@@ -10,13 +10,13 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=tdobson
-WorkingDirectory=/srv/video-feedback/app
+WorkingDirectory=/srv/video-feedback/app/apps/video-feedback
 # Secrets and site settings. Values in this file win over the Environment= line below,
 # so do not set NODE_ENV, HOSTNAME or PORT in it.
 EnvironmentFile=/srv/video-feedback/env
 Environment=NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3000
 # Check the path with "command -v node" on the host and change it if node lives elsewhere.
-ExecStart=/usr/bin/node .next/standalone/server.js
+ExecStart=/usr/bin/node .next/standalone/apps/video-feedback/server.js
 Restart=on-failure
 RestartSec=5
 Nice=0

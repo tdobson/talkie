@@ -1,0 +1,71 @@
+{
+  "scene": {
+    "seconds": 27.24,
+    "animationRaw": 265155,
+    "animationBrotli": 16905,
+    "animationGzip": 24069,
+    "opusWebm": 102280,
+    "opusOgg": 95673,
+    "aacM4a": 190153,
+    "talkieBrotliPlusOpusWebm": 119185,
+    "talkieBrotliPlusAac": 207058,
+    "talkieGzipPlusOpusWebm": 126349
+  },
+  "video": {
+    "slice-h264": {
+      "bytes": 1077998,
+      "seconds": 27.24,
+      "video": "h264",
+      "videoBitsPerSecond": 256328,
+      "audio": "aac",
+      "audioBitsPerSecond": 53602
+    },
+    "slice-h265": {
+      "bytes": 789361,
+      "seconds": 27.24,
+      "video": "hevc",
+      "videoBitsPerSecond": 170759,
+      "audio": "aac",
+      "audioBitsPerSecond": 53602
+    },
+    "g01-h265": {
+      "bytes": 9140868,
+      "seconds": 292.885,
+      "video": "hevc",
+      "videoBitsPerSecond": 189176,
+      "audio": "aac",
+      "audioBitsPerSecond": 54310
+    },
+    "g01-h264": {
+      "bytes": 30990036,
+      "seconds": 292.88,
+      "video": "h264",
+      "videoBitsPerSecond": 684397,
+      "audio": "aac",
+      "audioBitsPerSecond": 159619
+    }
+  },
+  "chapter": {
+    "seconds": 292.88,
+    "animationBytesPerSecond": 620.6,
+    "estimatedAnimationBrotli": 181760,
+    "opusAt32kbps": 1171520,
+    "opusAtMeasuredRate": 1099698,
+    "aacAtMeasuredRate": 2044494,
+    "estimatedTalkie": 1353280,
+    "estimatedTalkieOnAacFallback": 2226254,
+    "h264": 30990036,
+    "h265": 9140868,
+    "animationHeadroom": 43.8
+  },
+  "ratios": {
+    "sceneH265OverTalkie": 6.62,
+    "sceneH264OverTalkie": 9.04,
+    "chapterH265OverTalkieEstimate": 6.75,
+    "chapterH264OverTalkieEstimate": 22.9,
+    "chapterH265OverTalkieOnAacFallback": 4.11
+  },
+  "scenePass": true,
+  "chapterPass": true,
+  "pass": true
+}
