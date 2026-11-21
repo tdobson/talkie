@@ -190,6 +190,8 @@ button:focus-visible, .scrubber:focus-visible, input:focus-visible {
 }
 .root[data-hidden] .bar { opacity: 0; pointer-events: none; }
 .root[data-controls='off'] .bar { display: none; }
+/* The error panel fills the stage. The bar would lie over its button on a narrow player. */
+.root[data-failed] .bar { visibility: hidden; pointer-events: none; }
 .scrubber {
   position: relative;
   height: 16px;

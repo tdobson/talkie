@@ -707,6 +707,7 @@ export class TalkiePlayerElement extends Base implements ControlsHost {
     refs.error.setAttribute('data-code', code);
     refs.retry.hidden = code !== 'network';
     refs.error.hidden = false;
+    refs.root.toggleAttribute('data-failed', true);
     this.loading = false;
     this.waiting = false;
     this.refreshChrome();
@@ -715,6 +716,7 @@ export class TalkiePlayerElement extends Base implements ControlsHost {
   private hideError(): void {
     if (this.refs && !this.refs.error.hidden) {
       this.refs.error.hidden = true;
+      this.refs.root.toggleAttribute('data-failed', false);
       this.refreshChrome();
     }
   }
