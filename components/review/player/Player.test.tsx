@@ -1,6 +1,7 @@
 import { type Dispatch, useReducer } from 'react';
 import { HOLD_TO_ZOOM_MS } from '@/lib/constants';
 import type { PendingChunk } from '@/lib/capture/uploader';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { initialState, type ReviewAction, type ReviewState, reducer } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
@@ -59,6 +60,8 @@ function Harness(props: {
   onDone?: () => void;
   onReconnectMic?: () => void;
   trouble?: boolean;
+  reconnecting?: boolean;
+  reconnectFailed?: boolean;
   /** Gives the test the machine's dispatch, to play the part of ReviewApp. */
   dispatchRef?: { current: Dispatch<ReviewAction> | null };
 }) {
@@ -75,8 +78,36 @@ function Harness(props: {
         stream={props.stream}
         uploader={props.uploader}
         trouble={props.trouble ?? false}
+        reconnecting={props.reconnecting}
+        reconnectFailed={props.reconnectFailed}
         onReconnectMic={props.onReconnectMic ?? (() => {})}
         onDone={props.onDone ?? (() => {})}
+      />
+    </>
+  );
+}
+
+/** Shows the open comment id, so a test can refuse exactly that comment. */
+function HarnessWithRefusal(props: {
+  uploader: PlayerUploader;
+  stream: MediaStream;
+  refused: string | null;
+}) {
+  const [state, dispatch] = useReducer(reducer, playerState);
+  return (
+    <>
+      <output data-testid="cid">{state.commentId ?? ''}</output>
+      <Player
+        token="tok"
+        frameDuration={FRAME}
+        state={state}
+        dispatch={dispatch}
+        stream={props.stream}
+        uploader={props.uploader}
+        trouble={false}
+        refusedCommentId={props.refused}
+        onReconnectMic={() => {}}
+        onDone={() => {}}
       />
     </>
   );
@@ -526,5 +557,176 @@ describe('Player', () => {
     const { video } = setup();
     expect(video.getAttribute('src')).toBe('/api/r/tok/video?version=2');
     expect(video).not.toHaveAttribute('controls');
+  });
+});
+
+describe('Player hardening', () => {
+  const rejectingPlay = (name: string) => {
+    const err = Object.assign(new Error(name), { name });
+    media.play.mockRejectedValue(err);
+  };
+
+  it('a general comment makes the stage and controls inert, and Done under it does nothing', async () => {
+    const onDone = vi.fn();
+    const { completes } = setup({ initial: { ...playerState, screen: 'end' }, onDone });
+    fireEvent.click(screen.getByTestId(T.shareMore));
+    await settle();
+
+    for (const id of [T.doneButton, T.playPause, T.scrollBar, T.fullscreen, T.videoStage]) {
+      expect(screen.getByTestId(id).closest('[inert]')).not.toBeNull();
+    }
+    expect(screen.getByTestId(T.generalFinished).closest('[inert]')).toBeNull();
+
+    // jsdom does not enforce inert, so this is the click a browser would never deliver.
+    fireEvent.click(screen.getByTestId(T.doneButton));
+    await settle();
+    expect(onDone).not.toHaveBeenCalled();
+    expect(completes).toHaveLength(0);
+    expect(screen.getByTestId(T.generalComment)).toBeInTheDocument();
+    expect(FakeMediaRecorder.instances[0].state).toBe('recording');
+  });
+
+  it('nothing is inert outside a general comment', () => {
+    setup();
+    expect(screen.getByTestId(T.doneButton).closest('[inert]')).toBeNull();
+  });
+
+  it('a video that fails to load shows an error, not a comment', async () => {
+    const { video, chunks } = setup();
+    rejectingPlay('NotSupportedError');
+    playPause();
+    await settle();
+    expect(screen.getByTestId(MORE_T.videoError)).toHaveTextContent(moreCopy.player.videoError);
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(chunks).toHaveLength(0);
+    expect(screen.getByTestId(T.playPause)).toHaveAccessibleName('Play');
+    expect(video).toBeInTheDocument();
+  });
+
+  it('a play() that is refused for another reason goes back to paused without a comment', async () => {
+    setup();
+    rejectingPlay('NotAllowedError');
+    playPause();
+    await settle();
+    expect(screen.queryByTestId(MORE_T.videoError)).toBeNull();
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(screen.getByTestId(T.playPause)).toHaveAccessibleName('Play');
+  });
+
+  it('the video error event shows the error and stops playback without a comment', async () => {
+    const { video } = setup();
+    playPause();
+    fireEvent.error(video);
+    await settle();
+    expect(screen.getByTestId(MORE_T.videoError)).toBeInTheDocument();
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+  });
+
+  it('shows a loading indicator while the video is buffering', () => {
+    const { video } = setup();
+    expect(screen.queryByTestId(MORE_T.videoLoading)).toBeNull();
+    fireEvent.waiting(video);
+    expect(screen.getByTestId(MORE_T.videoLoading)).toBeInTheDocument();
+    fireEvent.playing(video);
+    expect(screen.queryByTestId(MORE_T.videoLoading)).toBeNull();
+  });
+
+  it('scrolling back from the end screen starts listening at the frame it lands on', async () => {
+    const { video, chunks, completes, events } = setup();
+    playPause();
+    video.currentTime = 10;
+    fireEvent.timeUpdate(video);
+    fireEvent.ended(video);
+    expect(screen.getByTestId(T.endScreen)).toBeInTheDocument();
+
+    // One drag of the scroll bar: a few ticks, settling at the start. (Up, Down and Home are
+    // the slider's own keys; the page-level handler only owns Left and Right.)
+    const thumb = () =>
+      screen.getByTestId(T.scrollBar).querySelector('[role="slider"]') as HTMLElement;
+    fireEvent.keyDown(thumb(), { key: 'ArrowDown' });
+    fireEvent.keyDown(thumb(), { key: 'ArrowDown' });
+    fireEvent.keyDown(thumb(), { key: 'Home' });
+    expect(video.currentTime).toBe(0);
+    await settle();
+    expect(screen.getByTestId('screen')).toHaveTextContent('player');
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+
+    playPause();
+    await settle();
+    expect(completes).toHaveLength(1);
+    expect(chunks[0].meta).toMatchObject({ kind: 'moment' });
+    expect(chunks[0].meta?.pausedAtVideoTime).toBe(0);
+    // The ticks of the scroll back are where the comment starts, not seeks within it.
+    expect(events().filter((e) => e.type === 'seek')).toHaveLength(0);
+  });
+
+  it('a refused comment stops listening at once and shows the banner', async () => {
+    const up = fakeUploader();
+    const stream = fakeStream().stream;
+    const ui = (refused: string | null) => (
+      <HarnessWithRefusal uploader={up.uploader} stream={stream} refused={refused} />
+    );
+    const { rerender } = render(ui(null));
+    layOut();
+    playPause();
+    playPause();
+    await settle();
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+    expect(screen.queryByTestId(T.saveTroubleBanner)).toBeNull();
+    const cid = screen.getByTestId('cid').textContent ?? '';
+    expect(cid).not.toBe('');
+
+    rerender(ui(cid));
+    await settle();
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+    expect(screen.getByTestId(MORE_T.commentStopped)).toHaveTextContent(moreCopy.player.stopped);
+    expect(screen.getByTestId(T.saveTroubleBanner)).toBeInTheDocument();
+    expect(FakeMediaRecorder.instances[0].state).toBe('inactive');
+
+    // A refusal of some other comment changes nothing.
+    rerender(ui('someone-else'));
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+  });
+
+  it('the fullscreen button says what it will do', () => {
+    setup();
+    const button = screen.getByTestId(T.fullscreen);
+    expect(button).toHaveAccessibleName('Full screen');
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: screen.getByTestId(T.player),
+    });
+    fireEvent(document, new Event('fullscreenchange'));
+    expect(screen.getByTestId(T.fullscreen)).toHaveAccessibleName('Exit full screen');
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
+    fireEvent(document, new Event('fullscreenchange'));
+    expect(screen.getByTestId(T.fullscreen)).toHaveAccessibleName('Full screen');
+  });
+
+  it('Reconnect shows it is working, and says so when it did not work', () => {
+    const up = fakeUploader();
+    const mic = fakeStream('ended');
+    const ui = (reconnecting: boolean, reconnectFailed: boolean) => (
+      <Harness
+        uploader={up.uploader}
+        stream={mic.stream}
+        initial={{ ...playerState, micLost: true }}
+        reconnecting={reconnecting}
+        reconnectFailed={reconnectFailed}
+      />
+    );
+    const { rerender } = render(ui(false, false));
+    layOut();
+    playPause();
+    playPause();
+    expect(screen.getByTestId(T.micReconnect)).not.toHaveAttribute('data-loading');
+    rerender(ui(true, false));
+    expect(screen.getByTestId(T.micReconnect)).toHaveAttribute('data-loading', 'true');
+    rerender(ui(false, true));
+    expect(screen.getByTestId(MORE_T.micStillLost)).toHaveTextContent(moreCopy.player.micStillLost);
   });
 });

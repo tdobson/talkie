@@ -27,6 +27,7 @@ export default async function ReviewPage({ params }: Props) {
       title={page.title}
       latestVersion={page.latestVersion}
       frameDuration={page.frameDuration}
+      frameDurations={page.frameDurations}
     />
   );
 }

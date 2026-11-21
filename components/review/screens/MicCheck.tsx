@@ -4,6 +4,7 @@ import { Button, Text } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { SpeechGate } from '@/lib/capture/micLevel';
 import { MIC_SPEECH_HOLD_MS } from '@/lib/constants';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { useMicLevel } from '../hooks/useMicLevel';
@@ -13,6 +14,9 @@ import { ScreenCard } from '../ScreenCard';
 
 /** Level, on the meter's 0..1 scale, that counts as speech. */
 export const SPEECH_THRESHOLD = 0.08;
+
+/** How long the meter may stay quiet before the screen suggests what to check. */
+export const QUIET_HELP_AFTER_MS = 8000;
 
 /**
  * Live level meter. Start watching unlocks once speech has been heard for MIC_SPEECH_HOLD_MS,
@@ -61,6 +65,13 @@ export function MicCheck({
     return () => clearInterval(timer);
   }, []);
 
+  // Nothing heard for a while: say what to check, so the disabled button is not a dead end.
+  const [quiet, setQuiet] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setQuiet(true), QUIET_HELP_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <ScreenCard testId={T.micCheck} heading={copy.micCheck.title}>
       <MicMeter level={level} testId={T.micMeter} />
@@ -71,6 +82,11 @@ export function MicCheck({
           </Text>
         )}
       </div>
+      {quiet && !heard && (
+        <Text c="gray.7" size="sm" data-testid={MORE_T.micCheckHelp}>
+          {moreCopy.micCheck.quietHelp}
+        </Text>
+      )}
       <Button
         size="md"
         disabled={!heard}

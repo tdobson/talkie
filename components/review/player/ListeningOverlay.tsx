@@ -1,5 +1,7 @@
 'use client';
 
+import { Button, Loader } from '@mantine/core';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { LiveMicMeter } from '../MicMeter';
@@ -28,6 +30,57 @@ export function ListeningOverlay({ stream }: { stream: MediaStream | null }) {
       <ListeningStatus stream={stream} label={copy.player.listening} />
       <div className={classes.help}>{copy.player.listeningHelp}</div>
       <div className={classes.tips}>{copy.player.listeningTips}</div>
+    </div>
+  );
+}
+
+/** The words for a comment the server has stopped taking (it is full). Nothing is recording. */
+export function CommentStoppedNotice({ text, help }: { text: string; help: string }) {
+  return (
+    <div role="alert" data-testid={MORE_T.commentStopped}>
+      <div className={classes.listeningLabel}>{text}</div>
+      <div className={classes.help}>{help}</div>
+    </div>
+  );
+}
+
+/** Takes the place of the listening overlay once a moment comment has been stopped. */
+export function CommentStopped() {
+  return (
+    <div className={classes.listening}>
+      <CommentStoppedNotice text={moreCopy.player.stopped} help={moreCopy.player.stoppedHelp} />
+    </div>
+  );
+}
+
+/** Over the picture when the video cannot be loaded. `data-no-capture` keeps its clicks out. */
+export function VideoError({ onReload }: { onReload: () => void }) {
+  return (
+    <div
+      className={classes.videoError}
+      role="alert"
+      data-no-capture="true"
+      data-testid={MORE_T.videoError}
+    >
+      <div className={classes.listeningLabel}>{moreCopy.player.videoError}</div>
+      <Button
+        size="sm"
+        variant="white"
+        color="dark"
+        onClick={onReload}
+        data-testid={MORE_T.videoReload}
+      >
+        {moreCopy.player.reload}
+      </Button>
+    </div>
+  );
+}
+
+/** A small spinner in the middle of the picture while the video waits for data. */
+export function VideoLoading() {
+  return (
+    <div className={classes.videoLoading} role="status" data-testid={MORE_T.videoLoading}>
+      <Loader color="gray.3" size="md" aria-label={moreCopy.player.loading} />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
@@ -214,5 +215,65 @@ describe('ReviewApp', () => {
     await user.click(screen.getByTestId(T.micReconnect));
     await waitFor(() => expect(screen.queryByTestId(T.micLost)).toBeNull());
     expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it('says so when Reconnect could not get a microphone', async () => {
+    const user = userEvent.setup();
+    const mic = fakeStream();
+    getUserMedia.mockResolvedValueOnce(mic.stream);
+    renderApp();
+    await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
+    await user.click(screen.getByTestId(T.startButton));
+    await user.click(await screen.findByTestId(T.micContinue));
+    await user.click(await screen.findByTestId(T.startWatching));
+    await screen.findByTestId(T.player);
+
+    mic.track.readyState = 'ended';
+    mic.track.dispatchEvent(new Event('ended'));
+    fireEvent.click(screen.getByTestId(T.playPause));
+    fireEvent.click(screen.getByTestId(T.playPause));
+    await screen.findByTestId(T.micLost);
+    expect(screen.queryByTestId(MORE_T.micStillLost)).toBeNull();
+
+    getUserMedia.mockRejectedValueOnce(new DOMException('gone', 'NotFoundError'));
+    await user.click(screen.getByTestId(T.micReconnect));
+    expect(await screen.findByTestId(MORE_T.micStillLost)).toHaveTextContent(
+      moreCopy.player.micStillLost
+    );
+    expect(screen.getByTestId(T.micReconnect)).toBeEnabled();
+
+    await user.click(screen.getByTestId(T.micReconnect));
+    await waitFor(() => expect(screen.queryByTestId(T.micLost)).toBeNull());
+  });
+
+  it('says there is no microphone, rather than a blocked one, when none is found', async () => {
+    const user = userEvent.setup();
+    getUserMedia.mockRejectedValueOnce(new DOMException('none', 'NotFoundError'));
+    renderApp();
+    await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
+    await user.click(screen.getByTestId(T.startButton));
+    await user.click(await screen.findByTestId(T.micContinue));
+    expect(await screen.findByTestId(MORE_T.micNoDevice)).toHaveTextContent(
+      moreCopy.micDenied.noDevice
+    );
+    expect(screen.getByTestId(T.micDenied)).not.toHaveTextContent(copy.micDenied.body);
+    expect(screen.getByTestId(T.micRetry)).toBeInTheDocument();
+  });
+
+  it('a microphone that goes away during the mic check is not a dead end', async () => {
+    const user = userEvent.setup();
+    const mic = fakeStream();
+    getUserMedia.mockResolvedValueOnce(mic.stream);
+    renderApp();
+    await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
+    await user.click(screen.getByTestId(T.startButton));
+    await user.click(await screen.findByTestId(T.micContinue));
+    await screen.findByTestId(T.startWatching);
+
+    mic.track.readyState = 'ended';
+    fireEvent(mic.track as unknown as EventTarget as Element, new Event('ended'));
+    expect(await screen.findByTestId(T.micDenied)).toBeInTheDocument();
+    await user.click(screen.getByTestId(T.micRetry));
+    expect(await screen.findByTestId(T.startWatching)).toBeInTheDocument();
   });
 });

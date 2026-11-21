@@ -3,11 +3,13 @@
 import { ActionIcon, Button, Slider } from '@mantine/core';
 import {
   IconMaximize,
+  IconMinimize,
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
   IconVolume,
   IconVolumeOff,
 } from '@tabler/icons-react';
+import { moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from './player.module.css';
@@ -28,6 +30,10 @@ export interface ControlsProps {
   showDone?: boolean;
   /** True while Done is waiting for the last comment to be saved. */
   finishing?: boolean;
+  /** True while the player fills the screen: the button then leaves full screen. */
+  fullscreen?: boolean;
+  /** False where the browser cannot go full screen at all: the button is not shown. */
+  canFullscreen?: boolean;
   onPlayPause: () => void;
   /** New position in seconds. */
   onSeek: (time: number) => void;
@@ -44,6 +50,8 @@ export function Controls({
   volume,
   showDone = true,
   finishing = false,
+  fullscreen = false,
+  canFullscreen = true,
   onPlayPause,
   onSeek,
   onVolume,
@@ -104,16 +112,18 @@ export function Controls({
             data-testid={T.volume}
           />
         </div>
-        <ActionIcon
-          size="lg"
-          variant="subtle"
-          color="gray.3"
-          aria-label="Full screen"
-          onClick={onFullscreen}
-          data-testid={T.fullscreen}
-        >
-          <IconMaximize size={20} />
-        </ActionIcon>
+        {canFullscreen && (
+          <ActionIcon
+            size="lg"
+            variant="subtle"
+            color="gray.3"
+            aria-label={fullscreen ? moreCopy.player.exitFullscreen : moreCopy.player.fullscreen}
+            onClick={onFullscreen}
+            data-testid={T.fullscreen}
+          >
+            {fullscreen ? <IconMinimize size={20} /> : <IconMaximize size={20} />}
+          </ActionIcon>
+        )}
       </div>
       <div className={classes.footRow}>
         <span className={classes.hint} data-testid={T.playHint}>

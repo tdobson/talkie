@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, Text } from '@mantine/core';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from '../review.module.css';
@@ -20,10 +21,32 @@ export function browserFamily(userAgent: string): BrowserFamily | null {
 }
 
 /** Steps to unblock the microphone: this browser's first, the others as a fallback. */
-export function MicDenied({ userAgent, onRetry }: { userAgent?: string; onRetry: () => void }) {
+export function MicDenied({
+  userAgent,
+  noDevice = false,
+  onRetry,
+}: {
+  userAgent?: string;
+  /** True when the browser found no microphone at all, rather than blocking one. */
+  noDevice?: boolean;
+  onRetry: () => void;
+}) {
   const ua = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent);
   const current = browserFamily(ua);
   const order = current ? [current, ...FAMILIES.filter((f) => f !== current)] : FAMILIES;
+
+  if (noDevice) {
+    return (
+      <ScreenCard testId={T.micDenied} heading={copy.micDenied.title}>
+        <Text className={classes.lead} data-testid={MORE_T.micNoDevice}>
+          {moreCopy.micDenied.noDevice}
+        </Text>
+        <Button size="md" onClick={onRetry} data-testid={T.micRetry}>
+          {copy.micDenied.retry}
+        </Button>
+      </ScreenCard>
+    );
+  }
 
   return (
     <ScreenCard testId={T.micDenied} heading={copy.micDenied.title}>

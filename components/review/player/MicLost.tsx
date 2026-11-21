@@ -1,18 +1,44 @@
 'use client';
 
 import { Button } from '@mantine/core';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import classes from './player.module.css';
 
+export interface MicLostProps {
+  onReconnect: () => void;
+  /** True while the browser is being asked for the microphone again. */
+  reconnecting?: boolean;
+  /** True after a reconnect that did not get a microphone. */
+  reconnectFailed?: boolean;
+}
+
 /** The words and the Reconnect button, for wherever the lost microphone is reported. */
-export function MicLostNotice({ onReconnect }: { onReconnect: () => void }) {
+export function MicLostNotice({
+  onReconnect,
+  reconnecting = false,
+  reconnectFailed = false,
+}: MicLostProps) {
   return (
-    <div className={classes.listeningRow} role="alert" data-testid={T.micLost}>
-      <span className={classes.listeningLabel}>{copy.player.micLost}</span>
-      <Button size="xs" color="red" onClick={onReconnect} data-testid={T.micReconnect}>
-        {copy.player.micReconnect}
-      </Button>
+    <div role="alert" data-testid={T.micLost}>
+      <div className={classes.listeningRow}>
+        <span className={classes.listeningLabel}>{copy.player.micLost}</span>
+        <Button
+          size="xs"
+          color="red"
+          loading={reconnecting}
+          onClick={onReconnect}
+          data-testid={T.micReconnect}
+        >
+          {copy.player.micReconnect}
+        </Button>
+      </div>
+      {reconnectFailed && !reconnecting && (
+        <div className={classes.help} data-testid={MORE_T.micStillLost}>
+          {moreCopy.player.micStillLost}
+        </div>
+      )}
     </div>
   );
 }
@@ -21,10 +47,10 @@ export function MicLostNotice({ onReconnect }: { onReconnect: () => void }) {
  * Takes the place of the listening overlay when the microphone has gone. Unlike that overlay
  * it can be clicked; `data-no-capture` keeps those clicks out of the recorded pointer events.
  */
-export function MicLost({ onReconnect }: { onReconnect: () => void }) {
+export function MicLost(props: MicLostProps) {
   return (
     <div className={classes.listening} data-interactive="true" data-no-capture="true">
-      <MicLostNotice onReconnect={onReconnect} />
+      <MicLostNotice {...props} />
     </div>
   );
 }

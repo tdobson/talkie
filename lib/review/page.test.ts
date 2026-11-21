@@ -41,7 +41,23 @@ describe('loadReviewPage', () => {
       title: 'Launch film',
       latestVersion: 2,
       frameDuration: 1 / 30,
+      frameDurations: { 1: DEFAULT_FRAME_DURATION, 2: 1 / 30 },
     });
+  });
+
+  it('gives each version its own frame duration, for sessions resumed on an older one', async () => {
+    for (const [version, fps] of [
+      [1, 24],
+      [2, 60],
+    ]) {
+      await mkdir(versionDir(video.videoId, version), { recursive: true });
+      await writeJsonAtomic(join(versionDir(video.videoId, version), 'probe.json'), {
+        frameDuration: 1 / fps,
+      });
+    }
+    const page = await loadReviewPage(video.token);
+    expect(page?.frameDurations).toEqual({ 1: 1 / 24, 2: 1 / 60 });
+    expect(page?.frameDuration).toBe(1 / 60);
   });
 
   it('falls back to 25 frames a second when the probe is missing or broken', async () => {

@@ -2,22 +2,25 @@
 
 import { Button, Stack, Text, Title } from '@mantine/core';
 import { useEffect, useRef } from 'react';
+import { moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
-import { ListeningStatus } from '../player/ListeningOverlay';
-import { MicLostNotice } from '../player/MicLost';
+import { CommentStoppedNotice, ListeningStatus } from '../player/ListeningOverlay';
+import { type MicLostProps, MicLostNotice } from '../player/MicLost';
 import classes from '../player/player.module.css';
 
 /** Covers the whole player while a general comment is recording. */
 export function GeneralComment({
   stream,
   micLost,
-  onReconnect,
+  stopped = false,
   onFinished,
-}: {
+  ...mic
+}: MicLostProps & {
   stream: MediaStream | null;
   micLost: boolean;
-  onReconnect: () => void;
+  /** True once the server has stopped taking this comment: nothing is recording any more. */
+  stopped?: boolean;
   onFinished: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -29,8 +32,13 @@ export function GeneralComment({
     <div className={classes.generalOverlay} data-testid={T.generalComment}>
       <div className={classes.panel}>
         <Stack gap="md">
-          {micLost ? (
-            <MicLostNotice onReconnect={onReconnect} />
+          {stopped ? (
+            <CommentStoppedNotice
+              text={moreCopy.general.stopped}
+              help={moreCopy.general.stoppedHelp}
+            />
+          ) : micLost ? (
+            <MicLostNotice {...mic} />
           ) : (
             <div role="status" aria-live="polite">
               <ListeningStatus stream={stream} label={copy.general.listening} />

@@ -24,6 +24,8 @@ export interface ReviewAppProps {
   latestVersion: number;
   /** Seconds per frame of the video, for frame stepping. */
   frameDuration: number;
+  /** Seconds per frame of each version, for a session resumed on an older one. */
+  frameDurations?: Record<number, number>;
   /** Test seam. Defaults to the real IndexedDB-backed uploader. */
   createUploader?: (options: UploaderOptions) => ReviewUploader;
 }
@@ -66,6 +68,7 @@ export function ReviewApp({
   title,
   latestVersion,
   frameDuration,
+  frameDurations,
   createUploader,
 }: ReviewAppProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -77,6 +80,8 @@ export function ReviewApp({
   const [asking, setAsking] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startFailed, setStartFailed] = useState(false);
+  const [reconnectFailed, setReconnectFailed] = useState(false);
+  const [noDevice, setNoDevice] = useState(false);
   const session = useSession(token);
 
   const createUploaderRef = useRef(createUploader);
@@ -136,31 +141,41 @@ export function ReviewApp({
   const askForMic = async () => {
     try {
       await requestMic();
+      setNoDevice(false);
       dispatch({ type: 'micGranted' });
-    } catch {
-      // Refused, or no microphone at all: either way the reviewer cannot go on without one.
+    } catch (err) {
+      // Refused, or no microphone at all: either way the reviewer cannot go on without one,
+      // but what they need to do about it differs.
+      const name = (err as { name?: string } | null)?.name;
+      setNoDevice(name === 'NotFoundError' || name === 'OverconstrainedError');
       dispatch({ type: 'micDenied' });
     }
   };
 
   const reconnectMic = async () => {
+    setReconnectFailed(false);
     try {
       await requestMic();
       dispatch({ type: 'micReconnected' });
     } catch {
-      // Still no microphone: the Reconnect button stays.
+      // Still no microphone: the Reconnect button stays, and says why nothing changed.
+      setReconnectFailed(true);
     }
   };
+
+  const onMicCheck = state.screen === 'micCheck';
 
   // The stream stays open for the whole session. If its track ends (unplugged, permission
   // withdrawn), the next pause offers to reconnect.
   useEffect(() => {
     const track = stream?.getAudioTracks()[0];
     if (!track) return;
-    const onEnded = () => dispatch({ type: 'micLost' });
+    // On the mic check there is no Reconnect button to offer: without this the meter would
+    // sit flat and Start watching would stay disabled with no way on.
+    const onEnded = () => dispatch({ type: onMicCheck ? 'micDenied' : 'micLost' });
     track.addEventListener('ended', onEnded);
     return () => track.removeEventListener('ended', onEnded);
-  }, [stream]);
+  }, [stream, onMicCheck]);
 
   // Let go of the microphone when the review is over, and when the page goes away.
   useEffect(() => {
@@ -232,6 +247,7 @@ export function ReviewApp({
       return (
         <Fade key="micDenied">
           <MicDenied
+            noDevice={noDevice}
             onRetry={() => {
               dispatch({ type: 'micRetry' });
               void askForMic();
@@ -263,7 +279,7 @@ export function ReviewApp({
         <Fade key="player">
           <Player
             token={token}
-            frameDuration={frameDuration}
+            frameDuration={frameDurations?.[state.version ?? latestVersion] ?? frameDuration}
             state={state}
             dispatch={dispatch}
             stream={stream}
@@ -271,6 +287,8 @@ export function ReviewApp({
             trouble={trouble}
             refusedCommentId={refusedCommentId}
             onReconnectMic={() => void reconnectMic()}
+            reconnecting={asking}
+            reconnectFailed={reconnectFailed}
             onDone={finish}
           />
         </Fade>

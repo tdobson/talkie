@@ -4,7 +4,7 @@ import { type MouseEvent, useCallback, useEffect, useRef, useState } from 'react
 import { EventLog } from '@/lib/capture/eventLog';
 import { CommentRecorder } from '@/lib/capture/recorder';
 import type { Uploader } from '@/lib/capture/uploader';
-import { CHUNK_MS } from '@/lib/constants';
+import { CHUNK_MS, KEY_STEP_COLLAPSE_MS } from '@/lib/constants';
 import { containRect } from '@/lib/geometry';
 import type { ReviewAction, ReviewState } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
@@ -26,7 +26,7 @@ import {
 import { EndScreen } from '../screens/EndScreen';
 import { GeneralComment } from '../screens/GeneralComment';
 import { Controls } from './Controls';
-import { ListeningOverlay } from './ListeningOverlay';
+import { CommentStopped, ListeningOverlay, VideoError, VideoLoading } from './ListeningOverlay';
 import { MicLost } from './MicLost';
 import classes from './player.module.css';
 import { type SaveState, SaveStatus, TroubleBanner } from './SaveStatus';
@@ -50,6 +50,10 @@ export interface PlayerProps {
   /** A comment the server refused a chunk of: its recording is stopped. */
   refusedCommentId?: string | null;
   onReconnectMic: () => void;
+  /** True while the browser is being asked for the microphone again. */
+  reconnecting?: boolean;
+  /** True after a reconnect that did not get a microphone. */
+  reconnectFailed?: boolean;
   /** Called by Done, once every comment has been saved. */
   onDone: () => void | Promise<void>;
 }
@@ -70,6 +74,12 @@ interface OpenComment {
   micLost: boolean;
   /** Chunks handed to the uploader so far. */
   sent: number;
+  /**
+   * Set on a comment opened by scrolling back from the end screen, while that drag is still
+   * going: performance.now() of its last tick. Until the drag settles, each tick moves the
+   * frame the comment is about instead of being logged as a seek within it.
+   */
+  landing: number | null;
   enqueues: Promise<void>[];
 }
 
@@ -105,6 +115,8 @@ export function Player({
   trouble,
   refusedCommentId = null,
   onReconnectMic,
+  reconnecting = false,
+  reconnectFailed = false,
   onDone,
 }: PlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -118,6 +130,12 @@ export function Player({
   const [save, setSave] = useState<SaveState>('idle');
   const [saveFailed, setSaveFailed] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const finishingRef = useRef(finishing);
+  finishingRef.current = finishing;
+  const [videoError, setVideoError] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [canFullscreen, setCanFullscreen] = useState(true);
 
   // What the event handlers read. Updated in the handlers themselves, not on render, so two
   // events in a row (a key press and the video's own pause event, say) see each other's effect.
@@ -240,6 +258,7 @@ export function Player({
         startedAt: performance.now(),
         micLost: false,
         sent: 0,
+        landing: null,
         enqueues: [],
         meta: {
           commentId: cid,
@@ -385,6 +404,14 @@ export function Player({
 
   // Play and pause
 
+  /** Playback could not start or carry on: back to paused, with no comment opened. */
+  const failPlayback = useCallback(() => {
+    if (!playingRef.current) return;
+    playingRef.current = false;
+    videoRef.current?.pause();
+    dispatch({ type: 'playFailed' });
+  }, [dispatch]);
+
   const play = useCallback(
     (alreadyPlaying = false) => {
       const screen = screenRef.current;
@@ -396,12 +423,15 @@ export function Player({
       const video = videoRef.current;
       if (!video || alreadyPlaying) return;
       Promise.resolve(video.play()).catch((err: unknown) => {
-        // AbortError only means a pause arrived first. Anything else: playback did not start.
-        if ((err as { name?: string } | null)?.name === 'AbortError') return;
-        if (playingRef.current && mountedRef.current) pauseRef.current();
+        // AbortError only means a pause arrived first. Anything else: playback did not start,
+        // so there is nothing to pause on and nothing to comment on.
+        const name = (err as { name?: string } | null)?.name;
+        if (name === 'AbortError' || !mountedRef.current) return;
+        if (video.error || name === 'NotSupportedError') setVideoError(true);
+        failPlayback();
       });
     },
-    [closeComment, dispatch]
+    [closeComment, dispatch, failPlayback]
   );
 
   const pause = useCallback(() => {
@@ -413,8 +443,6 @@ export function Player({
     dispatch({ type: 'pause', commentId });
     if (video) setCurrentTime(video.currentTime);
   }, [dispatch, openComment]);
-  const pauseRef = useRef(pause);
-  pauseRef.current = pause;
 
   const toggle = useCallback(() => {
     if (playingRef.current) pause();
@@ -425,16 +453,39 @@ export function Player({
     (to: number, via: 'scrollbar' | 'key') => {
       const video = videoRef.current;
       if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+      if (finishingRef.current) return;
       const from = video.currentTime;
       const target = Math.min(Math.max(to, 0), video.duration);
       if (target === from) return;
       video.currentTime = target;
       setCurrentTime(target);
-      if (!playingRef.current) push({ type: 'seek', from, to: target, via });
-      // Looking again after the end: back to the player, paused.
-      if (screenRef.current === 'end') dispatch({ type: 'scrollBack' });
+      const now = performance.now();
+
+      // Looking again after the end: back to the player, paused. Paused means listening, so
+      // this opens a comment on the frame they land on, exactly as pausing there would.
+      if (screenRef.current === 'end') {
+        screenRef.current = 'player';
+        const commentId = openComment('moment');
+        if (openRef.current && via === 'scrollbar') openRef.current.landing = now;
+        dispatch({ type: 'scrollBack', commentId });
+        return;
+      }
+      if (playingRef.current) return;
+
+      const o = openRef.current;
+      if (o && o.landing !== null) {
+        const settling =
+          via === 'scrollbar' && o.sent === 0 && now - o.landing <= KEY_STEP_COLLAPSE_MS;
+        if (settling) {
+          o.meta.pausedAtVideoTime = target;
+          o.landing = now;
+          return;
+        }
+        o.landing = null;
+      }
+      push({ type: 'seek', from, to: target, via });
     },
-    [dispatch, push]
+    [dispatch, openComment, push]
   );
 
   const step = useCallback(
@@ -526,6 +577,27 @@ export function Player({
     else play(true);
   };
 
+  const onVideoError = () => {
+    setVideoError(true);
+    setBuffering(false);
+    failPlayback();
+  };
+
+  const onBuffering = (waiting: boolean) => {
+    setBuffering(waiting);
+    // Data arriving again means whatever went wrong has passed.
+    if (!waiting) setVideoError(false);
+  };
+
+  useEffect(() => {
+    const update = () => setIsFullscreen(document.fullscreenElement != null);
+    update();
+    // Where the browser (or an embedding page) rules fullscreen out, the button would be dead.
+    setCanFullscreen(document.fullscreenEnabled !== false);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+
   // Buttons
 
   const changeVolume = (v: number) => {
@@ -560,7 +632,8 @@ export function Player({
   };
 
   const done = async () => {
-    if (finishing) return;
+    // During a general comment the only way on is its own Finished button.
+    if (finishing || screenRef.current === 'general') return;
     setFinishing(true);
     playingRef.current = false;
     videoRef.current?.pause();
@@ -575,56 +648,72 @@ export function Player({
   };
 
   const listening = state.screen === 'player' && !state.playing && state.commentId !== null;
+  // The server refused part of the open comment: it is no longer being recorded.
+  const stopped = refusedCommentId !== null && state.commentId === refusedCommentId;
+  const general = state.screen === 'general';
+  const mic = { onReconnect: onReconnectMic, reconnecting, reconnectFailed };
   const { version } = sessionRef.current;
 
   return (
     <div ref={containerRef} className={classes.player} data-testid={T.player}>
-      <VideoStage
-        stageRef={stageRef}
-        videoRef={videoRef}
-        src={`/api/r/${encodeURIComponent(token)}/video?version=${version}`}
-        playing={state.playing}
-        zoom={state.zoom}
-        lastOrigin={lastOriginRef.current}
-        pictureRect={pictureRect}
-        onClick={onStageClick}
-        onLoadedMetadata={onLoadedMetadata}
-        onTimeUpdate={onTimeUpdate}
-        onEnded={onEnded}
-        onPlay={onVideoPlay}
-        onPause={onVideoPause}
-      >
-        {listening &&
-          (state.micLost ? (
-            <MicLost onReconnect={onReconnectMic} />
-          ) : (
-            <ListeningOverlay stream={stream} />
-          ))}
-        {state.screen === 'end' && (
-          <EndScreen onShareMore={shareMore} onDone={done} finishing={finishing} />
-        )}
-        <SaveStatus state={save} />
-      </VideoStage>
-      {(trouble || saveFailed) && <TroubleBanner />}
-      <Controls
-        currentTime={currentTime}
-        duration={duration}
-        playing={state.playing}
-        volume={volume}
-        showDone={state.screen !== 'end'}
-        finishing={finishing}
-        onPlayPause={toggle}
-        onSeek={(time) => seekTo(time, 'scrollbar')}
-        onVolume={changeVolume}
-        onFullscreen={toggleFullscreen}
-        onDone={done}
-      />
-      {state.screen === 'general' && (
+      {/* Under a general comment nothing here may be focused or pressed. */}
+      <div className={classes.body} inert={general}>
+        <VideoStage
+          stageRef={stageRef}
+          videoRef={videoRef}
+          src={`/api/r/${encodeURIComponent(token)}/video?version=${version}`}
+          playing={state.playing}
+          zoom={state.zoom}
+          lastOrigin={lastOriginRef.current}
+          pictureRect={pictureRect}
+          onClick={onStageClick}
+          onLoadedMetadata={onLoadedMetadata}
+          onTimeUpdate={onTimeUpdate}
+          onEnded={onEnded}
+          onPlay={onVideoPlay}
+          onPause={onVideoPause}
+          onError={onVideoError}
+          onBuffering={onBuffering}
+        >
+          {listening &&
+            (stopped ? (
+              <CommentStopped />
+            ) : state.micLost ? (
+              <MicLost {...mic} />
+            ) : (
+              <ListeningOverlay stream={stream} />
+            ))}
+          {buffering && !videoError && <VideoLoading />}
+          {videoError && <VideoError onReload={() => window.location.reload()} />}
+          {state.screen === 'end' && (
+            <EndScreen onShareMore={shareMore} onDone={done} finishing={finishing} />
+          )}
+          <SaveStatus state={save} />
+        </VideoStage>
+        {(trouble || saveFailed || stopped) && <TroubleBanner />}
+        <Controls
+          currentTime={currentTime}
+          duration={duration}
+          playing={state.playing}
+          volume={volume}
+          showDone={state.screen !== 'end'}
+          finishing={finishing}
+          fullscreen={isFullscreen}
+          canFullscreen={canFullscreen}
+          onPlayPause={toggle}
+          onSeek={(time) => seekTo(time, 'scrollbar')}
+          onVolume={changeVolume}
+          onFullscreen={toggleFullscreen}
+          onDone={done}
+        />
+      </div>
+      {general && (
         <GeneralComment
           stream={stream}
           micLost={state.micLost}
-          onReconnect={onReconnectMic}
+          stopped={stopped}
           onFinished={generalFinished}
+          {...mic}
         />
       )}
     </div>

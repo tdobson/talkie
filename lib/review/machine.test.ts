@@ -117,6 +117,18 @@ describe('review machine', () => {
     expect(reducer(playerState, { type: 'scrollBack' })).toBe(playerState);
   });
 
+  it('scrolling back from the end can open a comment on the frame it lands on', () => {
+    const s = reducer({ ...playerState, screen: 'end' }, { type: 'scrollBack', commentId: 'c9' });
+    expect(s).toMatchObject({ screen: 'player', playing: false, commentId: 'c9' });
+  });
+
+  it('a play that did not start goes back to paused with no comment', () => {
+    const s = reducer({ ...playerState, playing: true }, { type: 'playFailed' });
+    expect(s).toMatchObject({ screen: 'player', playing: false, commentId: null });
+    const paused = { ...playerState, playing: false, commentId: 'c' };
+    expect(reducer(paused, { type: 'playFailed' })).toBe(paused);
+  });
+
   it('play from the end screen goes back to the player', () => {
     const s = reducer({ ...playerState, screen: 'end' }, { type: 'play' });
     expect(s).toMatchObject({ screen: 'player', playing: true });

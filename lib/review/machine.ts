@@ -41,7 +41,13 @@ export type ReviewAction =
   | { type: 'generalFinished' }
   /** The open comment was closed and a new one started in its place (microphone reconnected). */
   | { type: 'commentRestarted'; commentId: string }
-  | { type: 'scrollBack' }
+  /**
+   * The reviewer scrolled back from the end screen. Paused means listening, so the player
+   * opens a moment comment on the frame they land on and passes its id.
+   */
+  | { type: 'scrollBack'; commentId?: string }
+  /** Playback did not start (the video failed to load, or the browser refused). */
+  | { type: 'playFailed' }
   | { type: 'zoomStart'; zoom: ZoomState }
   | { type: 'zoomPan'; originX: number; originY: number }
   | { type: 'zoomEnd' }
@@ -136,7 +142,17 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
 
     case 'scrollBack':
       if (s.screen !== 'end') return s;
-      return { ...s, screen: 'player', playing: false, commentId: null, zoom: null };
+      return {
+        ...s,
+        screen: 'player',
+        playing: false,
+        commentId: a.commentId ?? null,
+        zoom: null,
+      };
+
+    case 'playFailed':
+      if (s.screen !== 'player' || !s.playing) return s;
+      return { ...s, playing: false, commentId: null, zoom: null };
 
     case 'shareMore':
       if (s.screen !== 'end') return s;

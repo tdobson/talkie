@@ -1,8 +1,9 @@
 import { MIC_SPEECH_HOLD_MS } from '@/lib/constants';
+import { MORE_T, moreCopy } from '@/lib/review/additions';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { act, render, screen, userEvent } from '@/test/helpers/render';
-import { MicCheck } from './MicCheck';
+import { MicCheck, QUIET_HELP_AFTER_MS } from './MicCheck';
 
 let level = 0;
 vi.mock('../hooks/useMicLevel', () => ({ useMicLevel: () => level }));
@@ -73,5 +74,22 @@ describe('MicCheck', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     view.rerender(<MicCheck stream={stream} onHeard={() => {}} onStart={() => {}} startFailed />);
     expect(screen.getByRole('alert')).toHaveTextContent(copy.micCheck.startFailed);
+  });
+
+  it('offers help when nothing has been heard for a while', () => {
+    vi.useFakeTimers();
+    try {
+      render(<MicCheck stream={stream} onHeard={() => {}} onStart={() => {}} />);
+      expect(screen.queryByTestId(MORE_T.micCheckHelp)).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(QUIET_HELP_AFTER_MS + 200);
+      });
+      expect(screen.getByTestId(MORE_T.micCheckHelp)).toHaveTextContent(
+        moreCopy.micCheck.quietHelp
+      );
+      expect(screen.getByTestId(T.startWatching)).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

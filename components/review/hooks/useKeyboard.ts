@@ -29,7 +29,7 @@ const isSpace = (e: KeyboardEvent) => e.key === ' ' || e.code === 'Space';
 /**
  * Page-level keys for the player. Space toggles play and pause; the arrows step one frame
  * (one second with Shift) while paused and do nothing during playback. During a general
- * comment space does nothing at all. Keys typed into a text field are left alone.
+ * comment space and the arrows do nothing at all. Keys typed into a text field are left alone.
  *
  * Listens in the capture phase and stops the keys it owns from going further, so a focused
  * button is not also pressed by space and a focused scroll bar is not also moved by an arrow.
@@ -57,10 +57,9 @@ export function useKeyboard(options: KeyboardOptions): void {
         if (o.screen !== 'general' && !e.repeat) o.onToggle();
         return;
       }
-      if (o.screen === 'general') return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         claim(e);
-        if (!o.paused) return;
+        if (o.screen === 'general' || !o.paused) return;
         const size = e.shiftKey ? 1 : o.frameDuration;
         o.onStep(e.key === 'ArrowLeft' ? -size : size);
       }

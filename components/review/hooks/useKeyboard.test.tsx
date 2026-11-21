@@ -85,7 +85,8 @@ describe('useKeyboard', () => {
   it('space does nothing during a general comment, and the page does not scroll', () => {
     const { onToggle, onStep } = setup('general', true);
     expect(prevented(fireEvent.keyDown(document.body, { key: ' ', code: 'Space' }))).toBe(true);
-    fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+    // The arrows are claimed too, so a scroll bar under the overlay cannot be moved.
+    expect(prevented(fireEvent.keyDown(document.body, { key: 'ArrowLeft' }))).toBe(true);
     expect(onToggle).not.toHaveBeenCalled();
     expect(onStep).not.toHaveBeenCalled();
   });

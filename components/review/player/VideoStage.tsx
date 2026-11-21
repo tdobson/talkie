@@ -22,6 +22,10 @@ export interface VideoStageProps {
   onEnded: () => void;
   onPlay: () => void;
   onPause: () => void;
+  /** The video could not be loaded or decoded. */
+  onError?: () => void;
+  /** True while the video is waiting for data, false once it can play again. */
+  onBuffering?: (buffering: boolean) => void;
   /** Overlays. They sit above the picture and are not zoomed with it. */
   children?: ReactNode;
 }
@@ -45,6 +49,8 @@ export function VideoStage({
   onEnded,
   onPlay,
   onPause,
+  onError,
+  onBuffering,
   children,
 }: VideoStageProps) {
   const origin = zoom ?? lastOrigin;
@@ -91,6 +97,12 @@ export function VideoStage({
           onEnded={onEnded}
           onPlay={onPlay}
           onPause={onPause}
+          onError={onError}
+          onLoadStart={() => onBuffering?.(true)}
+          onWaiting={() => onBuffering?.(true)}
+          onLoadedData={() => onBuffering?.(false)}
+          onCanPlay={() => onBuffering?.(false)}
+          onPlaying={() => onBuffering?.(false)}
         />
       </div>
       {children}
