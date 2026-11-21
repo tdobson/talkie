@@ -6,7 +6,7 @@ import yazl from 'yazl';
 import { FILES } from '@/lib/pipeline/steps/types';
 import { commentDir } from '@/lib/storage/paths';
 import { renderFeedbackMd } from './markdown';
-import type { ExportComment, ExportModel, ExportOptions } from './model';
+import { type ExportComment, exportFilmDir, type ExportModel, type ExportOptions } from './model';
 import { renderReadme } from './readme';
 
 /**
@@ -106,6 +106,15 @@ export async function writeZip(
     text('feedback.md', renderFeedbackMd(model));
     text('feedback.json', `${JSON.stringify(model, null, 2)}\n`);
     for (const c of model.comments) await addComment(c, '', true);
+    // A Talkie film: its talkie.json and captions, so scene ids can be mapped to source.
+    for (const film of model.films ?? []) {
+      const dir = exportFilmDir(model.video.videoId, film.version);
+      const files = [[film.talkie, 'talkie.json'], ...film.captions.map((c) => [c.path, c.src])];
+      for (const [zipPath, src] of files) {
+        const from = join(/* turbopackIgnore: true */ dir, src);
+        if (await isFile(from)) zip.addFile(from, zipPath);
+      }
+    }
     for (const p of model.previous) {
       const prefix = `previous/v${p.version}/`;
       const earlier: ExportModel = {
