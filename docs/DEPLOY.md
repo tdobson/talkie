@@ -7,41 +7,56 @@ is plain files under `DATA_DIR`.
 geriatrix has 2 cores and 9GB of RAM and does other jobs, so every heavy step below runs at low
 priority. The web server itself runs at normal priority so playback and uploads stay responsive.
 
+## Deploying: one command
+
+From the repo root on your own machine (not on geriatrix):
+
+```bash
+scripts/deploy/video-feedback.sh              # build, then deploy
+scripts/deploy/video-feedback.sh --no-build   # deploy the build that is already there
+```
+
+It runs `yarn vf build` here, swaps in a sharp that runs on geriatrix's CPU
+(`scripts/deploy/sharp-old-cpu.sh`), makes sure the headless Chromium for Talkie stills is on the
+host and named by `TALKIE_CHROMIUM_PATH` in the env file, uploads a new release, points
+`current` at it, installs the unit file if it changed, restarts, and smoke tests the public site.
+If the smoke test fails it switches back to the previous release. It keeps the newest three.
+
+Needs: ssh to `geriatrix` with passwordless sudo, and docker on your machine the first time (to
+build sharp; the result is cached in `~/.cache/video-feedback/sharp-old-cpu`). Set `VF_HOST` to
+deploy somewhere else.
+
+Why build elsewhere: geriatrix has 2 cores and its root disk is 96% full, and its CPU (AMD Turion
+II, no SSE4) cannot run prebuilt sharp, which dies with SIGILL, or sharp's WebAssembly build,
+which needs Wasm SIMD. Headless Chromium and the dotLottie WASM do run on it (checked 2026-11-21).
+
 ## Layout on the host
 
 ```
-/srv/video-feedback/
-  app/                         git checkout of this repo (the monorepo), built in place
-    packages/                  the Talkie packages the app is built with
-    apps/video-feedback/       the app: the service runs from this folder
-      .next/standalone/apps/video-feedback/    the built server (server.js)
-  data/    DATA_DIR: inbox, videos, sessions, comments
-  env      settings and secrets, mode 600
+/srv/video-feedback -> /srv/data/video-feedback   (the root disk is full, so it all lives on /srv/data)
+  releases/<stamp>/    one standalone build each; the server is releases/<stamp>/apps/video-feedback/server.js
+  current              symlink to the live release; the unit runs current/apps/video-feedback/server.js
+  data/                DATA_DIR: inbox, videos, sessions, comments
+  env                  settings and secrets, mode 600
+  ms-playwright/       chromium_headless_shell-<rev>, for Talkie stills
 ```
 
-`data/` sits outside `app/` on purpose. A fresh checkout or a `git clean` cannot touch it.
-
-The checkout is the whole monorepo: Talkie in `packages/`, the app in `apps/video-feedback`.
-Install and build from the repo root, where `yarn vf <script>` runs any script of the app. The
-command line tools (section 6) run from `apps/video-feedback`.
+The deploy script never touches `data/`, and touches `env` only to set `TALKIE_CHROMIUM_PATH`.
 
 ## 1. First install
 
-Needs on the host: Node 22 or newer (24 preferred), `ffmpeg` and `ffprobe`, `ionice` and `nice`
-(util-linux and coreutils, already there on Debian), git, and a running `cloudflared`. Chromium
-for the stills of Talkie films is installed in section 3.
+Needs on the host: Node 22 or newer at `/usr/local/bin/node` (24 preferred), `ffmpeg` and
+`ffprobe`, Debian's libvips for the self-built sharp, and a running `cloudflared`.
 
 ```bash
-sudo apt install ffmpeg
-node --version && ffmpeg -version | head -1 && command -v ionice
-
-sudo mkdir -p /srv/video-feedback/data/inbox
-sudo chown -R tdobson: /srv/video-feedback
-
-git clone <repo-url> /srv/video-feedback/app
-cd /srv/video-feedback/app
-corepack enable            # yarn 4, pinned by package.json
+sudo apt install ffmpeg libvips42t64
+sudo mkdir -p /srv/data/video-feedback/data/inbox
+sudo ln -s /srv/data/video-feedback /srv/video-feedback
+sudo chown -R tdobson: /srv/data/video-feedback
 ```
+
+Write the env file (section 2), then run the deploy script from your machine. Then enable the
+service once: `sudo systemctl enable video-feedback`.
 
 ## 2. The env file
 
@@ -83,89 +98,45 @@ The server refuses to start in production if `GROQ_API_KEY`, `PUBLIC_BASE_URL` o
 
 No quotes and no `export` in this file: systemd reads it as plain `KEY=value` lines.
 
-## 3. Build
-
-```bash
-cd /srv/video-feedback/app
-scripts/low yarn install --immutable        # one install at the repo root covers every workspace
-yarn vf build
-```
-
-`scripts/low` is `ionice -c2 -n7 nice -n19`. `yarn vf build` wraps itself the same way. The build
-is capped at 2 workers. Expect it to take a few minutes, and never run two at once.
+## 3. What the build is
 
 `yarn vf build` first builds the Talkie packages the app depends on and the page that draws
 Talkie stills, then the app. It writes a self-contained server to
-`apps/video-feedback/.next/standalone/apps/video-feedback/`. The path repeats because the
-standalone output mirrors the repo from its root. The build leaves out the static assets, so copy
-them in after every build:
-
-```bash
-A=apps/video-feedback
-S=$A/.next/standalone/apps/video-feedback
-rm -rf $S/.next/static $S/public
-cp -r $A/.next/static $S/.next/static
-cp -r $A/public $S/public
-```
-
-Miss this step and pages load with no styles or scripts (404s under `/_next/static/`), and a
-Talkie film does not draw for the reviewer (its renderer is served from `public/talkie/`).
+`apps/video-feedback/.next/standalone/apps/video-feedback/` (the path repeats because the
+standalone output mirrors the repo from its root). The deploy script adds the static assets
+(`.next/static` and `public/`) that the standalone build leaves out. Without them pages load
+unstyled and a Talkie film does not draw for the reviewer.
 
 ### Chromium, for Talkie stills
 
-Stills and clips of a Talkie film are drawn by a headless Chromium that the server starts when
-it needs one and closes after 2 minutes idle. It takes about 400MB on disk, and 200 to 300MB of
-RAM while it renders. Install it once, as the user the service runs as, from the repo root:
+Stills and clips of a Talkie film are drawn by a headless Chromium (Playwright's
+`chromium-headless-shell`, the revision `playwright-core` asks for) that the server starts when it
+needs one and closes after 2 minutes idle. About 280MB on disk and 200 to 300MB of RAM while it
+renders. The deploy script copies it from your own `~/.cache/ms-playwright` and sets
+`TALKIE_CHROMIUM_PATH`. Check it by hand with:
 
 ```bash
-ionice -c2 -n7 nice -n19 yarn vf playwright install chromium
+ssh geriatrix '. /srv/video-feedback/env; "$TALKIE_CHROMIUM_PATH" --version'
 ```
 
-If Chromium then fails to start because system libraries are missing, install them once, as root:
-
-```bash
-sudo ionice -c2 -n7 nice -n19 yarn vf playwright install --with-deps chromium
-```
-
-Run as root, that command also leaves a second copy of the browser in root's own cache, which
-nothing uses: `sudo rm -rf /root/.cache/ms-playwright` gets the space back.
-
-The browser lands in `~/.cache/ms-playwright/` of the user who ran the first command, which is
-where the service looks. Check that it starts on this machine:
-
-```bash
-cd apps/video-feedback
-"$(node -e "console.log(require('playwright-core').chromium.executablePath())")" --version
-```
-
-That prints a version number. An error naming a `.so` file means the `--with-deps` step is
-needed. MP4 videos do not use Chromium at all: without it they work as before, and a Talkie film
-still plays and still exports its transcript, with the stills and clips steps marked failed.
+MP4 videos do not use Chromium at all. Without it a Talkie film still plays and exports its
+transcript, with the stills and clips steps marked failed.
 
 ## 4. The service
 
+`apps/video-feedback/deploy/video-feedback.service`, installed by the deploy script.
+
 ```bash
-command -v node      # the unit expects /usr/bin/node; edit ExecStart if this differs
-sudo cp apps/video-feedback/deploy/video-feedback.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now video-feedback
 systemctl status video-feedback
 journalctl -u video-feedback -n 50
-```
-
-Check it from the host before touching Cloudflare:
-
-```bash
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/                  # 200
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/admin/videos  # 401
 ss -ltnp | grep 3000                                                              # 127.0.0.1 only
 ```
 
-The 401 is right: the request carries no Access JWT. If `ss` shows `0.0.0.0:3000` or `*:3000`,
-stop and fix `HOSTNAME` before going further.
-
-ffmpeg, ffprobe, Chromium and the still and clip rendering are lowered per process by the app
-(`ionice -c2 -n7 nice -n19`), so the unit keeps `Nice=0`.
+The 401 is right: the request carries no Access JWT. ffmpeg, Chromium and the still and clip
+rendering are lowered per process by the app (`ionice -c2 -n7 nice -n19`), so the unit keeps
+`Nice=0`.
 
 ## 5. Cloudflare Tunnel and Access
 
@@ -225,49 +196,43 @@ A video is one of two things:
 
 Anything else is refused with the reason and left in the inbox.
 
-### Command line tools on the host
+### Importing from a script (agents use this)
 
-The CLIs read `DATA_DIR` directly and need no auth. They do need the env file loaded:
-
-```bash
-cd /srv/video-feedback/app/apps/video-feedback
-set -a; . /srv/video-feedback/env; set +a
-
-yarn import /path/to/film.mp4 --title "Spring promo"     # prints the review link
-yarn import /path/to/film-v2.mp4 --video <videoId>       # next version of a video
-yarn import --film /path/to/film.lottie --title "Roof"   # a Talkie film (or its film/ folder)
-yarn export <videoId> --out ~/exports/                   # prints the path of the zip
-yarn reprocess <videoId>                                 # retry failed comments
-```
-
-They run at low priority on their own. `yarn reprocess` does the work in its own process, so
-avoid running it on a comment the server is processing at that moment.
-
-## 7. Updating
+The inbox import is an admin API, so a script with the service token does the whole thing:
 
 ```bash
-cd /srv/video-feedback/app
-git pull --ff-only
-scripts/low yarn install --immutable
-yarn vf build
-A=apps/video-feedback
-S=$A/.next/standalone/apps/video-feedback
-rm -rf $S/.next/static $S/public
-cp -r $A/.next/static $S/.next/static
-cp -r $A/public $S/public
-ionice -c2 -n7 nice -n19 yarn vf playwright install chromium
-sudo systemctl restart video-feedback
+. ~/.config/video-feedback/service-token.env   # CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET
+H=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+VF=https://video-feedback.tdobson.net
+
+rsync -P --bwlimit=20000 dist/film.lottie geriatrix:/srv/video-feedback/data/inbox/roof-v1.lottie
+curl -sS "${H[@]}" $VF/api/admin/inbox                     # lists the inbox
+curl -sS "${H[@]}" -H 'Content-Type: application/json' \
+  -d '{"filename":"roof-v1.lottie","mode":"new","title":"Roof"}' $VF/api/admin/inbox
+# -> {"ok":true,"videoId":"...","version":1}
+curl -sS "${H[@]}" $VF/api/admin/videos                    # each video has its reviewUrl
 ```
 
-The Chromium line does nothing when the right browser is already there. It downloads a new one
-only when the update moved `playwright-core` to a release that wants a newer Chromium.
+For the next version of a video: `{"filename":"roof-v2.lottie","mode":"version","videoId":"<id>"}`.
+The review link stays the same and reviewers see the newest version. See
+[`docs/review-platform-for-agents.md`](review-platform-for-agents.md) for the whole agent workflow.
 
-The build replaces `.next/` under the running server, so restart straight after it finishes and
-do not update while someone is reviewing. A restart is safe for data: processing is driven by
-`status.json` files and picks up where it stopped, and a reviewer's browser retries chunks that
-failed to upload. If the unit file changed, copy it again and `sudo systemctl daemon-reload`.
+The `yarn import`, `yarn export` and `yarn reprocess` command line tools need a checkout with
+`node_modules`, so they run from a dev machine against a local `DATA_DIR`, not on geriatrix.
+On geriatrix use the admin pages or the API (`POST /api/admin/videos/<id>/reprocess`).
 
-Rolling back is `git checkout <previous commit>` and the same build, copy and restart.
+## 7. Updating and rolling back
+
+Updating is the deploy script again. It is safe for data: processing is driven by `status.json`
+files and picks up where it stopped, and a reviewer's browser retries chunks that failed to
+upload. Avoid deploying while someone is mid-review.
+
+Rolling back by hand, to the release before:
+
+```bash
+ssh geriatrix 'cd /srv/video-feedback && ls releases/'
+ssh geriatrix 'cd /srv/video-feedback && ln -sfn $PWD/releases/<stamp> current.new && mv -T current.new current && sudo systemctl restart video-feedback'
+```
 
 ## 8. Backups
 
@@ -336,30 +301,25 @@ As admin:
 Talkie stills, after the first install and after any update that downloaded a new Chromium. The
 repo carries a 4 second film for this:
 
-- [ ] Import it and open the review link it prints:
-
-      ```bash
-      cd /srv/video-feedback/app/apps/video-feedback
-      set -a; . /srv/video-feedback/env; set +a
-      yarn import --film test/fixtures/talkie-mini.lottie --title "Talkie smoke check"
-      ```
-
+- [ ] Import `apps/video-feedback/test/fixtures/talkie-mini.lottie` with the script route in
+      section 6 (title "Talkie smoke check") and open its review link.
 - [ ] The film plays on the review link. Record one comment while pointing at the frame, then
       click "I'm done".
-- [ ] Export it: Download zip on the video's admin page, or `yarn export <videoId>`. The zip
+- [ ] Export it: Download zip on the video's admin page, or the export API (section 5). The zip
       holds stills of the film with the pointer drawn on, and no step is marked failed.
 
 ## Troubleshooting
 
 | What you see                               | Likely cause                                                        |
 | ------------------------------------------ | ------------------------------------------------------------------- |
+| Service dies with SIGILL, or sharp fails to load | The release has prebuilt sharp. Rerun the deploy script (it swaps in `sharp-old-cpu.sh`'s build). |
 | Service exits at once                      | A required variable is missing. `journalctl -u video-feedback -n 30` names it. |
-| Unstyled pages, 404s on `/_next/static/`   | The static and public folders were not copied after the build.      |
+| Unstyled pages, 404s on `/_next/static/`   | The release was not made by the deploy script (static and public folders missing). |
 | `/admin` answers 401 after signing in      | `CF_ACCESS_AUD` or `CF_ACCESS_TEAM_DOMAIN` does not match the Access application, or the path is not covered by it. |
 | Admin buttons answer 403                   | `PUBLIC_BASE_URL` is not the address in the browser bar.            |
-| Talkie stills fail: "Chromium is not installed for Talkie stills" | Chromium is missing for the service's user, or an update needs a newer one. Run the install in section 3, then `yarn reprocess <videoId>`. |
+| Talkie stills fail: "Chromium is not installed for Talkie stills" | `TALKIE_CHROMIUM_PATH` in the env file points at nothing. Rerun the deploy script, then reprocess the video. |
 | Talkie stills fail after 30 seconds        | Chromium started but did not draw the frame. Run the `--version` check in section 3 and read the journal. |
-| A Talkie film stays blank for the reviewer | `public/` was not copied after the build (`/talkie/` answers 404).  |
+| A Talkie film stays blank for the reviewer | `public/talkie/` missing from the release (`/talkie/dotlottie-player.wasm` answers 404). |
 | Review link answers 507                    | Under 1GB free in `DATA_DIR`.                                       |
-| Comments stay "failed" at transcription    | Groq key wrong or out of quota. Fix it, restart, `yarn reprocess <videoId>`. |
+| Comments stay "failed" at transcription    | Groq key wrong or out of quota. Fix it, restart, reprocess the video. |
 | 502 or error 1033 from Cloudflare          | The service or cloudflared is down.                                 |

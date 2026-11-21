@@ -48,20 +48,23 @@ describe('monorepo layout', () => {
     );
   });
 
-  it('deploy unit starts the standalone server of the workspace', () => {
+  it('deploy unit starts the standalone server of the current release', () => {
     const unit = text(join(app, 'deploy', 'video-feedback.service'));
-    expect(unit).toMatch(/^ExecStart=\S+ \.next\/standalone\/apps\/video-feedback\/server\.js$/m);
-    expect(unit).toContain('playwright install chromium');
+    expect(unit).toMatch(
+      /^WorkingDirectory=\/srv\/video-feedback\/current\/apps\/video-feedback$/m
+    );
+    expect(unit).toMatch(/^ExecStart=\S+ server\.js$/m);
+    expect(unit).toContain('TALKIE_CHROMIUM_PATH');
   });
 
-  // Task 6.1 contract: the docs describe the monorepo checkout and Chromium for Talkie stills.
-  it('DEPLOY.md builds from the root and installs Chromium at low priority', () => {
+  // The docs describe the one-command deploy and Chromium for Talkie stills.
+  it('DEPLOY.md deploys with the script and covers Chromium and the old CPU', () => {
     const deploy = text(join(root, 'docs', 'DEPLOY.md'));
+    expect(deploy).toContain('scripts/deploy/video-feedback.sh');
     expect(deploy).toContain('yarn vf build');
-    expect(deploy).toContain('ionice -c2 -n7 nice -n19 yarn vf playwright install chromium');
-    expect(deploy).toContain('--with-deps');
+    expect(deploy).toContain('TALKIE_CHROMIUM_PATH');
+    expect(deploy).toContain('sharp-old-cpu.sh');
     expect(deploy).toContain('talkie-mini.lottie');
-    expect(deploy).toContain('apps/video-feedback/.next/standalone/apps/video-feedback');
     expect(deploy).not.toMatch(/[\u2013\u2014]/);
   });
 
