@@ -178,7 +178,10 @@ it('carries the private cache header on a ranged audio response', async () => {
   expect(res.headers.get('Cache-Control')).toBe('private, max-age=3600');
 });
 
-it.each(['3', '0', 'abc', '2.5', '-1'])('404s for version %s, which the video does not have', async (version) => {
-  const res = await get('talkie.json', { version });
-  expect(res.status).toBe(404);
-});
+it.each(['3', '0', 'abc', '2.5', '-1'])(
+  '404s for version %s, which the video does not have',
+  async (version) => {
+    const res = await get('talkie.json', { version });
+    expect(res.status).toBe(404);
+  }
+);
