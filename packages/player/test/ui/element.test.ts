@@ -382,6 +382,75 @@ describe('controls', () => {
   });
 });
 
+function pointer(target: Element, type: string, pointerType: string) {
+  const event = new MouseEvent(type, { bubbles: true, composed: true, clientX: 10 });
+  Object.defineProperty(event, 'pointerType', { value: pointerType });
+  target.dispatchEvent(event);
+}
+
+/** What a browser sends for one finger tap: the pointer events, then a click. */
+function touchTap(target: HTMLElement) {
+  pointer(target, 'pointerdown', 'touch');
+  pointer(target, 'pointerup', 'touch');
+  target.click();
+}
+
+describe('touch', () => {
+  it('plays once when the big play button is tapped', async () => {
+    const { engine, $ } = mount();
+    await flush();
+    touchTap($('.big-play'));
+    await flush();
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    expect(engine.pause).not.toHaveBeenCalled();
+    expect(engine.paused).toBe(false);
+  });
+
+  it('plays once when the bare stage is tapped before the first play', async () => {
+    const { engine, $ } = mount();
+    await flush();
+    touchTap($('.stage'));
+    await flush();
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    expect(engine.pause).not.toHaveBeenCalled();
+  });
+
+  it('toggles the controls, not playback, when the stage is tapped during playback', async () => {
+    const { el, engine, $ } = mount();
+    await flush();
+    await el.play();
+    engine.play.mockClear();
+    touchTap($('.stage'));
+    touchTap($('.stage'));
+    expect(engine.play).not.toHaveBeenCalled();
+    expect(engine.pause).not.toHaveBeenCalled();
+  });
+
+  it('leaves the stage alone when the unmute chip is tapped', async () => {
+    const { el, engine, $ } = mount({ src: '/films/a/', autoplay: '' });
+    await flush();
+    engine.play.mockClear();
+    touchTap($('.unmute'));
+    expect(el.muted).toBe(false);
+    expect(engine.play).not.toHaveBeenCalled();
+    expect(engine.pause).not.toHaveBeenCalled();
+  });
+
+  it('still answers a mouse click after a tap whose click never reached the stage', async () => {
+    const { engine, $ } = mount();
+    await flush();
+    // A long press or a scroll ends in pointerup with no click.
+    pointer($('.stage'), 'pointerdown', 'touch');
+    pointer($('.stage'), 'pointerup', 'touch');
+    await flush();
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    pointer($('.stage'), 'pointerdown', 'mouse');
+    pointer($('.stage'), 'pointerup', 'mouse');
+    $('.stage').click();
+    expect(engine.pause).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('captions', () => {
   it('are off by default and toggle with the button and the c key', async () => {
     const { el, engine, $ } = mount();

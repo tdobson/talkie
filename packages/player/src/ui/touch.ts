@@ -33,6 +33,9 @@ export function classifyTap(previous: Tap | null, tap: Tap, width: number): TapG
   return 'toggle-controls';
 }
 
+/** Children of the stage that handle their own taps. */
+const INTERACTIVE = 'button, .error';
+
 export interface TouchHandlers {
   onToggleControls(): void;
   onSkip(seconds: number): void;
@@ -59,8 +62,19 @@ export function attachTouch(
     el.classList.add('on');
   };
 
+  // Buttons and the error panel sit on the stage and answer their own taps and clicks.
+  const onChild = (event: Event) => {
+    const target = event.target;
+    return target instanceof Element && target !== stage && target.closest(INTERACTIVE) !== null;
+  };
+
+  // A tap that ends without a click (a long press, a scroll) must not swallow the next click.
+  const onPointerDown = () => {
+    touched = false;
+  };
+
   const onPointerUp = (event: PointerEvent) => {
-    if (event.pointerType !== 'touch') {
+    if (event.pointerType !== 'touch' || onChild(event)) {
       return;
     }
     touched = true;
@@ -80,7 +94,10 @@ export function attachTouch(
     }
   };
 
-  const onClick = () => {
+  const onClick = (event: Event) => {
+    if (onChild(event)) {
+      return;
+    }
     // Browsers send a click after a touch tap. The tap was already handled.
     if (touched) {
       touched = false;
@@ -89,9 +106,11 @@ export function attachTouch(
     handlers.onClick();
   };
 
+  stage.addEventListener('pointerdown', onPointerDown);
   stage.addEventListener('pointerup', onPointerUp as EventListener);
   stage.addEventListener('click', onClick);
   return () => {
+    stage.removeEventListener('pointerdown', onPointerDown);
     stage.removeEventListener('pointerup', onPointerUp as EventListener);
     stage.removeEventListener('click', onClick);
   };
