@@ -1,4 +1,4 @@
-import { guarded, json, notFound, readJsonBody } from '@/lib/review/http';
+import { clientIp, guarded, json, notFound, readJsonBody } from '@/lib/review/http';
 import { startSession } from '@/lib/review/service';
 import type { CreateSessionBody } from '@/lib/types';
 
@@ -9,7 +9,7 @@ export function POST(req: Request, { params }: Ctx): Promise<Response> {
   return guarded(async () => {
     const { token } = await params;
     const body = (await readJsonBody(req)) as CreateSessionBody;
-    const result = await startSession(token, body);
+    const result = await startSession(token, body, { ip: clientIp(req) });
     return result === null ? notFound() : json(result);
   });
 }

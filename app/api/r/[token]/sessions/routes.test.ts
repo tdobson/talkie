@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN } from '@/lib/constants';
 import { setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
+import { limits } from '@/lib/limits';
 import { resetRateLimits } from '@/lib/review/ratelimit';
 import { MAX_EVENTS_BYTES } from '@/lib/constants';
 import { commentDir } from '@/lib/storage/paths';
@@ -317,4 +318,34 @@ it('413s for an events field that is too large, whatever is in it', async () => 
   expect(res.status).toBe(413);
   const ref: CommentRef = { videoId: video.videoId, sessionId: sid, commentId: cid };
   expect(await readCommentMeta(ref)).toBeNull();
+});
+
+it('refuses a JSON body that is far larger than any real one, without parsing it', async () => {
+  const sid = await start();
+  const huge = { reviewerName: 'x'.repeat(200_000), userAgent: '' };
+  expect((await postSession(jsonReq(huge), params({ token }))).status).toBe(413);
+  const padded = { ...complete, padding: 'x'.repeat(200_000) };
+  const res = await postComplete(jsonReq(padded), params({ token, sid, cid }));
+  expect(res.status).toBe(413);
+});
+
+it('counts new sessions against the address Cloudflare reports', async () => {
+  const saved = limits.sessionsPerIpPerHour;
+  limits.sessionsPerIpPerHour = 1;
+  try {
+    const from = (ip: string) =>
+      postSession(
+        new Request(base, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
+          body: JSON.stringify({ reviewerName: 'Sarah', userAgent: 'ua' }),
+        }),
+        params({ token })
+      );
+    expect((await from('198.51.100.7')).status).toBe(200);
+    expect((await from('198.51.100.7')).status).toBe(429);
+    expect((await from('198.51.100.8')).status).toBe(200);
+  } finally {
+    limits.sessionsPerIpPerHour = saved;
+  }
 });

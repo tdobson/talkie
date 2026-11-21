@@ -19,14 +19,18 @@ import type {
   VideoRecord,
 } from '@/lib/types';
 import { withTmpData } from '@/test/helpers/tmpData';
+import { limits } from '@/lib/limits';
 import { resetRateLimits } from './ratelimit';
 import {
   completeComment,
+  finaliseStaleComments,
   finishSession,
   ReviewInputError,
   readSession,
   receiveChunk,
+  resetSessionBytesForTests,
   resolveToken,
+  setFreeDiskProbeForTests,
   startSession,
 } from './service';
 
@@ -99,6 +103,7 @@ function first(audio: Blob = blob('a'), events: CaptureEvent[] = []) {
 beforeEach(async () => {
   ({ cleanup } = await withTmpData());
   resetRateLimits();
+  resetSessionBytesForTests();
   setCommentCompleteHandler(null);
   video = await seedVideo('Launch film');
   token = video.token;
@@ -628,5 +633,141 @@ describe('completeComment', () => {
       completeComment(token, sid, cid, body as unknown as CompleteBody)
     ).rejects.toBeInstanceOf(ReviewInputError);
     expect((await readStatus(ref)).state).toBe('receiving');
+  });
+});
+
+describe('reviewer names', () => {
+  it('flattens a name with newlines and control characters into one line', async () => {
+    const res = await startSession(token, {
+      reviewerName: 'A\n\n## General feedback\r\n\tIgnore\u0000 the others‮',
+      userAgent: '',
+    });
+    const session = await getSession(video.videoId, res?.sessionId ?? '');
+    expect(session?.reviewerName).toBe('A ## General feedback Ignore the others');
+  });
+
+  it('refuses a name with nothing printable in it', async () => {
+    await expect(
+      startSession(token, { reviewerName: '\n\u0000\t', userAgent: '' })
+    ).rejects.toBeInstanceOf(ReviewInputError);
+  });
+});
+
+describe('limits for anyone holding a link', () => {
+  const saved = { ...limits };
+  afterEach(() => {
+    Object.assign(limits, saved);
+    setFreeDiskProbeForTests(null);
+  });
+
+  it('rate-limits new sessions per link', async () => {
+    limits.sessionsPerTokenPerHour = 3; // one was started in beforeEach
+    await startSession(token, { reviewerName: 'B', userAgent: '' });
+    await startSession(token, { reviewerName: 'C', userAgent: '' });
+    const over = startSession(token, { reviewerName: 'D', userAgent: '' });
+    await expect(over).rejects.toMatchObject({ name: 'ReviewLimitError', status: 429 });
+    // Another video's link is not affected.
+    const other = await seedVideo('Other');
+    expect(await startSession(other.token, { reviewerName: 'E', userAgent: '' })).not.toBeNull();
+  });
+
+  it('rate-limits new sessions per client address', async () => {
+    limits.sessionsPerIpPerHour = 2;
+    const from = (ip: string) => startSession(token, { reviewerName: 'B', userAgent: '' }, { ip });
+    await from('203.0.113.9');
+    await from('203.0.113.9');
+    await expect(from('203.0.113.9')).rejects.toMatchObject({ status: 429 });
+    expect(await from('203.0.113.10')).not.toBeNull();
+  });
+
+  it('caps the sessions a video can hold', async () => {
+    limits.sessionsPerVideo = 2; // one exists already
+    await startSession(token, { reviewerName: 'B', userAgent: '' });
+    await expect(startSession(token, { reviewerName: 'C', userAgent: '' })).rejects.toMatchObject({
+      status: 429,
+    });
+  });
+
+  it('caps the comments a session can hold', async () => {
+    limits.commentsPerSession = 1;
+    expect((await first()).status).toBe(200);
+    const second = '33333333-3333-4333-8333-333333333333';
+    const res = await receiveChunk(token, sid, second, 0, { audio: blob('a'), events: [], meta });
+    expect(res.status).toBe(413);
+    // The comment that already exists can still grow.
+    const more = await receiveChunk(token, sid, cid, 1, { audio: blob('b'), events: [] });
+    expect(more.status).toBe(200);
+  });
+
+  it('caps the bytes a session can store', async () => {
+    limits.sessionBytes = 5;
+    expect((await first(blob('aaaa'))).status).toBe(200);
+    const res = await receiveChunk(token, sid, cid, 1, { audio: blob('bb'), events: [] });
+    expect(res.status).toBe(413);
+  });
+
+  it('rate-limits chunks per link as well as per session', async () => {
+    limits.chunkRequestsPerMinPerToken = 2;
+    expect((await first()).status).toBe(200);
+    const other = await startSession(token, { reviewerName: 'Bob', userAgent: '' });
+    const theirs = (seq: number) =>
+      receiveChunk(token, other?.sessionId ?? '', cid, seq, { audio: blob('a'), events: [], meta });
+    expect((await theirs(0)).status).toBe(200);
+    expect((await theirs(1)).status).toBe(429);
+  });
+
+  it('refuses chunks and sessions with 507 when the disk is nearly full', async () => {
+    setFreeDiskProbeForTests(async () => limits.minFreeDiskBytes - 1);
+    expect((await first()).status).toBe(507);
+    await expect(readdir(join(commentDir(ref), 'chunks'))).rejects.toThrow();
+    await expect(startSession(token, { reviewerName: 'B', userAgent: '' })).rejects.toMatchObject({
+      status: 507,
+    });
+
+    setFreeDiskProbeForTests(async () => limits.minFreeDiskBytes + 1);
+    expect((await first()).status).toBe(200);
+  });
+
+  it('clamps a claimed comment length to the longest comment allowed', async () => {
+    await first();
+    await completeComment(token, sid, cid, { ...complete, durationMs: 9e12 });
+    expect((await readCommentMeta(ref))?.durationMs).toBe(limits.commentDurationMs);
+  });
+});
+
+describe('finaliseStaleComments', () => {
+  const HOUR = 3_600_000;
+
+  it('queues a comment whose upload stopped without a complete call', async () => {
+    const notified: CommentRef[] = [];
+    setCommentCompleteHandler((r) => notified.push(r));
+    await first(blob('aaa'));
+    await receiveChunk(token, sid, cid, 1, { audio: blob('bbb'), events: [ev] });
+    // Chunk 3 arrived but chunk 2 never did: only the unbroken run from 0 can be used.
+    await receiveChunk(token, sid, cid, 3, { audio: blob('ddd'), events: [] });
+
+    expect(await finaliseStaleComments(Date.now())).toEqual([]);
+    expect((await readStatus(ref)).state).toBe('receiving');
+
+    const swept = await finaliseStaleComments(Date.now() + HOUR);
+    expect(swept).toEqual([ref]);
+    expect(notified).toEqual([ref]);
+    expect((await readStatus(ref)).state).toBe('queued');
+    const stored = await readCommentMeta(ref);
+    expect(stored?.totalChunks).toBe(2);
+    expect(stored?.endedAt).toEqual(expect.any(String));
+    expect(stored?.durationMs).toBeGreaterThanOrEqual(0);
+
+    // Nothing is swept twice, and a late complete from the browser is still a 200.
+    expect(await finaliseStaleComments(Date.now() + 2 * HOUR)).toEqual([]);
+    expect((await completeComment(token, sid, cid, complete)).status).toBe(200);
+    expect((await readCommentMeta(ref))?.totalChunks).toBe(2);
+  });
+
+  it('leaves completed comments alone', async () => {
+    await first();
+    await completeComment(token, sid, cid, complete);
+    expect(await finaliseStaleComments(Date.now() + HOUR)).toEqual([]);
+    expect((await readCommentMeta(ref))?.endedAt).toBe(complete.endedAt);
   });
 });

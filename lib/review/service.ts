@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises';
+import { mkdir, readdir, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   MAX_CHUNK_BYTES,
@@ -6,15 +6,20 @@ import {
   MAX_COMMENT_BYTES,
   MAX_EVENTS_BYTES,
 } from '@/lib/constants';
+import { config } from '@/lib/config';
+import { limits } from '@/lib/limits';
 import { notifyCommentComplete } from '@/lib/pipeline/enqueue';
 import { initialStatus, readStatus, updateStatus } from '@/lib/pipeline/status';
 import { missingChunks, putChunk, storedBytes } from '@/lib/storage/chunks';
 import { isUuid } from '@/lib/storage/ids';
-import { commentDir } from '@/lib/storage/paths';
+import { commentDir, sessionsDir } from '@/lib/storage/paths';
 import {
   createSession,
   findVideoByToken,
   getSession,
+  listComments,
+  listSessions,
+  listVideos,
   readCommentMeta,
   saveSession,
   writeCommentMeta,
@@ -54,6 +59,73 @@ export class ReviewInputError extends Error {
     super(message);
     this.name = 'ReviewInputError';
   }
+}
+
+/** A limit was reached. Routes answer with `status`: 413, 429 or 507. */
+export class ReviewLimitError extends Error {
+  constructor(
+    message: string,
+    readonly status: 413 | 429 | 507
+  ) {
+    super(message);
+    this.name = 'ReviewLimitError';
+  }
+}
+
+// Free disk space. DATA_DIR also holds the source videos and every status file, so a full
+// disk breaks far more than uploads: new data is refused while there is still room to work.
+
+const DISK_CHECK_EVERY_MS = 5000;
+type DiskProbe = () => Promise<number>;
+let diskProbe: DiskProbe | null = null;
+let diskChecked: { at: number; root: string; free: number } | null = null;
+
+async function freeDiskBytes(): Promise<number> {
+  if (diskProbe) return diskProbe();
+  const root = config().dataDir;
+  const now = Date.now();
+  if (diskChecked && diskChecked.root === root && now - diskChecked.at < DISK_CHECK_EVERY_MS) {
+    return diskChecked.free;
+  }
+  let free = Number.POSITIVE_INFINITY;
+  try {
+    await mkdir(root, { recursive: true });
+    const fs = await statfs(root);
+    free = fs.bavail * fs.bsize;
+  } catch {
+    // If the space cannot be read, the write itself will say what is wrong.
+  }
+  diskChecked = { at: now, root, free };
+  return free;
+}
+
+async function diskIsLow(): Promise<boolean> {
+  return (await freeDiskBytes()) < limits.minFreeDiskBytes;
+}
+
+/** Replaces the free-space reading. Pass null to read the real disk again. */
+export function setFreeDiskProbeForTests(probe: DiskProbe | null): void {
+  diskProbe = probe;
+  diskChecked = null;
+}
+
+// Bytes stored per session since the server started. Held in memory like the rate limits: it
+// bounds what one session can write in a run without re-reading its folders on every chunk.
+
+const SESSION_BYTES_KEY = Symbol.for('video-feedback.sessionBytes');
+const bytesHolder = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+
+function sessionBytes(): Map<string, number> {
+  let m = bytesHolder[SESSION_BYTES_KEY];
+  if (!m) {
+    m = new Map();
+    bytesHolder[SESSION_BYTES_KEY] = m;
+  }
+  return m;
+}
+
+export function resetSessionBytesForTests(): void {
+  sessionBytes().clear();
 }
 
 // Validation helpers
@@ -238,6 +310,8 @@ function parseCompleteBody(v: unknown): CompleteBody {
   if (!isFiniteNumber(durationMs) || durationMs < 0) {
     throw new ReviewInputError('durationMs must be zero or more.');
   }
+  // The audio is cut to the same length when it is assembled, so a longer claim is not kept.
+  const duration = Math.min(durationMs, limits.commentDurationMs);
   const player = parsePlayer(v.player);
   if (player === null) throw new ReviewInputError('player is missing or not valid.');
   if (micLost !== undefined && typeof micLost !== 'boolean') {
@@ -246,7 +320,7 @@ function parseCompleteBody(v: unknown): CompleteBody {
   return {
     totalChunks,
     endedAt,
-    durationMs,
+    durationMs: duration,
     player,
     ...(micLost === undefined ? {} : { micLost }),
   };
@@ -319,25 +393,63 @@ async function resolveSession(
 
 // Sessions
 
+const HOUR_MS = 3_600_000;
+// Control characters, line and paragraph separators, and the bidirectional overrides that can
+// reorder the text around a name.
+const NAME_JUNK_RE = /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069]+/gu;
+
+/**
+ * A reviewer name as one line of plain text. The name is printed into `feedback.md`, which a
+ * model reads as trusted structure, so it must not be able to start a line of its own.
+ */
+function cleanName(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  return v.normalize('NFC').replace(NAME_JUNK_RE, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function countDirs(dir: string): Promise<number> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).length;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
+  }
+}
+
 /**
  * Starts a review session on the latest version of the video. Returns null for an unknown
  * token or a video with nothing imported yet. Throws `ReviewInputError` for a bad name.
  */
 export async function startSession(
   token: string,
-  body: CreateSessionBody
+  body: CreateSessionBody,
+  client: { ip?: string | null } = {}
 ): Promise<CreateSessionResult | null> {
   const video = await resolveToken(token);
   if (video === null || video.latestVersion < 1) return null;
 
   const raw: unknown = body;
   if (!isDict(raw)) throw new ReviewInputError('Body must be a JSON object.');
-  const name = typeof raw.reviewerName === 'string' ? raw.reviewerName.trim() : '';
+  const name = cleanName(raw.reviewerName);
   if (name.length < 1 || name.length > MAX_NAME_LENGTH) {
     throw new ReviewInputError(`reviewerName must be 1 to ${MAX_NAME_LENGTH} characters.`);
   }
   const userAgent =
     typeof raw.userAgent === 'string' ? raw.userAgent.slice(0, MAX_USER_AGENT_LENGTH) : '';
+
+  // A leaked link must not be a way to fill the disk with sessions. Checked only once the
+  // request is known to be a real one, so junk requests cannot use up the allowance.
+  const tooMany = new ReviewLimitError('Too many new sessions. Try again later.', 429);
+  const ip = typeof client.ip === 'string' ? client.ip.trim().slice(0, 64) : '';
+  if (ip !== '' && !allowRequest(`start-ip:${ip}`, limits.sessionsPerIpPerHour, HOUR_MS)) {
+    throw tooMany;
+  }
+  if (!allowRequest(`start:${video.videoId}`, limits.sessionsPerTokenPerHour, HOUR_MS)) {
+    throw tooMany;
+  }
+  if ((await countDirs(sessionsDir(video.videoId))) >= limits.sessionsPerVideo) throw tooMany;
+  if (await diskIsLow()) throw new ReviewLimitError('The server is out of space.', 507);
 
   const session = await createSession(video.videoId, video.latestVersion, name, userAgent);
   return { sessionId: session.sessionId, version: session.version };
@@ -368,7 +480,7 @@ export async function finishSession(token: string, sid: string): Promise<boolean
 // Chunks
 
 export type ChunkForm = { audio: Blob; events: CaptureEvent[]; meta?: CommentMeta };
-export type ChunkReply = { status: 200 | 404 | 413 | 429 | 400; body: unknown };
+export type ChunkReply = { status: 200 | 404 | 413 | 429 | 400 | 507; body: unknown };
 /** Either the answer to send straight away, or the way to store the chunk once it is read. */
 export type ChunkAdmission =
   { ok: false; reply: ChunkReply } | { ok: true; store: (form: ChunkForm) => Promise<ChunkReply> };
@@ -391,8 +503,16 @@ export async function admitChunk(
 
   // Counted only for real sessions, so guessed ids cannot fill the limiter.
   const rateKey = `${video.videoId}/${session.sessionId}`;
-  if (!allowRequest(rateKey, MAX_CHUNK_REQUESTS_PER_MIN, RATE_WINDOW_MS)) {
+  const tokenKey = `chunks:${video.videoId}`;
+  if (
+    !allowRequest(rateKey, MAX_CHUNK_REQUESTS_PER_MIN, RATE_WINDOW_MS) ||
+    !allowRequest(tokenKey, limits.chunkRequestsPerMinPerToken, RATE_WINDOW_MS)
+  ) {
     return { ok: false, reply: { status: 429, body: { error: 'too many requests' } } };
+  }
+  // 507 is retried by the browser, which keeps the audio until there is room again.
+  if (await diskIsLow()) {
+    return { ok: false, reply: { status: 507, body: { error: 'server storage is full' } } };
   }
   if (!Number.isInteger(seq) || seq < 0 || seq >= MAX_CHUNKS_PER_COMMENT) {
     return { ok: false, reply: { status: 400, body: { error: 'invalid chunk number' } } };
@@ -441,12 +561,24 @@ async function storeChunk(
     if (stored + chunkBytes > MAX_COMMENT_BYTES) {
       return { status: 413, body: { error: 'comment too large' } };
     }
+    const sessionKey = `${ref.videoId}/${ref.sessionId}`;
+    const sessionTotal = sessionBytes().get(sessionKey) ?? 0;
+    if (sessionTotal + chunkBytes > limits.sessionBytes) {
+      return { status: 413, body: { error: 'session too large' } };
+    }
+    if (!(await exists(dir))) {
+      const comments = await listComments(ref.videoId, ref.sessionId);
+      if (comments.length >= limits.commentsPerSession) {
+        return { status: 413, body: { error: 'too many comments' } };
+      }
+    }
 
     if (meta !== null) {
       if ((await readCommentMeta(ref)) === null) await writeCommentMeta(ref, meta);
       if (status === null) await updateStatus(ref, initialStatus());
     }
     await putChunk(dir, seq, Buffer.from(await audio.arrayBuffer()), events);
+    sessionBytes().set(sessionKey, sessionTotal + chunkBytes);
     return received;
   });
 }
@@ -525,4 +657,100 @@ export async function completeComment(
     console.error('Could not enqueue a completed comment.', ref, err);
   }
   return { status: 200, body: ok };
+}
+
+// Comments nobody completed
+
+const CHUNK_BIN_RE = /^(\d+)\.bin$/;
+
+/** The stored chunk numbers of a comment and when the newest of them was written. */
+async function chunkState(dir: string): Promise<{ seqs: Set<number>; newest: number }> {
+  const seqs = new Set<number>();
+  let newest = 0;
+  let names: string[] = [];
+  try {
+    names = await readdir(join(dir, 'chunks'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  for (const name of names) {
+    const m = CHUNK_BIN_RE.exec(name);
+    if (!m) continue;
+    seqs.add(Number(m[1]));
+    newest = Math.max(newest, (await stat(join(dir, 'chunks', name))).mtimeMs);
+  }
+  return { seqs, newest };
+}
+
+/**
+ * Finishes comments whose upload stopped without a complete call: the reviewer closed the tab
+ * mid-comment and never came back, or their browser lost the call. Without this such a comment
+ * stays `receiving` for ever and its audio is never transcribed or exported.
+ *
+ * A comment counts as stale when it is still `receiving` and nothing has been written to it
+ * for `limits.staleReceivingMs`. It is closed with the unbroken run of chunks from 0 and
+ * handed to the pipeline. One with no usable audio at all is marked `failed`, so the admin
+ * page shows it. Returns the comments that were queued.
+ */
+export async function finaliseStaleComments(now: number = Date.now()): Promise<CommentRef[]> {
+  const queued: CommentRef[] = [];
+  for (const video of await listVideos()) {
+    for (const session of await listSessions(video.videoId)) {
+      for (const ref of await listComments(video.videoId, session.sessionId)) {
+        try {
+          if (await finaliseIfStale(ref, now)) queued.push(ref);
+        } catch (err) {
+          // One unreadable comment must not stop the sweep.
+          console.error('Could not finish a stale comment.', ref, err);
+        }
+      }
+    }
+  }
+  for (const ref of queued) {
+    try {
+      notifyCommentComplete(ref);
+    } catch (err) {
+      console.error('Could not enqueue a finished stale comment.', ref, err);
+    }
+  }
+  return queued;
+}
+
+async function finaliseIfStale(ref: CommentRef, now: number): Promise<boolean> {
+  const dir = commentDir(ref);
+  const isStale = async (): Promise<{ seqs: Set<number>; newest: number } | null> => {
+    const status = await readStatus(ref);
+    if (status === null || status.state !== 'receiving') return null;
+    const chunks = await chunkState(dir);
+    const last = Math.max(chunks.newest, Date.parse(status.updatedAt) || 0);
+    return now - last >= limits.staleReceivingMs ? chunks : null;
+  };
+  // Looked at once without the lock, so a sweep over many comments holds up no upload.
+  if ((await isStale()) === null) return false;
+
+  return withCommentLock(ref, async () => {
+    const chunks = await isStale();
+    if (chunks === null) return false;
+    const meta = await readCommentMeta(ref);
+    let total = 0;
+    while (chunks.seqs.has(total)) total++;
+    if (meta === null || total === 0) {
+      await updateStatus(ref, {
+        state: 'failed',
+        error: 'The upload stopped before any audio arrived.',
+      });
+      return false;
+    }
+    const endedMs = chunks.newest || now;
+    const startedMs = Date.parse(meta.startedAt);
+    const lasted = Number.isFinite(startedMs) ? Math.max(0, endedMs - startedMs) : 0;
+    await writeCommentMeta(ref, {
+      ...meta,
+      totalChunks: total,
+      endedAt: new Date(endedMs).toISOString(),
+      durationMs: Math.min(lasted, limits.commentDurationMs),
+    });
+    await updateStatus(ref, { state: 'queued' });
+    return true;
+  });
 }
