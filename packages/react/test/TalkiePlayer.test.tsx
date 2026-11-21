@@ -1,10 +1,11 @@
 import { createRef } from 'react';
 import type { TalkiePlayerElement } from '@talkie/player';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { TalkiePlayer } from '../src/index';
 
 // The real element is covered by @talkie/player's own tests. Here the tag stays an unknown
-// element, so the tests see exactly what the wrapper renders and listens for.
+// element, so the tests see exactly what the wrapper renders and listens for. The last test in
+// this file registers the real element, so it must stay last.
 const mockDefine = jest.fn();
 jest.mock('@talkie/player', () => ({ defineTalkiePlayer: () => mockDefine() }));
 
@@ -57,15 +58,9 @@ test('registers the custom element on mount', async () => {
   expect(mockDefine).toHaveBeenCalled();
 });
 
-test('sets source as a property, not an attribute', () => {
-  const blob = new Blob(['x']);
-  const { container, rerender } = render(<TalkiePlayer source={blob} />);
-  const el = node(container) as TalkiePlayerElement;
-  expect(el.source).toBe(blob);
-  expect(el.hasAttribute('source')).toBe(false);
-  const next = new Uint8Array([1, 2]);
-  rerender(<TalkiePlayer source={next} />);
-  expect(el.source).toBe(next);
+test('source never becomes an attribute', () => {
+  const { container } = render(<TalkiePlayer source={new Blob(['x'])} />);
+  expect(node(container).hasAttribute('source')).toBe(false);
 });
 
 test('element events call the handlers', () => {
@@ -117,4 +112,64 @@ test('accentColor sets the CSS variable and keeps other styles', () => {
   const el = node(container);
   expect(el.style.getPropertyValue('--talkie-accent')).toBe('#e8590c');
   expect(el.style.maxWidth).toBe('640px');
+});
+
+/** The least engine the real element needs: it records what it was asked to load. */
+class FakeEngine extends EventTarget {
+  audio = document.createElement('audio');
+  film = null;
+  cues = [];
+  currentTime = 0;
+  duration = NaN;
+  paused = true;
+  ended = false;
+  playbackRate = 1;
+  volume = 1;
+  muted = false;
+  load = jest.fn(() => new Promise(() => {}));
+  play = jest.fn(async () => undefined);
+  pause = jest.fn();
+  retry = jest.fn(async () => undefined);
+  renderAt = jest.fn(async () => undefined);
+  resize = jest.fn();
+  destroy = jest.fn();
+}
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  });
+}
+
+// Keep this test last: once the real element is registered it stays registered for the file.
+test('source reaches the real element when it is registered after mount', async () => {
+  const real = jest.requireActual<typeof import('@talkie/player')>('@talkie/player');
+  const engines: FakeEngine[] = [];
+  real.TalkiePlayerElement.engineFactory = () => {
+    const engine = new FakeEngine();
+    engines.push(engine);
+    return engine as unknown as InstanceType<typeof real.TalkieEngine>;
+  };
+  mockDefine.mockImplementation(() => real.defineTalkiePlayer());
+  expect(customElements.get('talkie-player')).toBeUndefined();
+
+  const blob = new Blob(['x']);
+  const { container, rerender } = render(<TalkiePlayer source={blob} />);
+  const el = node(container) as TalkiePlayerElement;
+  await settle();
+
+  expect(el).toBeInstanceOf(real.TalkiePlayerElement);
+  expect(Object.prototype.hasOwnProperty.call(el, 'source')).toBe(false);
+  expect(el.source).toBe(blob);
+  expect(engines).toHaveLength(1);
+  expect(engines[0]!.load).toHaveBeenCalledWith(blob, expect.anything());
+
+  // With the element already registered, a new source goes straight to the setter.
+  const next = new Uint8Array([1, 2]);
+  rerender(<TalkiePlayer source={next} />);
+  await settle();
+  expect(el.source).toBe(next);
+  expect(engines[0]!.load).toHaveBeenLastCalledWith(next, expect.anything());
 });
