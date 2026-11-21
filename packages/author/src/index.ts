@@ -7,3 +7,7 @@ export * from './scene';
 export * from './evaluate';
 export * from './emit-lottie';
 export * from './emit-svg';
+export * from './loaders';
+export * from './svg-import';
+export * from './label';
+export * from './facts';
