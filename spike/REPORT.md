@@ -373,3 +373,25 @@ the published v2 schema; the stock player accepting it is the evidence.
   into `~/.cache/ms-playwright`).
 - On asterix, niced: the two slices and the H.265 chapter (979 s of encoding for the chapter). The
   outputs are in `/tmp/talkie-spike/` there and can be deleted.
+
+## Clock probe on a quiet machine (added after the spike)
+
+Run on judithix at 14:00 on 2026-11-21, load average 0.4 to 0.8 on 12 cores, niced, muted:
+`node proto/probe-clock.mjs firefox webm|ogg|m4a` (Firefox 159.0, playwright firefox v1572).
+
+| Track | Phase | `currentTime` step (ms, p50 / max) | Wall time between changes (ms, p50 / max) |
+|---|---|---|---|
+| WebM | play | 40.2 / 40.4 | 34 / 55 |
+| WebM | after seek | 40.2 / 40.4 | 36 / 60 |
+| WebM | 2x | 40.4 / 81.2 | 17 / 44 |
+| Ogg | play | 40.2 / 40.5 | 41 / 66 |
+| Ogg | after seek | 40.2 / 40.4 | 42 / 67 |
+| Ogg | 2x | 40.4 / 80.9 | 17 / 48 |
+| m4a | play | 40.2 / 40.4 | 44 / 55 |
+| m4a | after seek | 40.2 / 40.4 | 34 / 67 |
+| m4a | 2x | 40.4 / 81.1 | 17 / 48 |
+
+Firefox still steps by 40.2 ms, and the longest gap is 55 to 67 ms, well short of 100 ms. So the
+250 ms readings in the main run were load on tragicomix, and `SmoothClock` can be copied into T5 as
+it is. The plan's end-to-end sync limit for the Firefox project is now 0.07 s instead of 0.04 s,
+because on this metric the clock's extrapolation across a 40 ms step counts as drift.
