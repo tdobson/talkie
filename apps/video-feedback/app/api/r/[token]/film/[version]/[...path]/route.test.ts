@@ -171,3 +171,14 @@ describe('token and version checks, as on the video route', () => {
     expect((await get('talkie.json')).status).toBe(404);
   });
 });
+
+it('carries the private cache header on a ranged audio response', async () => {
+  const res = await get('u/narration.m4a', { range: 'bytes=0-9' });
+  expect(res.status).toBe(206);
+  expect(res.headers.get('Cache-Control')).toBe('private, max-age=3600');
+});
+
+it.each(['3', '0', 'abc', '2.5', '-1'])('404s for version %s, which the video does not have', async (version) => {
+  const res = await get('talkie.json', { version });
+  expect(res.status).toBe(404);
+});
