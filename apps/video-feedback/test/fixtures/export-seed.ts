@@ -420,7 +420,7 @@ export async function seedTalkieExport(): Promise<void> {
     events: [
       { t: 0, type: 'pointer', x: 0.5, y: 0.5, inside: true, vt: 1 },
       { t: 1000, type: 'seek', from: 1, to: 3.5, via: 'scrollbar' },
-      { t: 1500, type: 'click', x: 0.25, y: 0.75, inside: true, vt: 3.5 },
+      { t: 1500, type: 'click', x: 0.25, y: 0.75, inside: true, vt: 3.5, button: 0 },
       { t: 2500, type: 'seek', from: 3.5, to: 2, via: 'scrollbar' },
     ],
     moments: [
