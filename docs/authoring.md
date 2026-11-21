@@ -52,7 +52,7 @@ export default defineConfig({
 1. Add the id to a chapter in `talkie.config.ts`.
 2. Write `script/<id>.json` with its lines.
 3. Write `scenes/<id>.ts`. The id in `scene('<id>', ...)` must match the file name.
-4. Run `talkie voice "$PWD"`, then `talkie build`.
+4. Run `talkie voice`, then `talkie build`.
 
 ```ts
 import { scene } from '@talkie/author';
@@ -194,7 +194,7 @@ The gate covers labels. It does not read the narration.
 ## Change the narration
 
 1. Edit `text` in `script/<id>.json`.
-2. Run `talkie voice "$PWD"`. Only the changed lines are voiced. The rest say `cached`.
+2. Run `talkie voice`. Only the changed lines are voiced. The rest say `cached`.
 3. Run `talkie build`. Motion timed with `T()` moves to fit the new takes.
 
 A take is current while its provider, voice, prompt and spoken text are unchanged. Change any of
@@ -215,7 +215,7 @@ the caption keeps the real word:
 voice: { lexicon: { soffit: 'soff it', PV: 'P V' } },
 ```
 
-`talkie voice "$PWD" --check` listens to every take with Whisper (it needs `GROQ_API_KEY`) and
+`talkie voice --check` listens to every take with Whisper (it needs `GROQ_API_KEY`) and
 flags the lines it heard differently from the script.
 
 ## Captions

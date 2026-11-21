@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { readWav, writeWav } from '../src/audio/wav';
 import { buildFilm } from '../src/build';
 import { voiceCommand, voiceFilm, voiceTable } from '../src/commands/voice';
@@ -287,6 +287,21 @@ describe('talkie voice', () => {
     expect(second.rows.map((r) => r.state)).toEqual(['cached', 'cached', 'cached']);
     expect(provider.said).toHaveLength(3);
     expect(second.rows.map((r) => r.seconds)).toEqual(first.rows.map((r) => r.seconds));
+  });
+
+  test('accepts a folder relative to the working directory', async () => {
+    const provider = recorder();
+    const cwd = process.cwd();
+    process.chdir(join(dir, '..'));
+    try {
+      const result = await voiceFilm(relative(process.cwd(), dir), {
+        alias: ALIAS,
+        providers: { fake: provider },
+      });
+      expect(result.rows).toHaveLength(3);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   test('editing a line revoices that line only', async () => {

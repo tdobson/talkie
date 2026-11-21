@@ -29,17 +29,14 @@ started that way.
 `voice`, `build`, `qa` and `dev` take a film project folder, `.` by default. `check` and `export`
 take a built film: a folder or a `.lottie`.
 
-`talkie voice` needs the full path of the project. Run it as `talkie voice "$PWD"`. A relative
-path, the default `.` included, fails with `Cannot find module 'talkie.config.ts'`.
-
 ## `talkie voice`
 
 Voices every script line that has no current take, and caches the takes in `.talkie/voice/`.
 
 ```sh
-talkie voice "$PWD"
-talkie voice "$PWD" --only s02-shelf
-talkie voice "$PWD" --check
+talkie voice
+talkie voice --only s02-shelf
+talkie voice --check
 ```
 
 | Flag | Meaning |

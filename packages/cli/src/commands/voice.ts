@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { Command, Option } from 'commander';
 import { readWav } from '../audio/wav';
 import { loadConfig, type LoadOptions, type ResolvedConfig } from '../config';
@@ -45,10 +46,8 @@ export interface VoiceResult {
  * Voice the lines of a film project that have no current voice. A line is current while its
  * provider, voice, prompt and spoken text (the script text after the lexicon) are unchanged.
  */
-export async function voiceFilm(
-  projectDir: string,
-  options: VoiceOptions = {}
-): Promise<VoiceResult> {
+export async function voiceFilm(dir: string, options: VoiceOptions = {}): Promise<VoiceResult> {
+  const projectDir = resolve(dir);
   const loaded = await loadConfig(projectDir, options.alias ? { alias: options.alias } : {});
   const providerId = options.provider ?? loaded.voice.provider;
   const config: ResolvedConfig = { ...loaded, voice: { ...loaded.voice, provider: providerId } };

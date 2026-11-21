@@ -158,7 +158,7 @@ export default scene('s02-shelf', (c) => {
 ## 7. Voice the lines
 
 ```sh
-talkie voice "$PWD"
+talkie voice
 ```
 
 You should see:
@@ -174,9 +174,7 @@ s02-a  s02-shelf    new    4.48
 The fake voice is a quiet tone as long as a real voice would take. The takes are cached in
 `.talkie/voice/`. Run it again and every line says `cached`.
 
-`talkie voice` needs the full path of the project folder, which is why the command passes
-`"$PWD"`. The other commands work on the current folder. For a real voice, see "Change the
-narration" in [authoring.md](authoring.md).
+For a real voice, see "Change the narration" in [authoring.md](authoring.md).
 
 ## 8. Build the film
 
@@ -310,7 +308,7 @@ here so you can find it in the code. These are the ones you will meet.
 
 | You see | It means | Fix |
 | --- | --- | --- |
-| `1 line has no current voice: s01-a. Run talkie voice first.` | The script or the voice settings changed since that line was voiced, or it never was. | Run `talkie voice "$PWD"`, then build again. |
+| `1 line has no current voice: s01-a. Run talkie voice first.` | The script or the voice settings changed since that line was voiced, or it never was. | Run `talkie voice`, then build again. |
 | `scene s01-bracket: no voice line with id "s01-x"` (`TimingError`) | `T()` names a line that is not in `script/<scene>.json`. | Fix the id in the scene or add the line to the script. |
 | `opacity on "label 200 mm" (n5) has a key at 15.267 s, outside the scene (0 to 13.248 s)` (`TimingError`) | A motion starts or ends after the scene does. | Use a smaller offset or `dur`, or set `"minDuration"` in the script to make the scene longer. |
 | `opacity on "bracket" (n4) is animated twice at once: 6.267 to 6.667000000000001 s overlaps 6.267 to 6.867 s` (`MotionConflictError`; the long decimal is as printed) | Two motions change the same property of the same node at the same time. `rise` and `pop` both fade the node in, so a `fade` at the same moment clashes. | Remove one, or move it so the spans do not overlap. |
@@ -320,7 +318,6 @@ here so you can find it in the code. These are the ones you will meet.
 | `no drawing called "brakcet" (art/brakcet.svg)` | `art()` names a file that is not there. | Fix the name. `art('roof/tile')` reads `art/roof/tile.svg`. |
 | `labels need a font, and fonts/label.ttf does not exist` | A scene calls `label()` and the font is missing. | Add the font, or set `font` in the config. |
 | `scene s01-bracket: node "label 200 mm" (n5) is animated but was never added to the scene` | You animated a node and forgot `c.add`. | Add it. |
-| `Cannot find module 'talkie.config.ts'` | `talkie voice` was run without the full path of the project. | Run `talkie voice "$PWD"`. |
 
 `talkie check` reports the `validateFilm` messages, each with the field at fault. You only see
 these if a film was edited by hand or made by another tool:
