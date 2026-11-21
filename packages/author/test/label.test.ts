@@ -45,7 +45,7 @@ describe('labelPaths', () => {
     // The ink plus the side bearings of the first and last glyph is the advance width.
     const em = 34 / font.unitsPerEm;
     const left = font.charToGlyph('3').getMetrics().leftSideBearing * em;
-    const right = font.charToGlyph('m').getMetrics().rightSideBearing * em;
+    const right = (font.charToGlyph('m').getMetrics().rightSideBearing ?? 0) * em;
     expect(Math.abs(box.x1 - (100 + left))).toBeLessThan(1);
     expect(Math.abs(box.x2 - box.x1 + left + right - advance)).toBeLessThan(1);
     // The baseline is at y, and the digits stand on it.

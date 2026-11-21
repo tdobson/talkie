@@ -1,3 +1,7 @@
+import { parseColour } from './emit-lottie';
+import { assertNoConflict, FactConflictError } from './facts';
+import { LABEL_COLOUR, labelPaths, parseFont, type LabelFont, type LabelOptions } from './label';
+import type { Loaders } from './loaders';
 import {
   identity,
   type AnimProp,
@@ -13,6 +17,7 @@ import {
 import * as motion from './motion';
 import { TimingError, type MotionState } from './motion';
 import { parsePathD } from './path';
+import { importSvg, type ArtNode } from './svg-import';
 
 export interface SceneContext {
   /** Seconds at which a voice line starts, plus offset. Throws on an unknown id. */
@@ -23,6 +28,13 @@ export interface SceneContext {
   line(from: Vec, to: Vec, style: Style, name?: string): Node;
   circle(c: Vec, r: number, style: Style, name?: string): Node;
   group(name: string, children: Node[]): Node;
+  /**
+   * A drawing from the art library, with its top left corner at `at`. Each element of the drawing
+   * is a node of its own, named after its id, under the node this returns.
+   */
+  art(name: string, o: { at: Vec; scale?: number }): Node;
+  /** Text drawn as outlines. `at` is on the baseline. Refuses figures the sources disagree about. */
+  label(text: string, o: LabelOptions): Node;
   /** Puts nodes on the top level, in draw order (the first is at the back). */
   add(...nodes: Node[]): void;
   fade(n: Node, at: number, o?: { dur?: number; from?: number; to?: number; ease?: Ease }): void;
@@ -42,6 +54,10 @@ export interface CompileInput {
   size: [number, number];
   lines: PlannedLine[];
   duration: number;
+  /** Where art and the label font come from. A scene that uses neither can leave this out. */
+  loaders?: Loaders;
+  /** Figures the fact gate refuses to put on screen. */
+  conflicts?: string[];
 }
 
 /** Control point distance for a quarter circle of radius 1. */
@@ -112,6 +128,23 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
     spans: new Map(),
   };
 
+  const loaders = (what: string): Loaders => {
+    if (!input.loaders) {
+      throw new Error(`scene ${def.id}: ${what} needs loaders, and the scene was compiled without`);
+    }
+    return input.loaders;
+  };
+  let font: LabelFont | null = null;
+  const fromArt = (art: ArtNode, name: string): Node => {
+    const n = make(
+      name,
+      art.items,
+      art.children.map((child) => fromArt(child, child.name))
+    );
+    n.transform.opacity = art.opacity;
+    return n;
+  };
+
   const ctx: SceneContext = {
     T: (lineId, offset = 0) => {
       const line = lines.get(lineId);
@@ -144,6 +177,30 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
     circle: (c, r, style, name = 'circle') =>
       make(name, [{ paths: [circlePath(c, r)], style: { ...style } }]),
     group: (name, children) => make(name, [], children),
+    art: (name, o) => {
+      const { at, scale = 1 } = o;
+      if (!Number.isFinite(scale) || scale <= 0) {
+        throw new Error(`scene ${def.id}: art("${name}") scale must be above 0, got ${scale}`);
+      }
+      const svg = loaders(`art("${name}")`).svg(name);
+      // Place and scale go into the points, so the node's transform is free for motion.
+      return fromArt(importSvg(svg, name, [scale, 0, 0, scale, at[0], at[1]]), name);
+    },
+    label: (text, o) => {
+      try {
+        assertNoConflict(text, input.conflicts ?? []);
+      } catch (error) {
+        if (error instanceof FactConflictError) {
+          const message = `scene ${def.id}: label ${error.message}`;
+          throw new FactConflictError(error.text, error.conflict, message);
+        }
+        throw error;
+      }
+      const fill = o.color ?? LABEL_COLOUR;
+      parseColour(fill, `scene ${def.id}: label "${text}"`);
+      font ??= parseFont(loaders(`label("${text}")`).font());
+      return make(`label ${text}`, [{ paths: labelPaths(font, text, o), style: { fill } }]);
+    },
     add: (...nodes) => {
       top.push(...nodes);
     },
