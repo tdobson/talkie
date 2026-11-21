@@ -18,7 +18,9 @@
     "jest": "scripts/low jest --maxWorkers=2",
     "test": "yarn format:test && yarn lint && yarn typecheck && yarn jest",
     "e2e": "scripts/low playwright test --pass-with-no-tests",
-    "talkie": "node packages/cli/dist/bin.js"
+    "talkie": "node packages/cli/dist/bin.js",
+    "sample": "yarn workspace @talkie/example-sample-film build:fake",
+    "test:examples": "yarn workspace @talkie/example-next-mantine jest"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
