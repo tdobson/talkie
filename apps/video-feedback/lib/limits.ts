@@ -1,11 +1,18 @@
 // Limits and time-outs added in Phase 6 hardening. `lib/constants.ts` is a frozen shared file,
 // so these live here. They sit on one mutable object so tests can lower them.
 
+import { FILM_MAX_ENTRIES, FILM_MAX_UNPACKED_BYTES } from '@/lib/constants';
+
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 const MINUTE = 60_000;
 
 export const limits = {
+  /** Most bytes a Talkie film may unpack to on import. */
+  filmUnpackedBytes: FILM_MAX_UNPACKED_BYTES,
+  /** Most files a Talkie film may hold. */
+  filmEntries: FILM_MAX_ENTRIES,
+
   /** Largest JSON request body the reviewer API reads (session start, comment complete). */
   jsonBodyBytes: 64 * 1024,
 
