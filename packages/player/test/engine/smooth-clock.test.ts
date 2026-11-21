@@ -77,4 +77,39 @@ describe('SmoothClock', () => {
     tick(100);
     expect(clock.read(media)).toBe(6.9);
   });
+
+  test('does not run ahead after play until currentTime first moves', () => {
+    const { media, clock, tick } = setup();
+    media.paused = true;
+    media.currentTime = 0;
+    expect(clock.read(media)).toBe(0);
+    media.paused = false;
+    for (let i = 0; i < 20; i++) {
+      tick(16);
+      expect(clock.read(media)).toBe(0);
+    }
+    media.currentTime = 0.02;
+    tick(16);
+    expect(clock.read(media)).toBeCloseTo(0.02, 6);
+    tick(16);
+    expect(clock.read(media)).toBeCloseTo(0.036, 6);
+  });
+
+  test('does not run ahead after a seek until currentTime first moves', () => {
+    const { media, clock, tick } = setup();
+    media.currentTime = 1;
+    clock.read(media);
+    media.seeking = true;
+    media.currentTime = 30;
+    tick(16);
+    expect(clock.read(media)).toBe(30);
+    media.seeking = false;
+    for (let i = 0; i < 20; i++) {
+      tick(16);
+      expect(clock.read(media)).toBe(30);
+    }
+    media.currentTime = 30.04;
+    tick(16);
+    expect(clock.read(media)).toBeCloseTo(30.04, 6);
+  });
 });
