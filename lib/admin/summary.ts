@@ -1,10 +1,12 @@
 import { join } from 'node:path';
+import { limits } from '@/lib/limits';
 import { readJson } from '@/lib/storage/json';
 import { commentDir } from '@/lib/storage/paths';
 import { listComments, listSessions, listVideos, readCommentMeta } from '@/lib/storage/repo';
 import type {
   AdminVersionSummary,
   AdminVideoSummary,
+  CommentMeta,
   CommentRef,
   CommentStatus,
   VideoRecord,
@@ -37,6 +39,22 @@ async function readStatus(ref: CommentRef): Promise<CommentStatus | null> {
   }
 }
 
+/**
+ * True while the server still has work to do on the comment: waiting or mid-pipeline, done
+ * but with its clip not rendered yet (the same rule the clips export waits on), or an upload
+ * that went quiet and is waiting for the server to finish it. A comment that is being
+ * uploaded right now is the reviewer's work, not the server's.
+ */
+function isPending(status: CommentStatus, kind: CommentMeta['kind']): boolean {
+  if (status.state === 'queued' || status.state === 'processing') return true;
+  if (status.state === 'done') return kind === 'moment' && status.steps?.clip === 'pending';
+  if (status.state === 'receiving') {
+    const at = Date.parse(status.updatedAt);
+    return Number.isFinite(at) && Date.now() - at >= limits.staleReceivingMs;
+  }
+  return false;
+}
+
 async function summariseVideo(video: VideoRecord, baseUrl: string): Promise<AdminVideoSummary> {
   const byVersion = new Map<number, AdminVersionSummary>();
   for (const v of video.versions) byVersion.set(v.version, emptyVersion(v.version));
@@ -58,10 +76,7 @@ async function summariseVideo(video: VideoRecord, baseUrl: string): Promise<Admi
       summary.comments += 1;
       if (status?.state === 'empty') summary.emptyComments += 1;
       if (status?.state === 'failed') summary.failedComments += 1;
-      // A comment still being uploaded ('receiving') is not waiting on the server.
-      if (status?.state === 'queued' || status?.state === 'processing') {
-        summary.pendingProcessing += 1;
-      }
+      if (status && isPending(status, meta.kind)) summary.pendingProcessing += 1;
       touch(summary, meta.startedAt);
       touch(summary, meta.endedAt);
       touch(summary, status?.updatedAt);

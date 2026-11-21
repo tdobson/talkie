@@ -24,8 +24,18 @@ async function listDirNames(dir: string): Promise<string[]> {
   }
 }
 
-function notNull<T>(v: T | null): v is T {
-  return v !== null;
+/**
+ * Reads one record for a listing. A record that cannot be read or parsed (a hand edit, a full
+ * disk, a filesystem fault) is logged and left out, so it cannot take the whole list with it:
+ * every review link and the admin pages depend on these lists.
+ */
+async function readForList<T>(what: string, read: () => Promise<T | null>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (err) {
+    console.error(`Skipping unreadable ${what}.`, err);
+    return null;
+  }
 }
 
 // Videos
@@ -63,7 +73,10 @@ export async function saveVideo(v: VideoRecord): Promise<void> {
 /** All videos, oldest first. Directories without a readable `video.json` are skipped. */
 export async function listVideos(): Promise<VideoRecord[]> {
   const ids = (await listDirNames(videosDir())).filter((name) => ID_RE.test(name));
-  const videos = (await Promise.all(ids.map((id) => getVideo(id)))).filter(notNull);
+  const read = (id: string) => readForList(`video.json of ${id}`, () => getVideo(id));
+  const videos = (await Promise.all(ids.map(read))).filter(
+    (v): v is VideoRecord => v !== null && typeof v.createdAt === 'string'
+  );
   return videos.sort(
     (a, b) => a.createdAt.localeCompare(b.createdAt) || a.videoId.localeCompare(b.videoId)
   );
@@ -165,7 +178,11 @@ export async function saveSession(s: SessionRecord): Promise<void> {
 /** All sessions of a video, oldest first. */
 export async function listSessions(videoId: string): Promise<SessionRecord[]> {
   const ids = (await listDirNames(sessionsDir(videoId))).filter(isUuid);
-  const sessions = (await Promise.all(ids.map((id) => getSession(videoId, id)))).filter(notNull);
+  const read = (id: string) =>
+    readForList(`session.json of ${videoId}/${id}`, () => getSession(videoId, id));
+  const sessions = (await Promise.all(ids.map(read))).filter(
+    (s): s is SessionRecord => s !== null && typeof s.startedAt === 'string'
+  );
   return sessions.sort(
     (a, b) => a.startedAt.localeCompare(b.startedAt) || a.sessionId.localeCompare(b.sessionId)
   );

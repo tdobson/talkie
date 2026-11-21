@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeJsonAtomic } from '@/lib/storage/json';
-import { commentDir } from '@/lib/storage/paths';
+import { commentDir, sessionDir } from '@/lib/storage/paths';
 import {
   createSession,
   createVideo,
@@ -22,7 +23,8 @@ afterEach(() => cleanup());
 async function seedComment(
   session: SessionRecord,
   state: CommentState | null,
-  updatedAt = '2026-11-01T10:00:00.000Z'
+  updatedAt = '2026-11-01T10:00:00.000Z',
+  clip: CommentStatus['steps']['clip'] = 'done'
 ): Promise<void> {
   const ref = { videoId: session.videoId, sessionId: session.sessionId, commentId: randomUUID() };
   const meta: CommentMeta = {
@@ -56,7 +58,7 @@ async function seedComment(
       transcribe: 'pending',
       moments: 'pending',
       stills: 'pending',
-      clip: 'pending',
+      clip,
     },
     error: null,
     attempts: 0,
@@ -126,7 +128,8 @@ it('summarises counts per version including pending processing', async () => {
           comments: 7,
           emptyComments: 1,
           failedComments: 1,
-          pendingProcessing: 2,
+          // queued, processing, and the upload that stopped weeks ago without completing
+          pendingProcessing: 3,
           lastActivity: '2026-11-03T12:00:00.000Z',
         },
       ],
@@ -157,4 +160,37 @@ it('lists the newest video first', async () => {
   const b = await seedVideo('Newer', 1);
   await saveVideo({ ...b, createdAt: '2026-02-01T00:00:00.000Z' });
   expect((await summariseVideos('http://x')).map((v) => v.title)).toEqual(['Newer', 'Older']);
+});
+
+it('counts a finished comment whose clip is not rendered yet as pending', async () => {
+  const video = await seedVideo('Clips', 1);
+  const s = await createSession(video.videoId, 1, 'Ann', 'ua');
+  await seedComment(s, 'done', undefined, 'pending');
+  await seedComment(s, 'done', undefined, 'done');
+  await seedComment(s, 'done', undefined, 'skipped');
+  await seedComment(s, 'failed', undefined, 'pending');
+  const [summary] = await summariseVideos('http://x');
+  expect(summary.versions[0]).toMatchObject({ comments: 4, pendingProcessing: 1 });
+});
+
+it('counts an upload that has gone quiet as pending, but not one in progress', async () => {
+  const video = await seedVideo('Uploads', 1);
+  const s = await createSession(video.videoId, 1, 'Ann', 'ua');
+  await seedComment(s, 'receiving', new Date().toISOString());
+  await seedComment(s, 'receiving', new Date(Date.now() - 2 * 3_600_000).toISOString());
+  const [summary] = await summariseVideos('http://x');
+  expect(summary.versions[0]).toMatchObject({ comments: 2, pendingProcessing: 1 });
+});
+
+it('skips a session whose session.json is corrupt instead of failing the whole list', async () => {
+  const video = await seedVideo('Robust', 1);
+  const good = await createSession(video.videoId, 1, 'Ann', 'ua');
+  const bad = await createSession(video.videoId, 1, 'Bob', 'ua');
+  await writeFile(join(sessionDir(video.videoId, bad.sessionId), 'session.json'), '{"sessio');
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const [summary] = await summariseVideos('http://x');
+  expect(summary.versions[0].sessions).toBe(1);
+  expect(good.sessionId).toBeTruthy();
+  expect(errors).toHaveBeenCalled();
+  errors.mockRestore();
 });

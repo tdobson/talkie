@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { CommentMeta, CommentRef } from '@/lib/types';
 import { withTmpData } from '@/test/helpers/tmpData';
 import { isUuid } from './ids';
-import { commentDir, ID_RE } from './paths';
+import { commentDir, ID_RE, sessionDir, videoDir } from './paths';
 import {
   createSession,
   createVideo,
@@ -154,4 +154,26 @@ it('reads, writes and lists comments', async () => {
   await mkdir(join(commentDir(ref), '..', 'not-a-comment'));
   expect(await listComments(v.videoId, s.sessionId)).toEqual([ref]);
   await expect(readCommentMeta({ ...ref, commentId: '../x' })).rejects.toThrow();
+});
+
+it('one corrupt video.json does not take the other videos, or the review links, down', async () => {
+  const good = await createVideo('Good');
+  const bad = await createVideo('Bad');
+  await writeFile(join(videoDir(bad.videoId), 'video.json'), '{"videoId": "tru');
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  expect((await listVideos()).map((v) => v.videoId)).toEqual([good.videoId]);
+  expect((await findVideoByToken(good.token))?.videoId).toBe(good.videoId);
+  expect(await findVideoByToken(bad.token)).toBeNull();
+  expect(errors).toHaveBeenCalled();
+  errors.mockRestore();
+});
+
+it('one corrupt session.json does not hide the other sessions', async () => {
+  const v = await createVideo('Sessions');
+  const good = await createSession(v.videoId, 1, 'Ann', 'ua');
+  const bad = await createSession(v.videoId, 1, 'Bob', 'ua');
+  await writeFile(join(sessionDir(v.videoId, bad.sessionId), 'session.json'), '');
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  expect((await listSessions(v.videoId)).map((x) => x.sessionId)).toEqual([good.sessionId]);
+  errors.mockRestore();
 });
