@@ -1,0 +1,12 @@
+.next
+node_modules
+test/fixtures/generated
+playwright-report
+test-results
+yarn.lock
+data/
+.yarn
+.claude
+docs
+coverage
+next-env.d.ts
