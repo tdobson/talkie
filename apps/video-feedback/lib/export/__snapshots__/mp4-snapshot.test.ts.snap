@@ -1,0 +1,1791 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the mp4 export > is unchanged for version all > README.md 1`] = `
+"# Feedback on "Launch film"
+
+This folder holds spoken feedback that people recorded while watching a video. Each reviewer watched the video, paused where they had something to say, talked, and pointed at the picture with their mouse or finger. Their speech has been transcribed and lined up with where they were pointing.
+
+## What is in this export
+
+- Video: "Launch film" (id \`launch-film-ab12\`), all versions.
+- Picture: 1920 x 1080 pixels, 25 frames per second, 93.4 seconds long.
+- 2 reviewers: Sarah, Dev.
+- 5 comments made at a paused moment, 1 general comment, and 1 pause where nothing was said.
+- Exported at 2026-11-21 14:05 UTC.
+
+## Files
+
+- \`feedback.md\`: the main document. Read this first.
+- \`feedback.json\`: the same feedback as structured data, with every transcript word and every moment.
+- \`media/<commentId>/\`: \`overview.jpg\`, one \`moment-NN.jpg\` per moment, the audio recording, and \`clip.mp4\` when clips were asked for.
+- \`raw/<commentId>/\`: the untouched inputs (\`events.json\`, \`transcript.json\`, \`moments.json\`, \`meta.json\`).
+- \`previous/v<n>/\`: feedback on earlier versions. See the end of this file.
+
+## How to read a comment
+
+- A moment comment starts at the instant the reviewer paused the video. The time in its heading is that paused position.
+- Video times are in seconds from the start of the video. In \`feedback.md\` they are written as m:ss.s, so 1:02.5 is 62.5 seconds in.
+- "paused 34s" means the reviewer spoke for about 34 seconds. It says nothing about the video itself.
+- If the reviewer scrubbed to other frames while talking, the heading adds "covering a to b" with the earliest and latest video time shown.
+- In \`feedback.json\`, \`t\` is milliseconds since the comment recording began, and \`vt\` is the video time in seconds that was on screen at that instant.
+- General feedback is about the whole video and has no paused position.
+- Transcripts come from speech recognition. Expect the odd wrong word, especially names.
+
+## Coordinates
+
+Positions are fractions of the picture, from 0 to 1. The origin is the top-left corner: x runs left to right and y runs top to bottom, so (0.5, 0.5) is the centre. In \`feedback.md\` they are shown as percentages, x first. A value below 0 or above 1 means the pointer was off the picture.
+
+Position labels come from a 3 by 3 grid: top-left, top-centre, top-right, middle-left, centre, middle-right, bottom-left, bottom-centre, bottom-right, or off-picture.
+
+## Moments
+
+A moment is an instant during a comment that looked worth a picture. Each has a still image and a list of reasons:
+
+- \`pause\`: the frame the reviewer paused on. Every moment comment has one.
+- \`click\`: the reviewer clicked or tapped the picture at that spot.
+- \`zoom\`: the reviewer was zoomed in on that part of the picture.
+- \`dwell\`: the pointer rested on one spot for a while.
+- \`word\`: the reviewer said a pointing word such as "this", "that" or "here".
+- \`seek\`: the reviewer moved to a different frame of the video.
+
+In \`feedback.md\` a marker like \`[📍 moment-02: top-left, 12%/8%]\` sits right after the word that was being spoken at that moment. It tells you where the pointer was. "clicked" and "zoomed in" are added when they apply.
+
+In \`feedback.json\` every transcript word carries a \`pointer\` with the position at the time the word was spoken, or null when no position was recorded.
+
+## Images
+
+- The stills are video frames with the pointer drawn on by this tool. They are not a real screenshot of the reviewer's screen, so nothing else that was on their screen appears.
+- \`overview.jpg\` shows the paused frame with the path the pointer took during the whole comment.
+- A \`moment-NN-zoom.jpg\` image shows exactly what the reviewer was looking at when zoomed in.
+
+## Comments without a transcript
+
+Transcription failed for these comments. Their audio is still included, so the feedback is not lost:
+
+- \`30000000-0000-4000-8000-000000000003\` by Dev: media/30000000-0000-4000-8000-000000000003/audio.webm
+
+## Earlier versions
+
+This export covers every version, so there is no \`previous/\` folder. \`feedback.md\` has one section per version, which lets you check whether earlier feedback was addressed later.
+"
+`;
+
+exports[`the mp4 export > is unchanged for version all > feedback.json 1`] = `
+"{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-21T14:05:00.000Z",
+  "video": {
+    "videoId": "launch-film-ab12",
+    "title": "Launch film",
+    "version": "all",
+    "fps": 25,
+    "width": 1920,
+    "height": 1080,
+    "duration": 93.4
+  },
+  "sessions": [
+    {
+      "sessionId": "00000000-0000-4000-8000-000000000001",
+      "videoId": "launch-film-ab12",
+      "version": 1,
+      "reviewerName": "Sarah",
+      "userAgent": "vitest",
+      "startedAt": "2026-11-18T10:00:00.000Z",
+      "doneAt": null
+    },
+    {
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "videoId": "launch-film-ab12",
+      "version": 2,
+      "reviewerName": "Sarah",
+      "userAgent": "vitest",
+      "startedAt": "2026-11-20T10:00:00.000Z",
+      "doneAt": null
+    },
+    {
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "videoId": "launch-film-ab12",
+      "version": 2,
+      "reviewerName": "Dev",
+      "userAgent": "vitest",
+      "startedAt": "2026-11-20T11:00:00.000Z",
+      "doneAt": null
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "10000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000001",
+      "reviewerName": "Sarah",
+      "kind": "moment",
+      "version": 1,
+      "pausedAtVideoTime": 3,
+      "pausedAtFrame": 75,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        3,
+        3
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "The opening title is too small.",
+        "words": [
+          {
+            "word": "The",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": null
+          },
+          {
+            "word": "opening",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": null
+          },
+          {
+            "word": "title",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": null
+          },
+          {
+            "word": "is",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": null
+          },
+          {
+            "word": "too",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": null
+          },
+          {
+            "word": "small",
+            "start": 2.5,
+            "end": 2.8,
+            "pointer": null
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 3,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/10000000-0000-4000-8000-000000000001/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/10000000-0000-4000-8000-000000000001/overview.jpg",
+        "audio": "media/10000000-0000-4000-8000-000000000001/audio.webm",
+        "clip": null,
+        "events": "raw/10000000-0000-4000-8000-000000000001/events.json"
+      },
+      "updatedAt": "2026-11-18T10:02:00.000Z",
+      "startedAt": "2026-11-18T10:01:00.000Z"
+    },
+    {
+      "commentId": "20000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 3,
+      "pausedAtFrame": 75,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        3,
+        3
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Tighten up the cut, please.",
+        "words": [
+          {
+            "word": "Tighten",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": null
+          },
+          {
+            "word": "up",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": null
+          },
+          {
+            "word": "the",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": null
+          },
+          {
+            "word": "cut",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": null
+          },
+          {
+            "word": "please",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": null
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 3,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/20000000-0000-4000-8000-000000000001/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/20000000-0000-4000-8000-000000000001/overview.jpg",
+        "audio": "media/20000000-0000-4000-8000-000000000001/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000001/events.json"
+      },
+      "updatedAt": "2026-11-20T10:02:00.000Z",
+      "startedAt": "2026-11-20T10:01:00.000Z"
+    },
+    {
+      "commentId": "20000000-0000-4000-8000-000000000003",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 5,
+      "pausedAtFrame": 125,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        5,
+        5
+      ],
+      "state": "empty",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": null,
+      "moments": [],
+      "files": {
+        "overview": null,
+        "audio": "media/20000000-0000-4000-8000-000000000003/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000003/events.json"
+      },
+      "updatedAt": "2026-11-20T10:04:00.000Z",
+      "startedAt": "2026-11-20T10:03:00.000Z"
+    },
+    {
+      "commentId": "20000000-0000-4000-8000-000000000002",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "general",
+      "version": 2,
+      "pausedAtVideoTime": null,
+      "pausedAtFrame": null,
+      "durationMs": 4000,
+      "videoTimeRange": null,
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Overall the pacing feels good.",
+        "words": [
+          {
+            "word": "Overall",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": null
+          },
+          {
+            "word": "the",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": null
+          },
+          {
+            "word": "pacing",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": null
+          },
+          {
+            "word": "feels",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": null
+          },
+          {
+            "word": "good",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": null
+          }
+        ]
+      },
+      "moments": [],
+      "files": {
+        "overview": null,
+        "audio": "media/20000000-0000-4000-8000-000000000002/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000002/events.json"
+      },
+      "updatedAt": "2026-11-20T10:06:00.000Z",
+      "startedAt": "2026-11-20T10:05:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 12.4,
+      "pausedAtFrame": 310,
+      "durationMs": 34120,
+      "videoTimeRange": [
+        9,
+        12.4
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "so this logo is the old one and the text here runs on too long",
+        "words": [
+          {
+            "word": "so",
+            "start": 2.9,
+            "end": 3.1,
+            "pointer": {
+              "x": 0.12,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "this",
+            "start": 3.2,
+            "end": 3.46,
+            "pointer": {
+              "x": 0.119,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "logo",
+            "start": 3.5,
+            "end": 3.86,
+            "pointer": {
+              "x": 0.12,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "is",
+            "start": 3.9,
+            "end": 4.04,
+            "pointer": {
+              "x": 0.121,
+              "y": 0.081,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "the",
+            "start": 4.1,
+            "end": 4.22,
+            "pointer": {
+              "x": 0.1427,
+              "y": 0.2012,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "old",
+            "start": 4.3,
+            "end": 4.6,
+            "pointer": {
+              "x": 0.1951,
+              "y": 0.4803,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "one",
+            "start": 4.7,
+            "end": 4.98,
+            "pointer": {
+              "x": 0.2938,
+              "y": 1.0071,
+              "inside": false,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "and",
+            "start": 6.6,
+            "end": 6.82,
+            "pointer": {
+              "x": 0.4096,
+              "y": 0.891,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "the",
+            "start": 6.9,
+            "end": 7.02,
+            "pointer": {
+              "x": 0.4487,
+              "y": 0.8459,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "text",
+            "start": 7.1,
+            "end": 7.42,
+            "pointer": {
+              "x": 0.4678,
+              "y": 0.824,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "here",
+            "start": 7.8,
+            "end": 8.08,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "runs",
+            "start": 8.2,
+            "end": 8.44,
+            "pointer": {
+              "x": 0.479,
+              "y": 0.8095,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "on",
+            "start": 8.5,
+            "end": 8.64,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "too",
+            "start": 8.7,
+            "end": 8.92,
+            "pointer": {
+              "x": 0.4805,
+              "y": 0.8105,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "long",
+            "start": 9,
+            "end": 9.42,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 12.4,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-01.jpg",
+          "zoomImage": null
+        },
+        {
+          "id": "moment-02",
+          "t": 3200,
+          "vt": 12.4,
+          "x": 0.12,
+          "y": 0.08,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "word",
+            "dwell"
+          ],
+          "reasons": [
+            "word 'this' at 3.2s",
+            "dwell 0.9s"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-02.jpg",
+          "zoomImage": null
+        },
+        {
+          "id": "moment-03",
+          "t": 7800,
+          "vt": 12.4,
+          "x": 0.48,
+          "y": 0.81,
+          "inside": true,
+          "zoom": {
+            "scale": 2.5,
+            "originX": 0.48,
+            "originY": 0.81
+          },
+          "kinds": [
+            "click",
+            "zoom",
+            "word"
+          ],
+          "reasons": [
+            "click",
+            "zoomed in",
+            "word 'here' at 7.8s"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-03.jpg",
+          "zoomImage": "media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg"
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000001/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000001/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000001/events.json"
+      },
+      "updatedAt": "2026-11-20T11:02:00.000Z",
+      "startedAt": "2026-11-20T11:01:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000002",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 20,
+      "pausedAtFrame": 500,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        18,
+        20
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Back here the music drops out.",
+        "words": [
+          {
+            "word": "Back",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": {
+              "x": 0.5,
+              "y": 0.5,
+              "inside": true,
+              "vt": 20
+            }
+          },
+          {
+            "word": "here",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": {
+              "x": 0.5,
+              "y": 0.5,
+              "inside": true,
+              "vt": 20
+            }
+          },
+          {
+            "word": "the",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "music",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "drops",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "out",
+            "start": 2.5,
+            "end": 2.8,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 20,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000002/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000002/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000002/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000002/events.json"
+      },
+      "updatedAt": "2026-11-20T11:06:00.000Z",
+      "startedAt": "2026-11-20T11:05:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000003",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 25,
+      "pausedAtFrame": 625,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        25,
+        25
+      ],
+      "state": "failed",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": null,
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 25,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000003/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000003/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000003/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000003/events.json"
+      },
+      "updatedAt": "2026-11-20T11:09:00.000Z",
+      "startedAt": "2026-11-20T11:08:00.000Z"
+    }
+  ],
+  "previous": []
+}
+"
+`;
+
+exports[`the mp4 export > is unchanged for version all > feedback.md 1`] = `
+"# Launch film, all versions
+
+Reviewers: Sarah, Dev
+Exported: 2026-11-21 14:05 UTC
+
+## Version 1
+
+### Sarah, 0:03.0 (paused 4s)
+![overview](media/10000000-0000-4000-8000-000000000001/overview.jpg)
+
+"The opening title is too small."
+
+Moments:
+- moment-01 at 0:03.0, pause, (50%, 50%) ![](media/10000000-0000-4000-8000-000000000001/moment-01.jpg)
+
+## Version 2
+
+### Sarah, 0:03.0 (paused 4s)
+![overview](media/20000000-0000-4000-8000-000000000001/overview.jpg)
+
+"Tighten up the cut, please."
+
+Moments:
+- moment-01 at 0:03.0, pause, (50%, 50%) ![](media/20000000-0000-4000-8000-000000000001/moment-01.jpg)
+
+### Dev, 0:12.4 (paused 34s) covering 0:09.0 to 0:12.4
+![overview](media/30000000-0000-4000-8000-000000000001/overview.jpg)
+
+"so this [📍 moment-02: top-left, 12%/8%] logo is the old one and the text here [📍 moment-03: bottom-centre, 48%/81%, clicked, zoomed in] runs on too long"
+
+Moments:
+- moment-01 at 0:12.4, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000001/moment-01.jpg)
+- moment-02 at 0:12.4, word 'this' at 3.2s + dwell 0.9s, (12%, 8%) ![](media/30000000-0000-4000-8000-000000000001/moment-02.jpg)
+- moment-03 at 0:12.4, click + zoomed in + word 'here' at 7.8s, (48%, 81%) ![](media/30000000-0000-4000-8000-000000000001/moment-03.jpg) ![zoomed in](media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg)
+
+### Dev, 0:20.0 (paused 4s) covering 0:18.0 to 0:20.0
+![overview](media/30000000-0000-4000-8000-000000000002/overview.jpg)
+
+"Back here the music drops out."
+
+Moments:
+- moment-01 at 0:20.0, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000002/moment-01.jpg)
+
+### Dev, 0:25.0 (paused 4s)
+![overview](media/30000000-0000-4000-8000-000000000003/overview.jpg)
+
+_Transcription failed; listen to media/30000000-0000-4000-8000-000000000003/audio.webm_
+
+Moments:
+- moment-01 at 0:25.0, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000003/moment-01.jpg)
+
+### General feedback
+
+#### Sarah
+
+"Overall the pacing feels good."
+
+### Empty pauses
+
+Pauses where the reviewer said nothing:
+
+- Sarah: 1
+"
+`;
+
+exports[`the mp4 export > is unchanged for version all > zip entries 1`] = `
+[
+  "README.md",
+  "feedback.json",
+  "feedback.md",
+  "media/10000000-0000-4000-8000-000000000001/audio.webm",
+  "media/10000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "media/10000000-0000-4000-8000-000000000001/overview.jpg",
+  "media/20000000-0000-4000-8000-000000000001/audio.webm",
+  "media/20000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "media/20000000-0000-4000-8000-000000000001/overview.jpg",
+  "media/20000000-0000-4000-8000-000000000002/audio.webm",
+  "media/20000000-0000-4000-8000-000000000003/audio.webm",
+  "media/30000000-0000-4000-8000-000000000001/audio.webm",
+  "media/30000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-02.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-03.jpg",
+  "media/30000000-0000-4000-8000-000000000001/overview.jpg",
+  "media/30000000-0000-4000-8000-000000000002/audio.webm",
+  "media/30000000-0000-4000-8000-000000000002/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000002/overview.jpg",
+  "media/30000000-0000-4000-8000-000000000003/audio.webm",
+  "media/30000000-0000-4000-8000-000000000003/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000003/overview.jpg",
+  "raw/10000000-0000-4000-8000-000000000001/events.json",
+  "raw/10000000-0000-4000-8000-000000000001/meta.json",
+  "raw/10000000-0000-4000-8000-000000000001/moments.json",
+  "raw/10000000-0000-4000-8000-000000000001/transcript.json",
+  "raw/20000000-0000-4000-8000-000000000001/events.json",
+  "raw/20000000-0000-4000-8000-000000000001/meta.json",
+  "raw/20000000-0000-4000-8000-000000000001/moments.json",
+  "raw/20000000-0000-4000-8000-000000000001/transcript.json",
+  "raw/20000000-0000-4000-8000-000000000002/events.json",
+  "raw/20000000-0000-4000-8000-000000000002/meta.json",
+  "raw/20000000-0000-4000-8000-000000000002/transcript.json",
+  "raw/20000000-0000-4000-8000-000000000003/events.json",
+  "raw/20000000-0000-4000-8000-000000000003/meta.json",
+  "raw/30000000-0000-4000-8000-000000000001/events.json",
+  "raw/30000000-0000-4000-8000-000000000001/meta.json",
+  "raw/30000000-0000-4000-8000-000000000001/moments.json",
+  "raw/30000000-0000-4000-8000-000000000001/transcript.json",
+  "raw/30000000-0000-4000-8000-000000000002/events.json",
+  "raw/30000000-0000-4000-8000-000000000002/meta.json",
+  "raw/30000000-0000-4000-8000-000000000002/moments.json",
+  "raw/30000000-0000-4000-8000-000000000002/transcript.json",
+  "raw/30000000-0000-4000-8000-000000000003/events.json",
+  "raw/30000000-0000-4000-8000-000000000003/meta.json",
+  "raw/30000000-0000-4000-8000-000000000003/moments.json",
+]
+`;
+
+exports[`the mp4 export > is unchanged for version latest > README.md 1`] = `
+"# Feedback on "Launch film"
+
+This folder holds spoken feedback that people recorded while watching a video. Each reviewer watched the video, paused where they had something to say, talked, and pointed at the picture with their mouse or finger. Their speech has been transcribed and lined up with where they were pointing.
+
+## What is in this export
+
+- Video: "Launch film" (id \`launch-film-ab12\`), version 2.
+- Picture: 1920 x 1080 pixels, 25 frames per second, 93.4 seconds long.
+- 2 reviewers: Sarah, Dev.
+- 4 comments made at a paused moment, 1 general comment, and 1 pause where nothing was said.
+- Exported at 2026-11-21 14:05 UTC.
+
+## Files
+
+- \`feedback.md\`: the main document. Read this first.
+- \`feedback.json\`: the same feedback as structured data, with every transcript word and every moment.
+- \`media/<commentId>/\`: \`overview.jpg\`, one \`moment-NN.jpg\` per moment, the audio recording, and \`clip.mp4\` when clips were asked for.
+- \`raw/<commentId>/\`: the untouched inputs (\`events.json\`, \`transcript.json\`, \`moments.json\`, \`meta.json\`).
+- \`previous/v<n>/\`: feedback on earlier versions. See the end of this file.
+
+## How to read a comment
+
+- A moment comment starts at the instant the reviewer paused the video. The time in its heading is that paused position.
+- Video times are in seconds from the start of the video. In \`feedback.md\` they are written as m:ss.s, so 1:02.5 is 62.5 seconds in.
+- "paused 34s" means the reviewer spoke for about 34 seconds. It says nothing about the video itself.
+- If the reviewer scrubbed to other frames while talking, the heading adds "covering a to b" with the earliest and latest video time shown.
+- In \`feedback.json\`, \`t\` is milliseconds since the comment recording began, and \`vt\` is the video time in seconds that was on screen at that instant.
+- General feedback is about the whole video and has no paused position.
+- Transcripts come from speech recognition. Expect the odd wrong word, especially names.
+
+## Coordinates
+
+Positions are fractions of the picture, from 0 to 1. The origin is the top-left corner: x runs left to right and y runs top to bottom, so (0.5, 0.5) is the centre. In \`feedback.md\` they are shown as percentages, x first. A value below 0 or above 1 means the pointer was off the picture.
+
+Position labels come from a 3 by 3 grid: top-left, top-centre, top-right, middle-left, centre, middle-right, bottom-left, bottom-centre, bottom-right, or off-picture.
+
+## Moments
+
+A moment is an instant during a comment that looked worth a picture. Each has a still image and a list of reasons:
+
+- \`pause\`: the frame the reviewer paused on. Every moment comment has one.
+- \`click\`: the reviewer clicked or tapped the picture at that spot.
+- \`zoom\`: the reviewer was zoomed in on that part of the picture.
+- \`dwell\`: the pointer rested on one spot for a while.
+- \`word\`: the reviewer said a pointing word such as "this", "that" or "here".
+- \`seek\`: the reviewer moved to a different frame of the video.
+
+In \`feedback.md\` a marker like \`[📍 moment-02: top-left, 12%/8%]\` sits right after the word that was being spoken at that moment. It tells you where the pointer was. "clicked" and "zoomed in" are added when they apply.
+
+In \`feedback.json\` every transcript word carries a \`pointer\` with the position at the time the word was spoken, or null when no position was recorded.
+
+## Images
+
+- The stills are video frames with the pointer drawn on by this tool. They are not a real screenshot of the reviewer's screen, so nothing else that was on their screen appears.
+- \`overview.jpg\` shows the paused frame with the path the pointer took during the whole comment.
+- A \`moment-NN-zoom.jpg\` image shows exactly what the reviewer was looking at when zoomed in.
+
+## Comments without a transcript
+
+Transcription failed for these comments. Their audio is still included, so the feedback is not lost:
+
+- \`30000000-0000-4000-8000-000000000003\` by Dev: media/30000000-0000-4000-8000-000000000003/audio.webm
+
+## Earlier versions
+
+The \`previous/\` folder holds the feedback given on earlier versions of this video (v1), each with its own \`feedback.md\` and \`media/\` folder. Use it to check whether earlier feedback was addressed in this version. Image and audio paths for those comments are relative to their own \`previous/v<n>/\` folder. They also appear under \`previous\` in \`feedback.json\`.
+"
+`;
+
+exports[`the mp4 export > is unchanged for version latest > feedback.json 1`] = `
+"{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-21T14:05:00.000Z",
+  "video": {
+    "videoId": "launch-film-ab12",
+    "title": "Launch film",
+    "version": 2,
+    "fps": 25,
+    "width": 1920,
+    "height": 1080,
+    "duration": 93.4
+  },
+  "sessions": [
+    {
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "videoId": "launch-film-ab12",
+      "version": 2,
+      "reviewerName": "Sarah",
+      "userAgent": "vitest",
+      "startedAt": "2026-11-20T10:00:00.000Z",
+      "doneAt": null
+    },
+    {
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "videoId": "launch-film-ab12",
+      "version": 2,
+      "reviewerName": "Dev",
+      "userAgent": "vitest",
+      "startedAt": "2026-11-20T11:00:00.000Z",
+      "doneAt": null
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "20000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 3,
+      "pausedAtFrame": 75,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        3,
+        3
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Tighten up the cut, please.",
+        "words": [
+          {
+            "word": "Tighten",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": null
+          },
+          {
+            "word": "up",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": null
+          },
+          {
+            "word": "the",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": null
+          },
+          {
+            "word": "cut",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": null
+          },
+          {
+            "word": "please",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": null
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 3,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/20000000-0000-4000-8000-000000000001/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/20000000-0000-4000-8000-000000000001/overview.jpg",
+        "audio": "media/20000000-0000-4000-8000-000000000001/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000001/events.json"
+      },
+      "updatedAt": "2026-11-20T10:02:00.000Z",
+      "startedAt": "2026-11-20T10:01:00.000Z"
+    },
+    {
+      "commentId": "20000000-0000-4000-8000-000000000003",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 5,
+      "pausedAtFrame": 125,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        5,
+        5
+      ],
+      "state": "empty",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": null,
+      "moments": [],
+      "files": {
+        "overview": null,
+        "audio": "media/20000000-0000-4000-8000-000000000003/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000003/events.json"
+      },
+      "updatedAt": "2026-11-20T10:04:00.000Z",
+      "startedAt": "2026-11-20T10:03:00.000Z"
+    },
+    {
+      "commentId": "20000000-0000-4000-8000-000000000002",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "reviewerName": "Sarah",
+      "kind": "general",
+      "version": 2,
+      "pausedAtVideoTime": null,
+      "pausedAtFrame": null,
+      "durationMs": 4000,
+      "videoTimeRange": null,
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Overall the pacing feels good.",
+        "words": [
+          {
+            "word": "Overall",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": null
+          },
+          {
+            "word": "the",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": null
+          },
+          {
+            "word": "pacing",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": null
+          },
+          {
+            "word": "feels",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": null
+          },
+          {
+            "word": "good",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": null
+          }
+        ]
+      },
+      "moments": [],
+      "files": {
+        "overview": null,
+        "audio": "media/20000000-0000-4000-8000-000000000002/audio.webm",
+        "clip": null,
+        "events": "raw/20000000-0000-4000-8000-000000000002/events.json"
+      },
+      "updatedAt": "2026-11-20T10:06:00.000Z",
+      "startedAt": "2026-11-20T10:05:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 12.4,
+      "pausedAtFrame": 310,
+      "durationMs": 34120,
+      "videoTimeRange": [
+        9,
+        12.4
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "so this logo is the old one and the text here runs on too long",
+        "words": [
+          {
+            "word": "so",
+            "start": 2.9,
+            "end": 3.1,
+            "pointer": {
+              "x": 0.12,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "this",
+            "start": 3.2,
+            "end": 3.46,
+            "pointer": {
+              "x": 0.119,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "logo",
+            "start": 3.5,
+            "end": 3.86,
+            "pointer": {
+              "x": 0.12,
+              "y": 0.082,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "is",
+            "start": 3.9,
+            "end": 4.04,
+            "pointer": {
+              "x": 0.121,
+              "y": 0.081,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "the",
+            "start": 4.1,
+            "end": 4.22,
+            "pointer": {
+              "x": 0.1427,
+              "y": 0.2012,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "old",
+            "start": 4.3,
+            "end": 4.6,
+            "pointer": {
+              "x": 0.1951,
+              "y": 0.4803,
+              "inside": true,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "one",
+            "start": 4.7,
+            "end": 4.98,
+            "pointer": {
+              "x": 0.2938,
+              "y": 1.0071,
+              "inside": false,
+              "vt": 12.4
+            }
+          },
+          {
+            "word": "and",
+            "start": 6.6,
+            "end": 6.82,
+            "pointer": {
+              "x": 0.4096,
+              "y": 0.891,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "the",
+            "start": 6.9,
+            "end": 7.02,
+            "pointer": {
+              "x": 0.4487,
+              "y": 0.8459,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "text",
+            "start": 7.1,
+            "end": 7.42,
+            "pointer": {
+              "x": 0.4678,
+              "y": 0.824,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "here",
+            "start": 7.8,
+            "end": 8.08,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "runs",
+            "start": 8.2,
+            "end": 8.44,
+            "pointer": {
+              "x": 0.479,
+              "y": 0.8095,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "on",
+            "start": 8.5,
+            "end": 8.64,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "too",
+            "start": 8.7,
+            "end": 8.92,
+            "pointer": {
+              "x": 0.4805,
+              "y": 0.8105,
+              "inside": true,
+              "vt": 9
+            }
+          },
+          {
+            "word": "long",
+            "start": 9,
+            "end": 9.42,
+            "pointer": {
+              "x": 0.48,
+              "y": 0.81,
+              "inside": true,
+              "vt": 9
+            }
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 12.4,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-01.jpg",
+          "zoomImage": null
+        },
+        {
+          "id": "moment-02",
+          "t": 3200,
+          "vt": 12.4,
+          "x": 0.12,
+          "y": 0.08,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "word",
+            "dwell"
+          ],
+          "reasons": [
+            "word 'this' at 3.2s",
+            "dwell 0.9s"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-02.jpg",
+          "zoomImage": null
+        },
+        {
+          "id": "moment-03",
+          "t": 7800,
+          "vt": 12.4,
+          "x": 0.48,
+          "y": 0.81,
+          "inside": true,
+          "zoom": {
+            "scale": 2.5,
+            "originX": 0.48,
+            "originY": 0.81
+          },
+          "kinds": [
+            "click",
+            "zoom",
+            "word"
+          ],
+          "reasons": [
+            "click",
+            "zoomed in",
+            "word 'here' at 7.8s"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000001/moment-03.jpg",
+          "zoomImage": "media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg"
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000001/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000001/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000001/events.json"
+      },
+      "updatedAt": "2026-11-20T11:02:00.000Z",
+      "startedAt": "2026-11-20T11:01:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000002",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 20,
+      "pausedAtFrame": 500,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        18,
+        20
+      ],
+      "state": "done",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": {
+        "text": "Back here the music drops out.",
+        "words": [
+          {
+            "word": "Back",
+            "start": 0.5,
+            "end": 0.8,
+            "pointer": {
+              "x": 0.5,
+              "y": 0.5,
+              "inside": true,
+              "vt": 20
+            }
+          },
+          {
+            "word": "here",
+            "start": 0.9,
+            "end": 1.2,
+            "pointer": {
+              "x": 0.5,
+              "y": 0.5,
+              "inside": true,
+              "vt": 20
+            }
+          },
+          {
+            "word": "the",
+            "start": 1.3,
+            "end": 1.6,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "music",
+            "start": 1.7000000000000002,
+            "end": 2,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "drops",
+            "start": 2.1,
+            "end": 2.4,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          },
+          {
+            "word": "out",
+            "start": 2.5,
+            "end": 2.8,
+            "pointer": {
+              "x": 0.6,
+              "y": 0.4,
+              "inside": true,
+              "vt": 18
+            }
+          }
+        ]
+      },
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 20,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000002/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000002/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000002/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000002/events.json"
+      },
+      "updatedAt": "2026-11-20T11:06:00.000Z",
+      "startedAt": "2026-11-20T11:05:00.000Z"
+    },
+    {
+      "commentId": "30000000-0000-4000-8000-000000000003",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "reviewerName": "Dev",
+      "kind": "moment",
+      "version": 2,
+      "pausedAtVideoTime": 25,
+      "pausedAtFrame": 625,
+      "durationMs": 4000,
+      "videoTimeRange": [
+        25,
+        25
+      ],
+      "state": "failed",
+      "micLost": false,
+      "noAudio": false,
+      "transcript": null,
+      "moments": [
+        {
+          "id": "moment-01",
+          "t": 0,
+          "vt": 25,
+          "x": 0.5,
+          "y": 0.5,
+          "inside": true,
+          "zoom": null,
+          "kinds": [
+            "pause"
+          ],
+          "reasons": [
+            "pause"
+          ],
+          "image": "media/30000000-0000-4000-8000-000000000003/moment-01.jpg",
+          "zoomImage": null
+        }
+      ],
+      "files": {
+        "overview": "media/30000000-0000-4000-8000-000000000003/overview.jpg",
+        "audio": "media/30000000-0000-4000-8000-000000000003/audio.webm",
+        "clip": null,
+        "events": "raw/30000000-0000-4000-8000-000000000003/events.json"
+      },
+      "updatedAt": "2026-11-20T11:09:00.000Z",
+      "startedAt": "2026-11-20T11:08:00.000Z"
+    }
+  ],
+  "previous": [
+    {
+      "version": 1,
+      "comments": [
+        {
+          "commentId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "reviewerName": "Sarah",
+          "kind": "moment",
+          "version": 1,
+          "pausedAtVideoTime": 3,
+          "pausedAtFrame": 75,
+          "durationMs": 4000,
+          "videoTimeRange": [
+            3,
+            3
+          ],
+          "state": "done",
+          "micLost": false,
+          "noAudio": false,
+          "transcript": {
+            "text": "The opening title is too small.",
+            "words": [
+              {
+                "word": "The",
+                "start": 0.5,
+                "end": 0.8,
+                "pointer": null
+              },
+              {
+                "word": "opening",
+                "start": 0.9,
+                "end": 1.2,
+                "pointer": null
+              },
+              {
+                "word": "title",
+                "start": 1.3,
+                "end": 1.6,
+                "pointer": null
+              },
+              {
+                "word": "is",
+                "start": 1.7000000000000002,
+                "end": 2,
+                "pointer": null
+              },
+              {
+                "word": "too",
+                "start": 2.1,
+                "end": 2.4,
+                "pointer": null
+              },
+              {
+                "word": "small",
+                "start": 2.5,
+                "end": 2.8,
+                "pointer": null
+              }
+            ]
+          },
+          "moments": [
+            {
+              "id": "moment-01",
+              "t": 0,
+              "vt": 3,
+              "x": 0.5,
+              "y": 0.5,
+              "inside": true,
+              "zoom": null,
+              "kinds": [
+                "pause"
+              ],
+              "reasons": [
+                "pause"
+              ],
+              "image": "media/10000000-0000-4000-8000-000000000001/moment-01.jpg",
+              "zoomImage": null
+            }
+          ],
+          "files": {
+            "overview": "media/10000000-0000-4000-8000-000000000001/overview.jpg",
+            "audio": "media/10000000-0000-4000-8000-000000000001/audio.webm",
+            "clip": null,
+            "events": "raw/10000000-0000-4000-8000-000000000001/events.json"
+          },
+          "updatedAt": "2026-11-18T10:02:00.000Z",
+          "startedAt": "2026-11-18T10:01:00.000Z"
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`the mp4 export > is unchanged for version latest > feedback.md 1`] = `
+"# Launch film, version 2
+
+Reviewers: Sarah, Dev
+Exported: 2026-11-21 14:05 UTC
+
+### Sarah, 0:03.0 (paused 4s)
+![overview](media/20000000-0000-4000-8000-000000000001/overview.jpg)
+
+"Tighten up the cut, please."
+
+Moments:
+- moment-01 at 0:03.0, pause, (50%, 50%) ![](media/20000000-0000-4000-8000-000000000001/moment-01.jpg)
+
+### Dev, 0:12.4 (paused 34s) covering 0:09.0 to 0:12.4
+![overview](media/30000000-0000-4000-8000-000000000001/overview.jpg)
+
+"so this [📍 moment-02: top-left, 12%/8%] logo is the old one and the text here [📍 moment-03: bottom-centre, 48%/81%, clicked, zoomed in] runs on too long"
+
+Moments:
+- moment-01 at 0:12.4, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000001/moment-01.jpg)
+- moment-02 at 0:12.4, word 'this' at 3.2s + dwell 0.9s, (12%, 8%) ![](media/30000000-0000-4000-8000-000000000001/moment-02.jpg)
+- moment-03 at 0:12.4, click + zoomed in + word 'here' at 7.8s, (48%, 81%) ![](media/30000000-0000-4000-8000-000000000001/moment-03.jpg) ![zoomed in](media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg)
+
+### Dev, 0:20.0 (paused 4s) covering 0:18.0 to 0:20.0
+![overview](media/30000000-0000-4000-8000-000000000002/overview.jpg)
+
+"Back here the music drops out."
+
+Moments:
+- moment-01 at 0:20.0, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000002/moment-01.jpg)
+
+### Dev, 0:25.0 (paused 4s)
+![overview](media/30000000-0000-4000-8000-000000000003/overview.jpg)
+
+_Transcription failed; listen to media/30000000-0000-4000-8000-000000000003/audio.webm_
+
+Moments:
+- moment-01 at 0:25.0, pause, (50%, 50%) ![](media/30000000-0000-4000-8000-000000000003/moment-01.jpg)
+
+## General feedback
+
+### Sarah
+
+"Overall the pacing feels good."
+
+## Empty pauses
+
+Pauses where the reviewer said nothing:
+
+- Sarah: 1
+"
+`;
+
+exports[`the mp4 export > is unchanged for version latest > zip entries 1`] = `
+[
+  "README.md",
+  "feedback.json",
+  "feedback.md",
+  "media/20000000-0000-4000-8000-000000000001/audio.webm",
+  "media/20000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "media/20000000-0000-4000-8000-000000000001/overview.jpg",
+  "media/20000000-0000-4000-8000-000000000002/audio.webm",
+  "media/20000000-0000-4000-8000-000000000003/audio.webm",
+  "media/30000000-0000-4000-8000-000000000001/audio.webm",
+  "media/30000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-02.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-03-zoom.jpg",
+  "media/30000000-0000-4000-8000-000000000001/moment-03.jpg",
+  "media/30000000-0000-4000-8000-000000000001/overview.jpg",
+  "media/30000000-0000-4000-8000-000000000002/audio.webm",
+  "media/30000000-0000-4000-8000-000000000002/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000002/overview.jpg",
+  "media/30000000-0000-4000-8000-000000000003/audio.webm",
+  "media/30000000-0000-4000-8000-000000000003/moment-01.jpg",
+  "media/30000000-0000-4000-8000-000000000003/overview.jpg",
+  "previous/v1/feedback.md",
+  "previous/v1/media/10000000-0000-4000-8000-000000000001/audio.webm",
+  "previous/v1/media/10000000-0000-4000-8000-000000000001/moment-01.jpg",
+  "previous/v1/media/10000000-0000-4000-8000-000000000001/overview.jpg",
+  "raw/20000000-0000-4000-8000-000000000001/events.json",
+  "raw/20000000-0000-4000-8000-000000000001/meta.json",
+  "raw/20000000-0000-4000-8000-000000000001/moments.json",
+  "raw/20000000-0000-4000-8000-000000000001/transcript.json",
+  "raw/20000000-0000-4000-8000-000000000002/events.json",
+  "raw/20000000-0000-4000-8000-000000000002/meta.json",
+  "raw/20000000-0000-4000-8000-000000000002/transcript.json",
+  "raw/20000000-0000-4000-8000-000000000003/events.json",
+  "raw/20000000-0000-4000-8000-000000000003/meta.json",
+  "raw/30000000-0000-4000-8000-000000000001/events.json",
+  "raw/30000000-0000-4000-8000-000000000001/meta.json",
+  "raw/30000000-0000-4000-8000-000000000001/moments.json",
+  "raw/30000000-0000-4000-8000-000000000001/transcript.json",
+  "raw/30000000-0000-4000-8000-000000000002/events.json",
+  "raw/30000000-0000-4000-8000-000000000002/meta.json",
+  "raw/30000000-0000-4000-8000-000000000002/moments.json",
+  "raw/30000000-0000-4000-8000-000000000002/transcript.json",
+  "raw/30000000-0000-4000-8000-000000000003/events.json",
+  "raw/30000000-0000-4000-8000-000000000003/meta.json",
+  "raw/30000000-0000-4000-8000-000000000003/moments.json",
+]
+`;
