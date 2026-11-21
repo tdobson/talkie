@@ -395,3 +395,23 @@ Firefox still steps by 40.2 ms, and the longest gap is 55 to 67 ms, well short o
 250 ms readings in the main run were load on tragicomix, and `SmoothClock` can be copied into T5 as
 it is. The plan's end-to-end sync limit for the Firefox project is now 0.07 s instead of 0.04 s,
 because on this metric the clock's extrapolation across a 40 ms step counts as drift.
+
+### Full Firefox sync run on a quiet machine
+
+Run on judithix from 14:01 to 14:15, load average 0.7 to 1.0, niced, muted:
+`node sync.mjs --browser firefox --tracks webm` (same protocol as check 2). Raw output:
+`out/sync-firefox-judithix.json` and `.log`.
+
+| Phase | p50 | p95 | p99 | max (ms) |
+|---|---|---|---|---|
+| 10 min play | 16 | 34 | 35 | 56 |
+| 20 seeks | 16 | 34 | 34 | 54 |
+| 0.5x | 16.5 | 33.5 | 34 | 44 |
+| 1.5x | 0 | 27 | 30 | 66 |
+| 2x | 0 | 34 | 36 | 70 |
+| **Overall** | 15 | 34 | **35** | **70** |
+
+Firefox passes check 2 on a quiet machine: p99 35 ms against the 40 ms limit, and no frame came
+near the 250 ms cap. `setFrame` took 10 ms at the median (38 on tragicomix under load). The sound
+advanced 600.55 s in 600 s of wall clock. The margin is small (5 ms), so the plan keeps 0.07 s as the
+Firefox limit in the end-to-end test, which runs niced on a busy machine.
