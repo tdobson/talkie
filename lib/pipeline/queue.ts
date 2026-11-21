@@ -51,6 +51,15 @@ export class ProcessingQueue {
     );
   }
 
+  /** True while any job for the comment, its clip pass included, is waiting or running. */
+  isBusy(ref: CommentRef): boolean {
+    const { videoId, sessionId, commentId } = ref;
+    return (
+      this.has({ videoId, sessionId, commentId }) ||
+      this.has({ videoId, sessionId, commentId, clip: true } as CommentRef)
+    );
+  }
+
   /** Jobs waiting or running. */
   get size(): number {
     return this.pending.length + (this.current ? 1 : 0);

@@ -286,3 +286,27 @@ it('resumeStep picks the first step still pending', async () => {
   const all = await updateStatus(ref, { steps: { moments: 'done', stills: 'done' } });
   expect(resumeStep(all)).toBe('clip');
 });
+
+it('a clip pass leaves the state alone when the comment was re-queued while it rendered', async () => {
+  const { ref } = await seedComment({ state: 'done' });
+  await updateStatus(ref, {
+    steps: { audio: 'done', silence: 'done', transcribe: 'done', moments: 'done', stills: 'done' },
+  });
+  // What a reprocess does while the clip is still rendering.
+  steps.clip = vi.fn<StepFn>(async () => {
+    await updateStatus(ref, {
+      state: 'queued',
+      steps: { transcribe: 'pending', moments: 'pending', stills: 'pending', clip: 'pending' },
+    });
+  });
+
+  await processComment(ref, { fromStep: 'clip', includeClip: true });
+
+  const s = await readStatus(ref);
+  expect(s).toMatchObject({
+    state: 'queued',
+    steps: { transcribe: 'pending', moments: 'pending', stills: 'pending', clip: 'pending' },
+  });
+  // The re-queued job still starts where the reprocess asked it to.
+  expect(s && resumeStep(s)).toBe('transcribe');
+});

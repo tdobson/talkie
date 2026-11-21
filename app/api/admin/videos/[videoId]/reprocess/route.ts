@@ -53,8 +53,9 @@ export const POST = withAdmin(
     if (opts === null) return fail(400, 'invalid request');
 
     const queue = getQueue();
-    // A comment the queue is working on right now is left alone: its files are in use.
-    const jobs = await prepareReprocess(videoId, opts, (ref) => queue.has(ref));
+    // A comment the queue holds a job for is left alone: its files are in use. That
+    // includes the clip pass, which would otherwise write `done` over the re-queued status.
+    const jobs = await prepareReprocess(videoId, opts, (ref) => queue.isBusy(ref));
     for (const job of jobs) queue.enqueue(job.ref);
     return Response.json(
       { ok: true, queued: jobs.length, commentIds: jobs.map((job) => job.ref.commentId) },

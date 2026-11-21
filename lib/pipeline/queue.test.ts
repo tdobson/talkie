@@ -209,3 +209,26 @@ describe('startPipeline', () => {
     expect((await readStatus(ref))?.state).toBe('receiving');
   });
 });
+
+it('isBusy sees the main job and the clip job of a comment', async () => {
+  let release: () => void = () => {};
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queue = new ProcessingQueue({ process: () => blocked });
+  const ref: CommentRef = { videoId: 'v', sessionId: 's', commentId: 'c' };
+  const other: CommentRef = { videoId: 'v', sessionId: 's', commentId: 'd' };
+  expect(queue.isBusy(ref)).toBe(false);
+
+  queue.enqueue({ ...ref, clip: true } as CommentRef);
+  expect(queue.has(ref)).toBe(false);
+  expect(queue.isBusy(ref)).toBe(true);
+  expect(queue.isBusy(other)).toBe(false);
+  queue.enqueue(other);
+  expect(queue.isBusy(other)).toBe(true);
+
+  release();
+  await queue.idle();
+  expect(queue.isBusy(ref)).toBe(false);
+  expect(queue.isBusy(other)).toBe(false);
+});

@@ -96,6 +96,11 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
     },
   });
 
+  // A clip-only pass leaves `state` as it found it, so a change means the comment was
+  // re-queued (a reprocess, say) while the clip rendered. That newer request owns the
+  // status from then on and this pass must not write over it.
+  const overtaken = async () => clipOnly && (await readStatus(ref))?.state !== before.state;
+
   let stopped: 'empty' | 'failed' | null = null;
   for (const name of todo) {
     const noPicture = meta.kind === 'general' && (name === 'stills' || name === 'clip');
@@ -108,6 +113,7 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
     const log = (message: string) => say(`${ref.commentId} ${name}: ${message}`);
     try {
       await steps[name](contextFor(log));
+      if (await overtaken()) return;
       await updateStatus(ref, { steps: { [name]: 'done' } });
     } catch (err) {
       if (err instanceof EmptyCommentError) {
@@ -116,6 +122,7 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
         log('no speech, nothing more to do');
         continue;
       }
+      if (await overtaken()) return;
       const message = err instanceof Error ? err.message : String(err);
       firstError ??= message;
       if (name === 'audio') stopped = 'failed';
@@ -124,6 +131,7 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
     }
   }
 
+  if (await overtaken()) return;
   const after = (await readStatus(ref)) ?? before;
   const failed = STEP_ORDER.some((name) => after.steps[name] === 'failed');
   const state = stopped === 'empty' ? 'empty' : failed ? 'failed' : 'done';
