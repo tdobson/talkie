@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeJsonAtomic } from '@/lib/storage/json';
@@ -94,6 +94,10 @@ type StatusPatch = Partial<Omit<CommentStatus, 'steps'>> & {
 };
 
 interface SeedComment {
+  /** Defaults to the mp4 seed video. */
+  videoId?: string;
+  /** The size of the picture. Defaults to the mp4 seed's 1920 by 1080. */
+  size?: [number, number];
   sessionId: string;
   commentId: string;
   version: number;
@@ -112,9 +116,10 @@ interface SeedComment {
 }
 
 async function writeComment(c: SeedComment): Promise<void> {
-  const ref = seedRef(c.sessionId, c.commentId);
+  const ref = { ...seedRef(c.sessionId, c.commentId), videoId: c.videoId ?? VIDEO_ID };
   const dir = commentDir(ref);
   const durationMs = c.durationMs ?? 4000;
+  const [videoWidth, videoHeight] = c.size ?? [1920, 1080];
   await writeCommentMeta(ref, {
     commentId: c.commentId,
     sessionId: c.sessionId,
@@ -129,8 +134,8 @@ async function writeComment(c: SeedComment): Promise<void> {
     player: {
       containerWidth: 1280,
       containerHeight: 720,
-      videoWidth: 1920,
-      videoHeight: 1080,
+      videoWidth,
+      videoHeight,
       contentRect: { x: 0, y: 0, width: 1280, height: 720 },
       fullscreen: false,
       devicePixelRatio: 1,
@@ -327,5 +332,121 @@ export async function seedExport(): Promise<void> {
     steps: { transcribe: 'failed', moments: 'done', stills: 'done' },
     error: 'Groq transcription failed (503)',
     moments: [pause(25)],
+  });
+}
+
+// A second video, both of whose versions are the talkie-mini fixture film: one reviewer, one
+// comment on v1 and one on v2 with moments in both scenes and on the scene boundary.
+
+export const TALKIE_VIDEO_ID = 'talkie-mini-cd34';
+
+export const TALKIE_SEED = {
+  miaV1: '40000000-0000-4000-8000-000000000001',
+  mia: '40000000-0000-4000-8000-000000000002',
+  /** Mia on v1, paused at 0:01.0. */
+  previous: '50000000-0000-4000-8000-000000000001',
+  /** Mia, paused at 0:01.0, then a click at 0:03.5 and a seek to 0:02.0. */
+  moment: '50000000-0000-4000-8000-000000000002',
+} as const;
+
+export const TALKIE_SEED_PROBE: ProbeInfo = {
+  width: 320,
+  height: 180,
+  fps: 30,
+  frameDuration: 1 / 30,
+  duration: 4,
+  codec: 'talkie',
+  pixFmt: 'vector',
+  hasAudio: true,
+};
+
+export async function seedTalkieExport(): Promise<void> {
+  await saveVideo({
+    videoId: TALKIE_VIDEO_ID,
+    title: 'Talkie mini',
+    token: 'talkie-token-talkie-token-talkie-token-seed',
+    createdAt: '2026-11-18T09:00:00.000Z',
+    latestVersion: 2,
+    versions: [1, 2].map((version) => ({
+      version,
+      importedAt: `2026-11-${17 + version}T09:00:00.000Z`,
+      originalFilename: `talkie-mini-v${version}.lottie`,
+      mediaKind: 'talkie' as const,
+    })),
+  });
+  for (const version of [1, 2]) {
+    const dir = versionDir(TALKIE_VIDEO_ID, version);
+    await writeJsonAtomic(join(dir, 'probe.json'), TALKIE_SEED_PROBE);
+    // The unpacked film, where the import leaves it.
+    await cp(fixture('talkie-mini'), join(dir, 'film'), { recursive: true });
+  }
+
+  const session = (sessionId: string, version: number, startedAt: string) =>
+    saveSession({
+      sessionId,
+      videoId: TALKIE_VIDEO_ID,
+      version,
+      reviewerName: 'Mia',
+      userAgent: 'vitest',
+      startedAt,
+      doneAt: null,
+    });
+  await session(TALKIE_SEED.miaV1, 1, '2026-11-18T10:00:00.000Z');
+  await session(TALKIE_SEED.mia, 2, '2026-11-20T10:00:00.000Z');
+
+  const common = { videoId: TALKIE_VIDEO_ID, size: [320, 180] as [number, number] };
+  await writeComment({
+    ...common,
+    sessionId: TALKIE_SEED.miaV1,
+    commentId: TALKIE_SEED.previous,
+    version: 1,
+    vt: 1,
+    startedAt: '2026-11-18T10:01:00.000Z',
+    state: 'done',
+    updatedAt: '2026-11-18T10:02:00.000Z',
+    transcript: transcriptOf('The red is too bright.'),
+    moments: [pause(1)],
+  });
+  await writeComment({
+    ...common,
+    sessionId: TALKIE_SEED.mia,
+    commentId: TALKIE_SEED.moment,
+    version: 2,
+    vt: 1,
+    startedAt: '2026-11-20T10:01:00.000Z',
+    state: 'done',
+    updatedAt: '2026-11-20T10:02:00.000Z',
+    transcript: transcriptOf('The red is fine now, the blue is not.'),
+    events: [
+      { t: 0, type: 'pointer', x: 0.5, y: 0.5, inside: true, vt: 1 },
+      { t: 1000, type: 'seek', from: 1, to: 3.5, via: 'scrollbar' },
+      { t: 1500, type: 'click', x: 0.25, y: 0.75, inside: true, vt: 3.5, button: 0 },
+      { t: 2500, type: 'seek', from: 3.5, to: 2, via: 'scrollbar' },
+    ],
+    moments: [
+      pause(1),
+      {
+        id: 'moment-02',
+        t: 1500,
+        vt: 3.5,
+        x: 0.25,
+        y: 0.75,
+        inside: true,
+        zoom: null,
+        kinds: ['click'],
+        reasons: ['click'],
+      },
+      {
+        id: 'moment-03',
+        t: 2500,
+        vt: 2,
+        x: 0.25,
+        y: 0.75,
+        inside: true,
+        zoom: null,
+        kinds: ['seek'],
+        reasons: ['seek'],
+      },
+    ],
   });
 }

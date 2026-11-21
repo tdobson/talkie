@@ -132,11 +132,20 @@ function spokenLines(c: ExportComment): string[] {
   return lines;
 }
 
+/** `, scene s01 frame 30, caption "Red scene."` for a moment in a Talkie film, else nothing. */
+function talkiePart(m: ExportMoment): string {
+  if (!m.talkie) return '';
+  const { sceneId, sceneFrame, caption } = m.talkie;
+  // The scene id and the caption come from the film, so they are escaped like a reviewer's name.
+  const said = caption ? `, caption "${mdText(caption)}"` : '';
+  return `, scene ${mdText(sceneId)} frame ${sceneFrame}${said}`;
+}
+
 function momentLine(m: ExportMoment): string {
   const why = m.reasons.length > 0 ? m.reasons.join(' + ') : m.kinds.join(' + ');
   const where = `(${percent(m.x)}, ${percent(m.y)})`;
   const zoom = m.zoomImage ? ` ![zoomed in](${m.zoomImage})` : '';
-  return `- ${m.id} at ${formatVideoTime(m.vt)}, ${why}, ${where} ![](${m.image})${zoom}`;
+  return `- ${m.id} at ${formatVideoTime(m.vt)}, ${why}, ${where}${talkiePart(m)} ![](${m.image})${zoom}`;
 }
 
 function momentComment(c: ExportComment, fps: number, h: string): string[] {

@@ -1,5 +1,7 @@
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isSafeRelativePath, type TalkieFilm, validateFilm } from '@talkie/format';
+import { mediaKindOf } from '@/lib/media-kind';
 import { audioFileName, FILES } from '@/lib/pipeline/steps/types';
 import { readJson } from '@/lib/storage/json';
 import { commentDir, ID_RE, versionDir } from '@/lib/storage/paths';
@@ -13,9 +15,11 @@ import type {
   Moment,
   ProbeInfo,
   SessionRecord,
+  TalkieMomentInfo,
   Transcript,
   TranscriptWord,
 } from '@/lib/types';
+import { type CaptionCue, parseCaptionCues, type SceneTiming, talkieInfoFor } from './talkie';
 
 export interface ExportOptions {
   version: number | 'latest' | 'all';
@@ -49,11 +53,20 @@ export interface ExportComment {
     text: string;
     words: (TranscriptWord & { pointer: WordPointer | null })[];
   } | null;
-  moments: (Moment & { image: string; zoomImage: string | null })[];
+  /** `talkie` is only there for a comment on a Talkie version. */
+  moments: (Moment & { image: string; zoomImage: string | null; talkie?: TalkieMomentInfo })[];
   /** Paths inside the zip. For a comment under `previous`, relative to `previous/v<n>/`. */
   files: { overview: string | null; audio: string; clip: string | null; events: string };
   updatedAt: string;
   startedAt: string;
+}
+
+/** The film files of one Talkie version that go into the zip. Paths are inside the zip. */
+export interface ExportFilm {
+  version: number;
+  talkie: string;
+  /** `src` is the path inside the film, as `talkie.json` names it. */
+  captions: { lang: string; label: string; src: string; path: string }[];
 }
 
 export interface ExportModel {
@@ -71,6 +84,8 @@ export interface ExportModel {
   sessions: SessionRecord[];
   comments: ExportComment[];
   previous: { version: number; comments: ExportComment[] }[];
+  /** Only there when a Talkie version is part of the export. The main version comes first. */
+  films?: ExportFilm[];
 }
 
 /** The video or the version asked for does not exist. */
@@ -166,6 +181,83 @@ function timeRange(paused: number | null, events: CaptureEvent[]): [number, numb
   return [Math.min(...times), Math.max(...times)];
 }
 
+/**
+ * Where the unpacked film of a Talkie version lives.
+ * TODO(integration): use `filmDir` from `@/lib/storage/paths` once Task 3.1 has landed.
+ */
+export function exportFilmDir(videoId: string, version: number): string {
+  return join(versionDir(videoId, version), 'film');
+}
+
+/** What is needed to place a moment in a Talkie film. */
+interface TalkieContext {
+  film: TalkieFilm;
+  /** One entry per scene: its timing, or the probed frame rate when its file is unreadable. */
+  timings: (SceneTiming | number)[];
+  cues: CaptionCue[];
+}
+
+const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/**
+ * Reads the film of a Talkie version. Null when it is missing or not valid: the export then
+ * goes ahead without the Talkie fields rather than failing.
+ */
+async function loadTalkie(
+  videoId: string,
+  version: number,
+  fps: number
+): Promise<TalkieContext | null> {
+  const dir = exportFilmDir(videoId, version);
+  const raw = await readOptional<unknown>(join(dir, 'talkie.json'));
+  if (raw === null || !validateFilm(raw).ok) return null;
+  const film = raw as TalkieFilm;
+
+  const timings: (SceneTiming | number)[] = [];
+  for (const scene of film.scenes) {
+    const lottie = isSafeRelativePath(scene.src)
+      ? await readOptional<Partial<SceneTiming>>(join(dir, scene.src))
+      : null;
+    timings.push(
+      lottie && isCount(lottie.fr) && lottie.fr > 0 && isCount(lottie.ip) && isCount(lottie.op)
+        ? { fr: lottie.fr, ip: lottie.ip, op: lottie.op }
+        : fps
+    );
+  }
+
+  // The first track is the one the player shows by default.
+  let cues: CaptionCue[] = [];
+  const track = film.captions[0];
+  if (track && isSafeRelativePath(track.src)) {
+    try {
+      cues = parseCaptionCues(await readFile(join(dir, track.src), 'utf8'));
+    } catch {
+      // No captions on disk: moments simply get no caption.
+    }
+  }
+  return { film, timings, cues };
+}
+
+/** The zip paths of a film's `talkie.json` and caption files, under `prefix`. */
+function exportFilm(version: number, film: TalkieFilm, prefix: string): ExportFilm {
+  const taken = new Set<string>();
+  const captions: ExportFilm['captions'] = [];
+  for (const track of film.captions) {
+    if (!isSafeRelativePath(track.src)) continue;
+    const name = track.src.split('/').pop() ?? '';
+    // Two tracks with the same file name in different folders: the first one keeps the name.
+    if (name === '' || taken.has(name)) continue;
+    taken.add(name);
+    captions.push({
+      lang: track.lang,
+      label: track.label,
+      src: track.src,
+      path: `${prefix}captions/${name}`,
+    });
+  }
+  return { version, talkie: `${prefix}talkie.json`, captions };
+}
+
 interface Loaded {
   comment: ExportComment;
   endedAt: string | null;
@@ -176,7 +268,8 @@ async function loadComment(
   ref: CommentRef,
   session: SessionRecord,
   opts: ExportOptions,
-  probes: Map<number, ProbeInfo | null>
+  probes: Map<number, ProbeInfo | null>,
+  films: Map<number, TalkieContext>
 ): Promise<Loaded | null> {
   const dir = commentDir(ref);
   const meta = await readCommentMeta(ref).catch(() => null);
@@ -196,12 +289,16 @@ async function loadComment(
 
   const fps = probes.get(meta.version)?.fps ?? 0;
   const paused = meta.pausedAtVideoTime;
+  const talkie = films.get(meta.version);
 
   const exportMoments: ExportComment['moments'] = [];
   for (const m of moments) {
     if (!/^moment-\d{2,}$/.test(m.id)) continue;
     exportMoments.push({
       ...m,
+      ...(talkie && Number.isFinite(m.vt)
+        ? { talkie: talkieInfoFor(talkie.film, talkie.timings, m.vt, talkie.cues) }
+        : {}),
       image: media(`${m.id}.jpg`),
       zoomImage: (await exists(join(render, `${m.id}-zoom.jpg`)))
         ? media(`${m.id}-zoom.jpg`)
@@ -277,6 +374,13 @@ export async function buildExportModel(
   for (const v of known) {
     probes.set(v, await readOptional<ProbeInfo>(join(versionDir(videoId, v), 'probe.json')));
   }
+  const films = new Map<number, TalkieContext>();
+  for (const v of video.versions) {
+    const wanted = target === 'all' || v.version <= target;
+    if (!wanted || mediaKindOf(v) !== 'talkie') continue;
+    const film = await loadTalkie(videoId, v.version, probes.get(v.version)?.fps ?? 0);
+    if (film !== null) films.set(v.version, film);
+  }
 
   const main: Loaded[] = [];
   const earlier = new Map<number, Loaded[]>();
@@ -290,7 +394,7 @@ export async function buildExportModel(
     if (isMain) sessions.push(session);
 
     for (const ref of await listComments(videoId, session.sessionId)) {
-      const loaded = await loadComment(ref, session, opts, probes);
+      const loaded = await loadComment(ref, session, opts, probes, films);
       if (loaded === null) continue;
       if (isMain) {
         // `since` picks out what is new in this version. Earlier versions are kept whole.
@@ -319,6 +423,24 @@ export async function buildExportModel(
   const comments = (list: Loaded[]) => [...list].sort(byStart).map((l) => l.comment);
 
   const probe = probes.get(target === 'all' ? video.latestVersion : target) ?? null;
+  const previous = [...earlier.entries()].sort(([a], [b]) => a - b);
+
+  // The film files sit next to the feedback they belong to: `media/` for the version being
+  // exported and `previous/v<n>/media/` for an earlier one with feedback. With every version
+  // in one export, the newest film takes `media/` and the others `media/v<n>/`.
+  const exportFilms: ExportFilm[] = [];
+  const newest = Math.max(...films.keys());
+  for (const [version, { film }] of [...films.entries()].sort(([a], [b]) => b - a)) {
+    if (target === 'all') {
+      const prefix = version === newest ? 'media/' : `media/v${version}/`;
+      exportFilms.push(exportFilm(version, film, prefix));
+    } else if (version === target) {
+      exportFilms.push(exportFilm(version, film, 'media/'));
+    } else if (earlier.has(version)) {
+      exportFilms.push(exportFilm(version, film, `previous/v${version}/media/`));
+    }
+  }
+
   return {
     schemaVersion: 1,
     exportedAt: now.toISOString(),
@@ -333,8 +455,7 @@ export async function buildExportModel(
     },
     sessions,
     comments: comments(main),
-    previous: [...earlier.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([version, list]) => ({ version, comments: comments(list) })),
+    previous: previous.map(([version, list]) => ({ version, comments: comments(list) })),
+    ...(exportFilms.length > 0 ? { films: exportFilms } : {}),
   };
 }

@@ -72,6 +72,14 @@ export function renderReadme(model: ExportModel): string {
     '',
     'In `feedback.json` every transcript word carries a `pointer` with the position at the time the word was spoken, or null when no position was recorded.',
     '',
+    ...(model.films && model.films.length > 0
+      ? [
+          '## Talkie film',
+          '',
+          `This video is a Talkie film: animated vector scenes played in step with a narration track, not a rendered video file, so in \`feedback.json\` each moment carries a \`talkie\` object that names the scene on screen (\`sceneId\`, \`sceneIndex\`, \`sceneSrc\`), the seconds into that scene and its Lottie frame (\`sceneTime\`, \`sceneFrame\`), and the \`chapter\` and \`caption\` showing at that instant, each null when there was none. Use ${model.films.map((f) => `\`${f.talkie}\``).join(' and ')} and the captions beside it to map a scene id back to its source file; \`feedback.md\` gives the same scene, frame and caption on every moment line.`,
+          '',
+        ]
+      : []),
     '## Images',
     '',
     "- The stills are video frames with the pointer drawn on by this tool. They are not a real screenshot of the reviewer's screen, so nothing else that was on their screen appears.",
