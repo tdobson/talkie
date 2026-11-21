@@ -1,0 +1,10 @@
+{
+  "lines": [
+    { "id": "one-a", "text": "This is a roof tile." },
+    {
+      "id": "one-b",
+      "text": "It sits under the soffit.",
+      "caption": "It sits under the soffit board."
+    }
+  ]
+}
