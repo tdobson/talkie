@@ -344,12 +344,10 @@ test('the picture stays in step with the sound', async ({ page, site }, testInfo
     });
   });
   await part(page, '.big-play').click();
-  // The first second is the browser starting its sound output, measured apart (see below).
-  const settle = 1;
+  // Every frame from the press of play counts, the start of the sound output included: the
+  // picture must not run ahead while the browser is still starting its sound.
   const seconds = 10;
-  await expect
-    .poll(() => currentTime(page), { timeout: 40_000 })
-    .toBeGreaterThanOrEqual(settle + seconds);
+  await expect.poll(() => currentTime(page), { timeout: 40_000 }).toBeGreaterThanOrEqual(seconds);
   const frames = await player(page).evaluate((el: Probe) => el.frames);
 
   const stats = (from: number, to: number) => {
@@ -363,23 +361,24 @@ test('the picture stays in step with the sound', async ({ page, site }, testInfo
       max: drift[drift.length - 1] ?? 0,
     };
   };
-  const startUp = stats(0, settle);
-  const steady = stats(settle, settle + seconds);
+  const all = stats(0, seconds);
+  // Printed only, to show where the drift is. The limits below apply to the whole run.
+  const startUp = stats(0, 1);
   const ms = (s: number) => `${(s * 1000).toFixed(1)} ms`;
   const report =
-    `sync ${testInfo.project.name}: ${steady.frames} frames over ${seconds} s, ` +
-    `p99 ${ms(steady.p99)}, max ${ms(steady.max)}; ` +
-    `first second: ${startUp.frames} frames, max ${ms(startUp.max)}`;
+    `sync ${testInfo.project.name}: ${all.frames} frames over ${seconds} s from play, ` +
+    `p99 ${ms(all.p99)}, max ${ms(all.max)}; ` +
+    `first second: ${startUp.frames} frames, p99 ${ms(startUp.p99)}, max ${ms(startUp.max)}`;
   await testInfo.attach('sync', { contentType: 'text/plain', body: report });
   process.stdout.write(`${report}\n`);
 
   // Firefox moves currentTime in 40.2 ms steps, so the clock's own running on between steps
   // counts as drift on this measure. See spike/REPORT.md, "Clock probe on a quiet machine".
   const limit = testInfo.project.name === 'firefox' ? 0.07 : 0.04;
-  expect(steady.frames).toBeGreaterThan(100);
-  expect(steady.p99).toBeLessThanOrEqual(limit);
+  expect(all.frames).toBeGreaterThan(100);
+  expect(all.p99).toBeLessThanOrEqual(limit);
   // 0.25 is the clock's cap. Reaching it means the sound stalled.
-  expect(steady.max).toBeLessThan(0.25);
+  expect(all.max).toBeLessThan(0.25);
 });
 
 test.describe('paused frames', () => {
