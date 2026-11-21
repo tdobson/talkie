@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAX_CHUNK_BYTES } from '@/lib/constants';
+import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN } from '@/lib/constants';
 import { setCommentCompleteHandler } from '@/lib/pipeline/enqueue';
 import { resetRateLimits } from '@/lib/review/ratelimit';
+import { MAX_EVENTS_BYTES } from '@/lib/review/service';
 import { commentDir } from '@/lib/storage/paths';
 import { createVideo, readCommentMeta, saveVideo } from '@/lib/storage/repo';
 import type { CommentRef, VideoRecord } from '@/lib/types';
@@ -212,4 +213,108 @@ it('413s for an oversized chunk, by declared length or by actual size', async ()
   form.set('meta', JSON.stringify(meta));
   const req = new Request(base, { method: 'PUT', body: form });
   expect((await putChunk(req, params({ token, sid, cid, seq: '0' }))).status).toBe(413);
+});
+
+// A multipart body built by hand, so it can be streamed without a Content-Length.
+
+const BOUNDARY = 'testboundary';
+const enc = new TextEncoder();
+
+function multipart(fields: Record<string, string>): Uint8Array {
+  const parts = Object.entries(fields).map(([name, value]) => {
+    const file = name === 'audio' ? '; filename="chunk.webm"\r\nContent-Type: audio/webm' : '';
+    return `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"${file}\r\n\r\n${value}\r\n`;
+  });
+  return enc.encode(`${parts.join('')}--${BOUNDARY}--\r\n`);
+}
+
+/** A PUT whose body is streamed piece by piece. `pulled` counts the bytes the server took. */
+function streamed(pieces: Iterable<Uint8Array>, headers: Record<string, string> = {}) {
+  const sent = { pulled: 0 };
+  const it = pieces[Symbol.iterator]();
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        const next = it.next();
+        if (next.done) return controller.close();
+        sent.pulled += next.value.byteLength;
+        controller.enqueue(next.value);
+      },
+    },
+    { highWaterMark: 0 }
+  );
+  const req = new Request(base, {
+    method: 'PUT',
+    headers: { 'Content-Type': `multipart/form-data; boundary=${BOUNDARY}`, ...headers },
+    body,
+    duplex: 'half',
+  } as RequestInit);
+  return { req, sent };
+}
+
+function* endless(pieceBytes: number, pieces: number): Generator<Uint8Array> {
+  for (let i = 0; i < pieces; i++) yield new Uint8Array(pieceBytes);
+}
+
+const MB = 1024 * 1024;
+
+it('stores a chunk that is streamed with no Content-Length', async () => {
+  const sid = await start();
+  const body = multipart({ audio: 'aaa', events: '[]', meta: JSON.stringify(meta) });
+  const { req } = streamed([body.subarray(0, 40), body.subarray(40)]);
+  expect(req.headers.get('content-length')).toBeNull();
+  const res = await putChunk(req, params({ token, sid, cid, seq: '0' }));
+  expect(res.status).toBe(200);
+  const ref: CommentRef = { videoId: video.videoId, sessionId: sid, commentId: cid };
+  expect(await readFile(join(commentDir(ref), 'chunks', '0.bin'), 'utf8')).toBe('aaa');
+});
+
+it.each([
+  ['no Content-Length', {}],
+  ['a Content-Length that is not a number', { 'Content-Length': 'lots' }],
+  ['a Content-Length that understates the body', { 'Content-Length': '10' }],
+] as const)('413s and stops reading a streamed body that is too large, with %s', async (_, h) => {
+  const sid = await start();
+  // 64MB on offer; the server must give up soon after the limit.
+  const { req, sent } = streamed(endless(MB, 64), h);
+  const res = await putChunk(req, params({ token, sid, cid, seq: '0' }));
+  expect(res.status).toBe(413);
+  expect(sent.pulled).toBeLessThanOrEqual(MAX_CHUNK_BYTES + 6 * MB);
+});
+
+it('answers a wrong token or session before reading the body', async () => {
+  const sid = await start();
+  const ghost = '22222222-2222-4222-8222-222222222222';
+  for (const p of [
+    { token: 'wrong', sid, cid, seq: '0' },
+    { token, sid: ghost, cid, seq: '0' },
+    { token, sid, cid: 'not-a-uuid', seq: '0' },
+  ]) {
+    const { req, sent } = streamed(endless(MB, 64));
+    expect((await putChunk(req, params(p))).status).toBe(404);
+    expect(sent.pulled).toBe(0);
+  }
+  const { req, sent } = streamed(endless(MB, 64));
+  expect((await putChunk(req, params({ token, sid, cid, seq: 'abc' }))).status).toBe(400);
+  expect(sent.pulled).toBe(0);
+});
+
+it('answers a rate-limited session before reading the body', async () => {
+  const sid = await start();
+  const good = { audio: 'a', events: '[]', meta: JSON.stringify(meta) };
+  for (let i = 0; i < MAX_CHUNK_REQUESTS_PER_MIN; i++) {
+    expect((await chunk(sid, '0', good)).status).toBe(200);
+  }
+  const { req, sent } = streamed(endless(MB, 64));
+  expect((await putChunk(req, params({ token, sid, cid, seq: '1' }))).status).toBe(429);
+  expect(sent.pulled).toBe(0);
+});
+
+it('413s for an events field that is too large, whatever is in it', async () => {
+  const sid = await start();
+  const events = JSON.stringify([{ t: 1, type: 'teleport', junk: 'x'.repeat(MAX_EVENTS_BYTES) }]);
+  const res = await chunk(sid, '0', { audio: 'a', events, meta: JSON.stringify(meta) });
+  expect(res.status).toBe(413);
+  const ref: CommentRef = { videoId: video.videoId, sessionId: sid, commentId: cid };
+  expect(await readCommentMeta(ref)).toBeNull();
 });

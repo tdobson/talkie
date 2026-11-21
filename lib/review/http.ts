@@ -32,3 +32,35 @@ export async function guarded(fn: () => Promise<Response>): Promise<Response> {
     return json({ error: 'server error' }, 500);
   }
 }
+
+/**
+ * Reads a request body into memory, giving up as soon as it passes `maxBytes`. Returns null
+ * when it is too large. The declared Content-Length is only a shortcut: the bytes are counted
+ * as they arrive, so a body with no length, or a wrong one, is held to the same limit.
+ */
+export async function readBodyCapped(req: Request, maxBytes: number): Promise<Uint8Array | null> {
+  const declared = Number(req.headers.get('content-length') ?? '0');
+  if (declared > maxBytes) return null;
+  if (req.body === null) return new Uint8Array(0);
+
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}

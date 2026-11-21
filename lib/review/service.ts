@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_CHUNK_BYTES, MAX_CHUNK_REQUESTS_PER_MIN, MAX_COMMENT_BYTES } from '@/lib/constants';
 import { notifyCommentComplete } from '@/lib/pipeline/enqueue';
@@ -36,6 +36,11 @@ export { parseRange } from './range';
 
 export const MAX_NAME_LENGTH = 80;
 export const MAX_EVENTS_PER_CHUNK = 20_000;
+/**
+ * Most bytes of events one chunk may carry, as JSON. A chunk is 2 seconds, so a real batch is
+ * a few kilobytes; this still lets a full batch of 20,000 pointer events through.
+ */
+export const MAX_EVENTS_BYTES = 2 * 1024 * 1024;
 /** Far above any real comment (a chunk is 2 seconds), low enough to bound the work per request. */
 export const MAX_CHUNKS_PER_COMMENT = 10_000;
 const MAX_USER_AGENT_LENGTH = 512;
@@ -127,26 +132,96 @@ function parseMeta(v: unknown, session: SessionRecord, commentId: string): Comme
   };
 }
 
-const EVENT_TYPES: ReadonlySet<string> = new Set<CaptureEvent['type']>([
-  'pointer',
-  'click',
-  'seek',
-  'zoom',
-  'zoomPan',
-  'visibility',
-  'layout',
-]);
+const SEEK_VIA: ReadonlySet<unknown> = new Set(['scrollbar', 'key']);
+const ZOOM_STATES: ReadonlySet<unknown> = new Set(['start', 'end']);
+const VISIBILITY_STATES: ReadonlySet<unknown> = new Set(['hidden', 'visible', 'blur', 'focus']);
 
-/** Keeps the entries that are objects with a numeric `t` and a known `type`. Never throws. */
+/**
+ * Copies the known fields of one capture event, or returns null if it is not a valid event of
+ * its type. Nothing else the client put on the object is kept, so the size of a stored event
+ * is bounded by its type.
+ */
+function parseEvent(e: unknown): CaptureEvent | null {
+  if (!isDict(e) || !isFiniteNumber(e.t)) return null;
+  const t = e.t;
+  switch (e.type) {
+    case 'pointer':
+    case 'click': {
+      const { x, y, inside, vt, button, zoomed } = e;
+      if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(vt)) return null;
+      if (typeof inside !== 'boolean') return null;
+      const zoom = typeof zoomed === 'boolean' ? { zoomed } : {};
+      if (e.type === 'pointer') return { t, type: 'pointer', x, y, inside, vt, ...zoom };
+      if (!isFiniteNumber(button)) return null;
+      return { t, type: 'click', x, y, inside, vt, button, ...zoom };
+    }
+    case 'seek': {
+      const { from, to, via } = e;
+      if (!isFiniteNumber(from) || !isFiniteNumber(to) || !SEEK_VIA.has(via)) return null;
+      return { t, type: 'seek', from, to, via: via as 'scrollbar' | 'key' };
+    }
+    case 'zoom': {
+      const { state, scale, originX, originY } = e;
+      if (!ZOOM_STATES.has(state) || !isFiniteNumber(scale)) return null;
+      if (!isFiniteNumber(originX) || !isFiniteNumber(originY)) return null;
+      return { t, type: 'zoom', state: state as 'start' | 'end', scale, originX, originY };
+    }
+    case 'zoomPan': {
+      const { originX, originY } = e;
+      if (!isFiniteNumber(originX) || !isFiniteNumber(originY)) return null;
+      return { t, type: 'zoomPan', originX, originY };
+    }
+    case 'visibility': {
+      if (!VISIBILITY_STATES.has(e.state)) return null;
+      return { t, type: 'visibility', state: e.state as 'hidden' | 'visible' | 'blur' | 'focus' };
+    }
+    case 'layout': {
+      const { containerWidth, containerHeight, fullscreen } = e;
+      const contentRect = parseRect(e.contentRect);
+      if (contentRect === null || typeof fullscreen !== 'boolean') return null;
+      if (!isFiniteNumber(containerWidth) || !isFiniteNumber(containerHeight)) return null;
+      return { t, type: 'layout', contentRect, containerWidth, containerHeight, fullscreen };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Keeps the valid events of the first 20,000 entries, rebuilt field by field. Never throws. */
 function cleanEvents(v: unknown): CaptureEvent[] {
   if (!Array.isArray(v)) return [];
   const out: CaptureEvent[] = [];
   for (const e of v.slice(0, MAX_EVENTS_PER_CHUNK)) {
-    if (isDict(e) && isFiniteNumber(e.t) && typeof e.type === 'string' && EVENT_TYPES.has(e.type)) {
-      out.push(e as unknown as CaptureEvent);
-    }
+    const event = parseEvent(e);
+    if (event !== null) out.push(event);
   }
   return out;
+}
+
+// Event batches count toward the size limits like audio does. The two bytes of the array
+// brackets are not counted, so a chunk with no events costs exactly its audio.
+
+const EMPTY_BATCH_BYTES = 2;
+const EVENTS_FILE_RE = /^\d+\.json$/;
+
+function eventsBytes(events: CaptureEvent[]): number {
+  return Buffer.byteLength(JSON.stringify(events)) - EMPTY_BATCH_BYTES;
+}
+
+/** Counted bytes of the event batches stored for a comment, leaving out the one for `seq`. */
+async function storedEventsBytes(dir: string, seq: number): Promise<number> {
+  const eventsDir = join(dir, 'events');
+  let names: string[];
+  try {
+    names = await readdir(eventsDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
+  }
+  // A batch left behind by a failed write of this same chunk is not charged twice.
+  const files = names.filter((n) => EVENTS_FILE_RE.test(n) && n !== `${seq}.json`);
+  const sizes = await Promise.all(files.map(async (n) => (await stat(join(eventsDir, n))).size));
+  return sizes.reduce((sum, n) => sum + Math.max(0, n - EMPTY_BATCH_BYTES), 0);
 }
 
 function parseCompleteBody(v: unknown): CompleteBody {
@@ -311,44 +386,65 @@ export async function finishSession(token: string, sid: string): Promise<boolean
 
 // Chunks
 
+export type ChunkForm = { audio: Blob; events: CaptureEvent[]; meta?: CommentMeta };
+export type ChunkReply = { status: 200 | 404 | 413 | 429 | 400; body: unknown };
+/** Either the answer to send straight away, or the way to store the chunk once it is read. */
+export type ChunkAdmission =
+  { ok: false; reply: ChunkReply } | { ok: true; store: (form: ChunkForm) => Promise<ChunkReply> };
+
 /**
- * Stores one upload chunk of a comment. Retries are free: a `seq` that is already stored is
- * acknowledged and nothing is rewritten. Chunk 0 carries the comment's meta and creates
- * `meta.json` and `status.json`; later chunks may arrive before it.
+ * Decides whether a chunk upload may go ahead, from its URL alone: the token, session and
+ * comment id must be real, the session within its rate limit and `seq` a valid number.
+ * Routes call this before they read the request body, so a refused request costs no more
+ * than a lookup. Each call counts as one request against the session's limit.
  */
-export async function receiveChunk(
+export async function admitChunk(
   token: string,
   sid: string,
   cid: string,
-  seq: number,
-  form: { audio: Blob; events: CaptureEvent[]; meta?: CommentMeta }
-): Promise<{ status: 200 | 404 | 413 | 429 | 400; body: unknown }> {
+  seq: number
+): Promise<ChunkAdmission> {
   const found = await resolveSession(token, sid);
-  if (found === null || !isUuid(cid)) return { status: 404, body: NOT_FOUND };
+  if (found === null || !isUuid(cid)) return { ok: false, reply: { status: 404, body: NOT_FOUND } };
   const { video, session } = found;
 
   // Counted only for real sessions, so guessed ids cannot fill the limiter.
   const rateKey = `${video.videoId}/${session.sessionId}`;
   if (!allowRequest(rateKey, MAX_CHUNK_REQUESTS_PER_MIN, RATE_WINDOW_MS)) {
-    return { status: 429, body: { error: 'too many requests' } };
+    return { ok: false, reply: { status: 429, body: { error: 'too many requests' } } };
   }
-
   if (!Number.isInteger(seq) || seq < 0 || seq >= MAX_CHUNKS_PER_COMMENT) {
-    return { status: 400, body: { error: 'invalid chunk number' } };
+    return { ok: false, reply: { status: 400, body: { error: 'invalid chunk number' } } };
   }
+  const ref: CommentRef = { videoId: video.videoId, sessionId: session.sessionId, commentId: cid };
+  return { ok: true, store: (form) => storeChunk(session, ref, seq, form) };
+}
+
+async function storeChunk(
+  session: SessionRecord,
+  ref: CommentRef,
+  seq: number,
+  form: ChunkForm
+): Promise<ChunkReply> {
+  const tooLarge = { status: 413, body: { error: 'chunk too large' } } as const;
   if (!(form.audio instanceof Blob)) return { status: 400, body: { error: 'audio is required' } };
-  if (form.audio.size > MAX_CHUNK_BYTES) return { status: 413, body: { error: 'chunk too large' } };
+  if (form.audio.size > MAX_CHUNK_BYTES) return tooLarge;
 
   let meta: CommentMeta | null = null;
   if (seq === 0) {
-    meta = parseMeta(form.meta, session, cid);
+    meta = parseMeta(form.meta, session, ref.commentId);
     if (meta === null) {
       return { status: 400, body: { error: 'chunk 0 needs a valid meta' } };
     }
   }
   const events = cleanEvents(form.events);
   const audio = form.audio;
-  const ref: CommentRef = { videoId: video.videoId, sessionId: session.sessionId, commentId: cid };
+  // Audio and events share the limits: what is stored for a chunk is both of them.
+  const eventBytes = eventsBytes(events);
+  if (eventBytes > MAX_EVENTS_BYTES) return tooLarge;
+  const chunkBytes = audio.size + eventBytes;
+  if (chunkBytes > MAX_CHUNK_BYTES) return tooLarge;
+
   const dir = commentDir(ref);
   const received = { status: 200, body: { received: seq } } as const;
 
@@ -360,7 +456,8 @@ export async function receiveChunk(
     if (status !== null && status.state !== 'receiving') {
       return { status: 400, body: { error: 'comment is already complete' } };
     }
-    if ((await storedBytes(dir)) + audio.size > MAX_COMMENT_BYTES) {
+    const stored = (await storedBytes(dir)) + (await storedEventsBytes(dir, seq));
+    if (stored + chunkBytes > MAX_COMMENT_BYTES) {
       return { status: 413, body: { error: 'comment too large' } };
     }
 
@@ -371,6 +468,25 @@ export async function receiveChunk(
     await putChunk(dir, seq, Buffer.from(await audio.arrayBuffer()), events);
     return received;
   });
+}
+
+/**
+ * Stores one upload chunk of a comment. Retries are free: a `seq` that is already stored is
+ * acknowledged and nothing is rewritten. Chunk 0 carries the comment's meta and creates
+ * `meta.json` and `status.json`; later chunks may arrive before it.
+ *
+ * Audio and events together are held to `MAX_CHUNK_BYTES` per chunk and `MAX_COMMENT_BYTES`
+ * per comment, and the events alone to `MAX_EVENTS_BYTES`.
+ */
+export async function receiveChunk(
+  token: string,
+  sid: string,
+  cid: string,
+  seq: number,
+  form: ChunkForm
+): Promise<ChunkReply> {
+  const admission = await admitChunk(token, sid, cid, seq);
+  return admission.ok ? admission.store(form) : admission.reply;
 }
 
 /**

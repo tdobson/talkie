@@ -17,6 +17,7 @@ import { withTmpData } from '@/test/helpers/tmpData';
 import { resetRateLimits } from './ratelimit';
 import {
   completeComment,
+  MAX_EVENTS_BYTES,
   finishSession,
   ReviewInputError,
   readSession,
@@ -71,6 +72,19 @@ async function readStatus(r: CommentRef): Promise<CommentStatus> {
 async function storedEvents(seq: number): Promise<unknown[]> {
   const text = await readFile(join(commentDir(ref), 'events', `${seq}.json`), 'utf8');
   return JSON.parse(text) as unknown[];
+}
+
+/** `count` layout events, the largest kind, with long numbers: about 300 bytes each. */
+function bigEvents(count: number): CaptureEvent[] {
+  const n = 1234.123456789012;
+  return Array.from({ length: count }, (_, i) => ({
+    t: i + 0.123456789,
+    type: 'layout' as const,
+    contentRect: { x: n, y: n, width: n, height: n },
+    containerWidth: n,
+    containerHeight: n,
+    fullscreen: false,
+  }));
 }
 
 /** Sends chunk 0 of the test comment with its meta. */
@@ -376,6 +390,93 @@ describe('chunks', () => {
     const stored = (await storedEvents(0)) as CaptureEvent[];
     expect(stored).toHaveLength(20_000);
     expect(stored[19_999]?.t).toBe(19_999);
+  });
+
+  it('stores only the known fields of each event', async () => {
+    const junk = 'x'.repeat(1000);
+    const rect = { x: 1, y: 2, width: 3, height: 4 };
+    const sent = [
+      { ...ev, zoomed: true, junk },
+      { t: 11, type: 'click', x: 0.1, y: 0.2, inside: false, vt: 3, button: 0, junk },
+      { t: 12, type: 'seek', from: 1, to: 2, via: 'scrollbar', junk },
+      { t: 13, type: 'zoom', state: 'start', scale: 2.5, originX: 0.3, originY: 0.4, junk },
+      { t: 14, type: 'zoomPan', originX: 0.5, originY: 0.6, junk },
+      { t: 15, type: 'visibility', state: 'hidden', junk },
+      {
+        t: 16,
+        type: 'layout',
+        contentRect: { ...rect, junk },
+        containerWidth: 800,
+        containerHeight: 450,
+        fullscreen: true,
+        junk,
+      },
+    ];
+    expect((await first(blob('a'), sent as unknown as CaptureEvent[])).status).toBe(200);
+    const text = await readFile(join(commentDir(ref), 'events', '0.json'), 'utf8');
+    expect(text).not.toContain('junk');
+    expect(JSON.parse(text)).toEqual([
+      { ...ev, zoomed: true },
+      { t: 11, type: 'click', x: 0.1, y: 0.2, inside: false, vt: 3, button: 0 },
+      { t: 12, type: 'seek', from: 1, to: 2, via: 'scrollbar' },
+      { t: 13, type: 'zoom', state: 'start', scale: 2.5, originX: 0.3, originY: 0.4 },
+      { t: 14, type: 'zoomPan', originX: 0.5, originY: 0.6 },
+      { t: 15, type: 'visibility', state: 'hidden' },
+      {
+        t: 16,
+        type: 'layout',
+        contentRect: rect,
+        containerWidth: 800,
+        containerHeight: 450,
+        fullscreen: true,
+      },
+    ]);
+  });
+
+  it('drops events whose own fields are missing or mistyped', async () => {
+    const sent = [
+      { t: 1, type: 'pointer', x: 'left', y: 0.5, inside: true, vt: 1 },
+      { t: 2, type: 'click', x: 0.5, y: 0.5, inside: true, vt: 1 },
+      { t: 3, type: 'seek', from: 1, to: 2, via: 'teleport' },
+      { t: 4, type: 'zoom', state: 'middle', scale: 2, originX: 0, originY: 0 },
+      { t: 5, type: 'zoomPan', originX: 0 },
+      { t: 6, type: 'visibility', state: 'x'.repeat(5000) },
+      { t: 7, type: 'layout', contentRect: null, containerWidth: 1, containerHeight: 1 },
+      { ...ev, zoomed: 'x'.repeat(5000) },
+    ];
+    expect((await first(blob('a'), sent as unknown as CaptureEvent[])).status).toBe(200);
+    expect(await storedEvents(0)).toEqual([ev]);
+  });
+
+  it('rejects a chunk whose events are too large with 413', async () => {
+    expect(JSON.stringify(bigEvents(20_000)).length).toBeGreaterThan(MAX_EVENTS_BYTES);
+    const res = await first(blob('a'), bigEvents(20_000));
+    expect(res).toEqual({ status: 413, body: { error: 'chunk too large' } });
+    expect(await readCommentMeta(ref)).toBeNull();
+  });
+
+  it('counts the events together with the audio toward the chunk limit', async () => {
+    const events = bigEvents(1000);
+    const size = JSON.stringify(events).length;
+    const audio = (bytes: number) => new Blob([new Uint8Array(bytes)]);
+    expect((await first(audio(MAX_CHUNK_BYTES - size + 10), events)).status).toBe(413);
+    expect((await first(audio(MAX_CHUNK_BYTES - size), events)).status).toBe(200);
+  });
+
+  it('rejects a comment that grows past the total limit through its events', async () => {
+    const events = bigEvents(3000);
+    const perChunk = JSON.stringify(events).length;
+    expect(perChunk).toBeLessThan(MAX_EVENTS_BYTES);
+    const fits = Math.floor(MAX_COMMENT_BYTES / perChunk);
+    const none = blob('');
+    for (let seq = 0; seq < fits; seq++) {
+      const res = await receiveChunk(token, sid, cid, seq, { audio: none, events, meta });
+      expect(res.status).toBe(200);
+    }
+    const over = await receiveChunk(token, sid, cid, fits, { audio: none, events });
+    expect(over).toEqual({ status: 413, body: { error: 'comment too large' } });
+    const small = await receiveChunk(token, sid, cid, fits, { audio: blob('x'), events: [ev] });
+    expect(small.status).toBe(200);
   });
 
   it('rejects oversized chunks with 413', async () => {
