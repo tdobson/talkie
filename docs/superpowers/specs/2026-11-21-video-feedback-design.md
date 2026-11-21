@@ -42,13 +42,13 @@ Out of scope (v1):
 |---|---|
 | Lint (TS, TSX, CSS, JSON) | Biome 2 (formatter disabled) |
 | Format | Prettier 3 |
-| Type check | TypeScript 7 (`tsc`, the native Go compiler previously previewed as `tsgo`) |
+| Type check | tsgo, shipped as TypeScript 7 (its `tsc` is the Go-native compiler) |
 | Unit and integration tests | Vitest (jsdom for components, node for server code) |
 | End-to-end tests | Playwright (Chromium with fake mic; Firefox and WebKit smoke project) |
 | Zip writing | `yazl` (streaming) |
 | JWT | `jose` |
 
-**Low CPU and IO priority everywhere.** Every build, test, lint and typecheck script runs through `scripts/lowprio.sh` (`exec ionice -c2 -n7 nice -n19 "$@"`). On the server, every spawned ffmpeg/ffprobe process and the processing queue's CPU-heavy work (sharp, clip frame generation) run at the same priority (`ionice -c2 -n7 nice -n19 ffmpeg ...`; sharp concurrency set to 1). The web server itself runs at normal priority so playback and uploads stay responsive.
+**Low CPU and IO priority everywhere: background capacity only.** Every build, test, lint and typecheck script runs through `scripts/lowprio.sh` (`exec ionice -c2 -n7 nice -n19 "$@"`). On the server, every spawned ffmpeg/ffprobe process and the processing queue's CPU-heavy work (sharp, clip frame generation) run at the same priority (`ionice -c2 -n7 nice -n19 ffmpeg ...`; sharp concurrency set to 1). The web server itself runs at normal priority so playback and uploads stay responsive.
 - No database. All state is plain files under `DATA_DIR`.
 - Background work runs in an in-process queue (concurrency 1), driven by per-comment `status.json` files so it survives restarts.
 

@@ -40,9 +40,13 @@ Project: ${REPO} (Next.js 16 + Mantine 9 video feedback tool).
 Spec: ${SPEC}
 Plan: ${PLAN} (read section 0 "Rules for every task" and section 2 "Shared contracts" before anything else).
 Hard rules:
-- Run EVERY install, build, lint, typecheck, test, playwright, ffmpeg and dev-server command at low priority:
+- Use background capacity only. Run EVERY install, build, lint, typecheck (tsgo = TypeScript 7 tsc), test, playwright,
+  ffmpeg, node, npx and dev-server command at low priority:
   ./scripts/lowprio.sh <cmd>  (or "ionice -c2 -n7 nice -n19 <cmd>" if that script does not exist yet).
+  That is IO best-effort level 7 (just above idle) and nice +19 (lowest CPU priority). Never a negative nice value.
   The yarn scripts in package.json already wrap themselves, so "yarn check" etc. are fine as they are.
+  Keep parallelism low: Vitest maxWorkers 2, Playwright workers 2, Next build cpus 2. Never start a second
+  "yarn build" or "yarn test:e2e" in the same tree while one is running.
 - TDD: failing test first, see it fail, implement, see it pass.
 - Shared files (package.json, yarn.lock, lib/types.ts, lib/testids.ts, lib/review/copy.ts, lib/constants.ts, tsconfig.json,
   biome.json, vitest.config.ts) are frozen after Phase 1 unless your task text says otherwise. Report needed changes
