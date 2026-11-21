@@ -1,0 +1,26 @@
+# Install: sudo cp deploy/video-feedback.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now video-feedback
+# See docs/DEPLOY.md for the whole procedure.
+
+[Unit]
+Description=Video feedback (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tdobson
+WorkingDirectory=/srv/video-feedback/app
+# Secrets and site settings. Values in this file win over the Environment= line below,
+# so do not set NODE_ENV, HOSTNAME or PORT in it.
+EnvironmentFile=/srv/video-feedback/env
+Environment=NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3000
+# Check the path with "command -v node" on the host and change it if node lives elsewhere.
+ExecStart=/usr/bin/node .next/standalone/server.js
+Restart=on-failure
+RestartSec=5
+Nice=0
+# ffmpeg and sharp work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
+
+[Install]
+WantedBy=multi-user.target
