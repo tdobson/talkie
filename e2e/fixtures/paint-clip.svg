@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 320 180">
+  <defs>
+    <!-- objectBoundingBox (the default), with a half see-through stop in the middle. -->
+    <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b4c7e"/>
+      <stop offset="0.55" stop-color="#e8a87c" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#f6e7c1"/>
+    </linearGradient>
+    <!-- A soft shadow: one radial fade, stretched into an ellipse by the shape's box. -->
+    <radialGradient id="soft">
+      <stop offset="0" stop-color="#000" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <!-- userSpaceOnUse, a focal point off centre and a gradientTransform. -->
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="70" cy="60" r="34" fx="58" fy="50" gradientTransform="translate(4 -2) rotate(25 70 60)">
+      <stop offset="0" stop-color="#fffbe0"/>
+      <stop offset="0.7" stop-color="#f4b942"/>
+      <stop offset="1" stop-color="#c8553d"/>
+    </radialGradient>
+    <!-- userSpaceOnUse with a rotation, used as a stroke. -->
+    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="150" y1="40" x2="250" y2="40" gradientTransform="rotate(30 200 70)">
+      <stop offset="0" stop-color="#1b998b"/>
+      <stop offset="1" stop-color="#ff3366"/>
+    </linearGradient>
+    <!-- Stops inherited through xlink:href and href. -->
+    <linearGradient id="panel" xlink:href="#dusk" x1="0" y1="0" x2="1" y2="1"/>
+    <linearGradient id="slats" href="#rim" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0" gradientTransform="rotate(10)"/>
+    <!-- A clip with a transform of its own, on a group. -->
+    <clipPath id="porthole" transform="rotate(20 240 140)">
+      <rect x="210" y="118" width="60" height="44" rx="10"/>
+    </clipPath>
+    <!-- A clip in objectBoundingBox units, on a shape that is turned. -->
+    <clipPath id="lens" clipPathUnits="objectBoundingBox">
+      <circle cx="0.5" cy="0.5" r="0.5"/>
+    </clipPath>
+    <!-- Three bars, one of them skewed, as one clip on a moved group. -->
+    <clipPath id="bars">
+      <rect x="20" y="120" width="20" height="50"/>
+      <rect x="50" y="120" width="20" height="50"/>
+      <path d="M80 120h20v50h-20z" transform="skewX(-10)"/>
+    </clipPath>
+    <!-- Clips that end up in precomps once things fade: one under a group that fades, and one
+         over a child that fades. -->
+    <clipPath id="slot"><rect x="112" y="22" width="30" height="44" rx="15"/></clipPath>
+    <clipPath id="notch"><circle cx="127" cy="100" r="18"/></clipPath>
+    <linearGradient id="pane-tone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6d597a"/>
+      <stop offset="1" stop-color="#b56576" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  <rect id="backdrop" width="320" height="180" fill="url(#dusk)"/>
+  <ellipse id="shadow" cx="160" cy="150" rx="80" ry="14" fill="url(#soft)"/>
+  <circle id="sun" cx="70" cy="60" r="34" fill="url(#glow)"/>
+  <rect id="card" x="150" y="30" width="100" height="70" rx="6" fill="url(#panel)" stroke="url(#rim)" stroke-width="8"/>
+  <g id="window" clip-path="url(#porthole)">
+    <rect x="200" y="110" width="80" height="60" fill="#3d405b"/>
+    <circle cx="250" cy="135" r="22" fill="url(#glow)"/>
+    <path d="M200 170 L280 110" fill="none" stroke="#f2cc8f" stroke-width="6"/>
+  </g>
+  <rect id="tile" x="270" y="20" width="40" height="70" transform="rotate(15 290 55)" fill="url(#slats)" clip-path="url(#lens)"/>
+  <g id="barred" clip-path="url(#bars)" transform="translate(5 0)">
+    <circle cx="60" cy="145" r="30" fill="url(#panel)"/>
+  </g>
+  <g id="sign">
+    <g id="pane" clip-path="url(#slot)">
+      <rect x="105" y="15" width="44" height="58" fill="url(#pane-tone)"/>
+      <circle cx="140" cy="30" r="12" fill="#e56b6f"/>
+    </g>
+  </g>
+  <g id="badge" clip-path="url(#notch)">
+    <rect id="badge-back" x="105" y="78" width="44" height="44" fill="#81b29a"/>
+    <rect id="badge-bar" x="100" y="94" width="54" height="12" fill="url(#rim)" stroke="#355070" stroke-width="3"/>
+  </g>
+</svg>
