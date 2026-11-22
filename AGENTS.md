@@ -5,7 +5,8 @@ video in a web page, with a scrub bar, chapters, captions and speed control, but
 at any size and weighs a fraction of an MP4. The audio is the clock: the picture always shows the
 frame that matches the sound.
 
-Read this file first. It tells you what each piece is, where to go next, and the commands.
+Read this file first. It tells you what each piece is, where to go next, and the commands. New to
+all of it, or not sure whether to use Talkie or an MP4? Read [docs/GUIDE.md](docs/GUIDE.md).
 
 ## Map of the repo
 
@@ -31,6 +32,7 @@ How the packages depend on each other: `format` stands alone. `author` and `play
 
 | I want to | Read |
 | --- | --- |
+| Start from scratch: which format, codecs, machines, deploys, traps | [docs/GUIDE.md](docs/GUIDE.md) |
 | Understand how the pieces connect | [docs/how-it-works.md](docs/how-it-works.md) |
 | Make a film from an empty folder | [docs/make-a-film.md](docs/make-a-film.md) |
 | Add a scene | [docs/authoring.md](docs/authoring.md#add-a-scene) |
@@ -46,6 +48,7 @@ How the packages depend on each other: `format` stands alone. `author` and `play
 | Change the player | [docs/how-it-works.md](docs/how-it-works.md#talkieplayer), then `packages/player/src/element.ts` |
 | Change the format | [spec/talkie-format-1.md](spec/talkie-format-1.md), then `packages/format/src/validate.ts` |
 | Put a film up for review and read the feedback | [docs/review-platform-for-agents.md](docs/review-platform-for-agents.md) |
+| Make a screencast or screen recording | Not Talkie: an H.264 MP4. [docs/review-platform-for-agents.md](docs/review-platform-for-agents.md#screencasts-and-screen-recordings-mp4-not-talkie) |
 | Just watch a `.lottie` | Drop it on https://talkie.tdobson.net (nothing is uploaded) |
 | Deploy the review app or the drop player | [docs/DEPLOY.md](docs/DEPLOY.md), `scripts/deploy/` |
 

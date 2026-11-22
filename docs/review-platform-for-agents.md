@@ -19,6 +19,39 @@ It takes two kinds of film:
   the caption on screen, so feedback maps straight back to `scenes/<id>.ts` and
   `script/<id>.json`.
 
+## On and off, at a glance
+
+- **On:** copy the file into the inbox on geriatrix, then import it with one API call (new video, or
+  the next version of one already there). You get a review link. See "Put a film up".
+- **Off:** download the feedback as `export.json` (for a model) or `export.zip` (with stills, and
+  clips if asked). See "Read the feedback". For a Talkie film the zip also holds its
+  `talkie.json` and captions, so scene ids map back to source. The film itself is not in it: you
+  have it already.
+- **Delete:** there is no delete in the API. Ask Tim.
+
+## Screencasts and screen recordings: MP4, not Talkie
+
+Talkie is for films drawn as vector scenes. It has no video or bitmap scenes, and the SVG
+importer refuses bitmaps on purpose. A screencast, a screen recording, or a Playwright video of a
+real app is pixels, so it goes on the review platform as an MP4:
+
+- H.264 video in `yuv420p`, AAC audio. The platform refuses any other video codec (H.265, VP8,
+  VP9, AV1). Playwright records VP8 WebM, so encode it first.
+- Burn captions in if you want them: the review player shows no subtitle track, and the stills
+  are frames of the video.
+- Encode on asterix, xebit-dev1 or xebit-dev3, never on tragicomix.
+
+```bash
+scripts/low ffmpeg -i in.webm -c:v libx264 -pix_fmt yuv420p -crf 20 -preset slow \
+  -c:a aac -b:a 128k -movflags +faststart out.mp4
+```
+
+An MP4's feedback has no scene names (that is Talkie only), so keep a sidecar `<film>.steps.json`
+with one entry per step: a stable `id`, `start` and `end` in seconds of the final MP4, the
+`caption` on screen, and click positions as fractions of the frame (0..1, the same as the export's
+pointer). Each comment's `pausedAtVideoTime` then maps to a step. Keep the step ids the same across
+re-recordings, and import a new cut as the next version of the same video.
+
 ## What you need
 
 - ssh to `geriatrix` (to copy the film into the inbox).

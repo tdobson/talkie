@@ -1,5 +1,8 @@
 # Talkie and video feedback
 
+New here? Start with [docs/GUIDE.md](docs/GUIDE.md): which format to use, codecs, getting films on
+and off the review platform, machines, deploys, and the traps.
+
 Two tools in one repo, built to go together:
 
 | | What it is | Live | Read |
@@ -12,6 +15,10 @@ Two tools in one repo, built to go together:
 - **Make an explainer, training or how-to film:** make it in Talkie. It is cheap to change (edit a
   scene file, rebuild in seconds), the narration is generated from the script, captions come free,
   and the file is small enough to send anywhere. Export an MP4 only when a site insists on one.
+- **Screencast or screen recording of a real app:** not Talkie. Talkie is vector drawings only, with
+  no video or bitmap scenes. Record it, encode an MP4 with H.264 video (`yuv420p`) and AAC audio,
+  and put that on video feedback. See
+  [docs/review-platform-for-agents.md](docs/review-platform-for-agents.md#screencasts-and-screen-recordings-mp4-not-talkie).
 - **Get someone's reaction to a film, MP4 or Talkie:** put it on video feedback and send them the
   review link. No account needed for reviewers. Talking while pointing beats writing notes, and
   the export is precise enough for an agent to fix the film from it.
