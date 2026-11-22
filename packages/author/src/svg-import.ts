@@ -65,6 +65,27 @@ const REFUSED_ATTRIBUTES: Record<string, { reason: string; harmless: string }> =
   filter: { reason: 'uses a filter, which cannot be drawn', harmless: 'none' },
   'stroke-dasharray': { reason: 'has a dashed stroke, which cannot be drawn', harmless: 'none' },
   'mix-blend-mode': { reason: 'uses a blend mode, which cannot be drawn', harmless: 'normal' },
+  marker: { reason: 'uses markers, which cannot be drawn. Draw them as shapes', harmless: 'none' },
+  'marker-start': {
+    reason: 'uses markers, which cannot be drawn. Draw them as shapes',
+    harmless: 'none',
+  },
+  'marker-mid': {
+    reason: 'uses markers, which cannot be drawn. Draw them as shapes',
+    harmless: 'none',
+  },
+  'marker-end': {
+    reason: 'uses markers, which cannot be drawn. Draw them as shapes',
+    harmless: 'none',
+  },
+  'paint-order': {
+    reason: 'has a paint-order other than normal, which cannot be drawn',
+    harmless: 'normal',
+  },
+  'vector-effect': {
+    reason: 'has a vector-effect, which cannot be drawn. Use none',
+    harmless: 'none',
+  },
 };
 const INHERITED = [
   'fill',
@@ -435,7 +456,8 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
 
   const SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon']);
 
-  const CLIP_SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline']);
+  /** What may sit in a clipPath. A line is allowed but adds no area. */
+  const CLIP_SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polygon', 'polyline']);
 
   /** The value of an inherited property on el, else on the nearest ancestor in the document. */
   const inheritedProp = (el: INode, name: string): string | undefined => {
@@ -498,7 +520,9 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     if (units !== 'userSpaceOnUse' && units !== 'objectBoundingBox') {
       fail(clip, `has clipPathUnits="${units}", which cannot be read`);
     }
-    let space = matrix;
+    // The clipPath transform sits outside the bounding box mapping, so its numbers are user
+    // units, as Chromium, Firefox, WebKit and resvg all read them.
+    let space = multiply(matrix, matrixOf(clip, cp.transform));
     if (units === 'objectBoundingBox') {
       const box = tightBox(geometry(el));
       if (!box || box.width === 0 || box.height === 0) {
@@ -510,7 +534,6 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
       const { x, y, width, height } = box as NonNullable<typeof box>;
       space = multiply(space, [width, 0, 0, height, x, y]);
     }
-    space = multiply(space, matrixOf(clip, cp.transform));
     if (!invert(space)) {
       fail(clip, 'is squashed flat, so it cannot be drawn');
     }
@@ -525,22 +548,55 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
           'browsers ignore a group inside a clipPath. Put the shapes straight in the clipPath'
         );
       }
-      if (!CLIP_SHAPES.has(child.name) && child.name !== 'line') {
-        fail(child, 'cannot be drawn in a clip');
-      }
       const c = props(child);
-      if (c['clip-path'] !== undefined && c['clip-path'] !== 'none') {
-        fail(child, 'clips a clip, which cannot be drawn');
+      // A <use> of a basic shape, which is how Illustrator's Save As writes every clip: the
+      // shape is drawn where the use puts it, and takes what it does not say from the use.
+      let shape = child;
+      let place = space;
+      if (child.name === 'use') {
+        const href = (child.attributes?.href ?? child.attributes?.['xlink:href'])?.trim();
+        if (!href) {
+          fail(child, 'points at nothing');
+        }
+        shape = target(child, href as string, `href="${href}"`);
+        if (!CLIP_SHAPES.has(shape.name)) {
+          fail(
+            child,
+            `points at a <${shape.name}> inside a clipPath, which cannot be drawn. Put the shape itself in the clipPath`
+          );
+        }
+        const offset: Matrix = [1, 0, 0, 1, length(child, 'x', c.x), length(child, 'y', c.y)];
+        place = multiply(multiply(space, matrixOf(child, c.transform)), offset);
+      } else if (!CLIP_SHAPES.has(child.name)) {
+        fail(
+          child,
+          'cannot be drawn in a clip. Only path, rect, circle, ellipse, line, polygon, polyline and a <use> of one are read'
+        );
       }
-      const visibility = inheritedProp(child, 'visibility');
+      const s = shape === child ? c : props(shape);
+      /** A property of the shape, else of the use or the clipPath above it. */
+      const lookup = (name: string): string | undefined =>
+        s[name] !== undefined && s[name] !== 'inherit' ? s[name] : inheritedProp(child, name);
+      for (const at of new Set([child, shape])) {
+        const value = props(at)['clip-path'];
+        if (value !== undefined && value !== 'none') {
+          fail(at, 'clips a clip, which cannot be drawn');
+        }
+      }
+      const visibility = lookup('visibility');
       // A line adds no area, and fill, stroke and opacity do not count in a clip.
-      if (c.display === 'none' || visibility === 'hidden' || visibility === 'collapse') {
+      if (
+        c.display === 'none' ||
+        s.display === 'none' ||
+        visibility === 'hidden' ||
+        visibility === 'collapse'
+      ) {
         continue;
       }
-      if (inheritedProp(child, 'clip-rule') === 'evenodd') {
+      if (lookup('clip-rule') === 'evenodd') {
         fail(child, 'is clipped with the evenodd rule, which cannot be drawn. Use nonzero');
       }
-      const paths = child.name === 'line' ? null : outline(child, c);
+      const paths = shape.name === 'line' ? null : outline(shape, s);
       if (!paths) {
         continue;
       }
@@ -557,11 +613,11 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
             a.y < b.y + b.height &&
             b.y < a.y + a.height
           ) {
-            fail(child, 'has subpaths that overlap, so its holes cannot be drawn as a clip');
+            fail(shape, 'has subpaths that overlap, so its holes cannot be drawn as a clip');
           }
         })
       );
-      const placed = transformPaths(paths, multiply(space, matrixOf(child, c.transform)));
+      const placed = transformPaths(paths, multiply(place, matrixOf(shape, s.transform)));
       contours.push(...placed.map((path) => ({ ...path, closed: true })));
     }
     return contours;
@@ -626,8 +682,13 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
           fail(child, 'is inside a gradient, which only holds stops');
         }
       }
-      if (props(g)['color-interpolation'] === 'linearRGB') {
-        fail(g, 'asks for linearRGB colour mixing, which cannot be drawn');
+      // An inherited property, so an ancestor in the document can set it. Keywords ignore case.
+      const mixing = (inheritedProp(g, 'color-interpolation') ?? 'auto').toLowerCase();
+      if (mixing !== 'auto' && mixing !== 'srgb') {
+        fail(
+          g,
+          `asks for ${mixing === 'linearrgb' ? 'linearRGB' : `"${mixing}"`} colour mixing, which cannot be drawn. Use sRGB`
+        );
       }
     }
     const spread = read('spreadMethod');
@@ -707,6 +768,10 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     let space = matrix;
     if (box) {
       const b = tightBox(paths);
+      if ((!b || b.width === 0 || b.height === 0) && name === 'fill') {
+        // A shape with no area has no fill to paint, so browsers paint none.
+        return { opacity: 1 };
+      }
       if (!b || b.width === 0 || b.height === 0) {
         fail(
           el,
@@ -757,7 +822,7 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     if (Math.hypot(focal[0] - centre[0], focal[1] - centre[1]) >= 0.99 * r) {
       fail(
         fxAt?.[1] ?? fyAt?.[1] ?? start,
-        'has its focal point fx, fy on or outside the circle, which cannot be drawn. Move it inside'
+        'has its focal point fx, fy within 1% of the edge of the circle or beyond it, which cannot be drawn. Move it further in'
       );
     }
     if (isNearSimilarity(space, r)) {
@@ -866,7 +931,15 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     const fillOpacity = fraction(el, 'fill-opacity', style['fill-opacity']) * filled.opacity;
     const strokeOpacity = fraction(el, 'stroke-opacity', style['stroke-opacity']) * stroked.opacity;
     if (fill && stroke && fillOpacity !== strokeOpacity) {
-      fail(el, 'has a fill-opacity and a stroke-opacity that differ, which cannot be drawn');
+      const stops = [filled.opacity < 1 ? 'fill' : '', stroked.opacity < 1 ? 'stroke' : '']
+        .filter(Boolean)
+        .join(' or ');
+      fail(
+        el,
+        stops
+          ? `has a fill and a stroke that differ in opacity (a stop-opacity of the ${stops} gradient counts), which cannot be drawn`
+          : 'has a fill-opacity and a stroke-opacity that differ, which cannot be drawn'
+      );
     }
     const out: Style = {};
     if (fill) {

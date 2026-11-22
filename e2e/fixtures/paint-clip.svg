@@ -47,6 +47,14 @@
       <stop offset="0" stop-color="#6d597a"/>
       <stop offset="1" stop-color="#b56576" stop-opacity="0.6"/>
     </linearGradient>
+    <!-- objectBoundingBox units with a transform of the clipPath's own, which browsers read in
+         user units, outside the box mapping. -->
+    <clipPath id="offset" clipPathUnits="objectBoundingBox" transform="translate(4 -6) rotate(8 298 139)">
+      <ellipse cx="0.5" cy="0.5" rx="0.4" ry="0.45"/>
+    </clipPath>
+    <!-- A clip as Illustrator's Save As writes it: a use of a shape kept in defs. -->
+    <rect id="strap-shape" x="6" y="8" width="22" height="100" rx="11"/>
+    <clipPath id="strap"><use xlink:href="#strap-shape" x="0" y="4" style="overflow:visible;"/></clipPath>
   </defs>
   <rect id="backdrop" width="320" height="180" fill="url(#dusk)"/>
   <ellipse id="shadow" cx="160" cy="150" rx="80" ry="14" fill="url(#soft)"/>
@@ -70,5 +78,10 @@
   <g id="badge" clip-path="url(#notch)">
     <rect id="badge-back" x="105" y="78" width="44" height="44" fill="#81b29a"/>
     <rect id="badge-bar" x="100" y="94" width="54" height="12" fill="url(#rim)" stroke="#355070" stroke-width="3"/>
+  </g>
+  <rect id="slit" x="282" y="104" width="32" height="70" fill="url(#pane-tone)" clip-path="url(#offset)"/>
+  <g id="strap-art" clip-path="url(#strap)">
+    <rect x="0" y="0" width="34" height="120" fill="#e07a5f"/>
+    <circle cx="17" cy="60" r="12" fill="#3d405b"/>
   </g>
 </svg>

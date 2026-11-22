@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- objectBoundingBox clips with a transform of their own. Browsers read the transform in user
+       units, outside the box mapping. -->
+  <defs>
+    <clipPath id="shifted" clipPathUnits="objectBoundingBox" transform="translate(40 0)">
+      <rect width="0.5" height="1"/>
+    </clipPath>
+    <clipPath id="turned" clipPathUnits="objectBoundingBox" transform="rotate(10)">
+      <ellipse cx="0.5" cy="0.5" rx="0.45" ry="0.3"/>
+    </clipPath>
+  </defs>
+  <rect id="slab" x="20" y="20" width="160" height="70" fill="#3d405b" clip-path="url(#shifted)"/>
+  <rect id="disc" x="20" y="110" width="160" height="70" fill="#e07a5f" clip-path="url(#turned)"/>
+</svg>

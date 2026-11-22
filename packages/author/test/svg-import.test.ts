@@ -250,6 +250,25 @@ describe('importSvg refuses what it cannot draw', () => {
     expect(() => importSvg(svg, 'use.svg')).toThrow(/use\.svg: <use> \(no id\)/);
   });
 
+  it.each([
+    ['marker-end="url(#m)"', 'markers'],
+    ['marker-start="url(#m)"', 'markers'],
+    ['marker-mid="url(#m)"', 'markers'],
+    ['style="marker: url(#m)"', 'markers'],
+    ['paint-order="stroke"', 'paint-order'],
+    ['vector-effect="non-scaling-stroke"', 'vector-effect'],
+  ])('refuses %s, which would change the picture', (attribute, reason) => {
+    const text = `<svg><g id="g" ${attribute}><path d="M0 0H10" stroke="#000"/></g></svg>`;
+    expect(() => importSvg(text, 'a.svg')).toThrow(UnsupportedSvgError);
+    expect(() => importSvg(text, 'a.svg')).toThrow(new RegExp(`<g id="g"> .*${reason}`));
+  });
+
+  it('accepts the harmless values of those attributes', () => {
+    const text =
+      '<svg><path id="p" d="M0 0H10" stroke="#000" marker-end="none" paint-order="normal" vector-effect="none"/></svg>';
+    expect(importSvg(text, 'a.svg').children.map((c) => c.name)).toEqual(['p']);
+  });
+
   it('refuses colours and lengths it cannot read', () => {
     const colour = '<svg><rect id="r" width="5" height="5" fill="currentColor"/></svg>';
     expect(() => importSvg(colour, 'c.svg')).toThrow(UnsupportedSvgError);
@@ -448,6 +467,57 @@ describe('importSvg gradients', () => {
     expect(() =>
       importSvg(svg(far, '<rect id="r" width="10" height="10" fill="url(#g)"/>'), 't.svg')
     ).toThrow(/focal point/);
+  });
+
+  it('says a focal point near the edge is too near the edge, not outside', () => {
+    const near = `<radialGradient id="g" fx="0.9975">${STOPS}</radialGradient>`;
+    expect(() =>
+      importSvg(svg(near, '<rect id="r" width="10" height="10" fill="url(#g)"/>'), 't.svg')
+    ).toThrow(
+      /focal point fx, fy within 1% of the edge of the circle or beyond it, which cannot be drawn\. Move it further in/
+    );
+  });
+
+  it('refuses linearRGB colour mixing inherited from an ancestor, in any case', () => {
+    const body = '<rect id="r" width="10" height="10" fill="url(#g)"/>';
+    const gradient = `<linearGradient id="g">${STOPS}</linearGradient>`;
+    const onDefs = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><defs color-interpolation="linearRGB">${gradient}</defs>${body}</svg>`;
+    expect(() => importSvg(onDefs, 't.svg')).toThrow(/<linearGradient id="g"> asks for linearRGB/);
+    const onRoot = svg(gradient, body, 'viewBox="0 0 200 100" color-interpolation="linearRGB"');
+    expect(() => importSvg(onRoot, 't.svg')).toThrow(/linearRGB/);
+    const mixed = svg(
+      `<linearGradient id="g" color-interpolation="LinearRGB">${STOPS}</linearGradient>`,
+      body
+    );
+    expect(() => importSvg(mixed, 't.svg')).toThrow(/linearRGB/);
+    // sRGB and auto are what the film draws, and the gradient may say so over an ancestor.
+    const over = svg(
+      `<linearGradient id="g" color-interpolation="SRGB">${STOPS}</linearGradient>`,
+      body,
+      'viewBox="0 0 200 100" color-interpolation="linearRGB"'
+    );
+    expect(linear(over).stops).toEqual(WHITE_BLUE);
+    // On the shape that uses the gradient it makes no difference.
+    const onShape = svg(gradient, body.replace('<rect', '<rect color-interpolation="linearRGB"'));
+    expect(linear(onShape).stops).toEqual(WHITE_BLUE);
+  });
+
+  it('paints no fill for an objectBoundingBox gradient on a shape with no area, as browsers do', () => {
+    const defs = `<linearGradient id="g">${STOPS}</linearGradient>`;
+    const body =
+      '<g fill="url(#g)" stroke="#000"><rect id="box" width="10" height="10"/><path id="rule" d="M10 50 H190"/></g>';
+    const rule = find(importSvg(svg(defs, body), 't.svg'), 'rule');
+    expect(rule.items[0].style).toEqual({ stroke: '#000000', strokeWidth: 1 });
+    expect(rule.opacity).toBe(100);
+  });
+
+  it('names the stop-opacity when a flattened gradient fill and a stroke differ in opacity', () => {
+    const defs =
+      '<linearGradient id="g"><stop stop-color="#123456" stop-opacity="0.5"/></linearGradient>';
+    const body = '<rect id="r" width="10" height="10" fill="url(#g)" stroke="#000"/>';
+    expect(() => importSvg(svg(defs, body), 't.svg')).toThrow(
+      /<rect id="r"> has a fill and a stroke that differ in opacity \(a stop-opacity of the fill gradient counts\), which cannot be drawn/
+    );
   });
 
   it('follows href for stops and attributes, own attributes first, xlink:href too', () => {
@@ -731,6 +801,91 @@ describe('importSvg clip paths', () => {
     expect(corners(clipOf(svg(defs, body), 'grp'))).toEqual([{ x1: 10, y1: 10, x2: 55, y2: 50 }]);
   });
 
+  it('applies the clipPath transform outside the objectBoundingBox mapping, as browsers do', () => {
+    // Chromium, Firefox, WebKit and resvg read the numbers of the transform in user units.
+    const moved =
+      '<clipPath id="c" clipPathUnits="objectBoundingBox" transform="translate(40 0)"><rect width="0.5" height="1"/></clipPath>';
+    const body = '<rect id="r" x="20" y="20" width="160" height="160" clip-path="url(#c)"/>';
+    expect(corners(clipOf(svg(moved, body), 'r'))).toEqual([{ x1: 60, y1: 20, x2: 140, y2: 180 }]);
+    const squeezed =
+      '<clipPath id="c" clipPathUnits="objectBoundingBox" transform="scale(0.5 1)"><rect width="1" height="1"/></clipPath>';
+    const wide = '<rect id="r" x="100" width="200" height="100" clip-path="url(#c)"/>';
+    expect(corners(clipOf(svg(squeezed, wide), 'r'))).toEqual([
+      { x1: 50, y1: 0, x2: 150, y2: 100 },
+    ]);
+    // A turn about the origin of user space, not of the box.
+    const turned =
+      '<clipPath id="c" clipPathUnits="objectBoundingBox" transform="rotate(90)"><rect width="1" height="0.5"/></clipPath>';
+    const [contour] = clipOf(
+      svg(turned, '<rect id="r" x="10" y="20" width="40" height="20" clip-path="url(#c)"/>'),
+      'r'
+    );
+    const box = bbox(contour.v);
+    expect(box.x1).toBeCloseTo(-30, 9);
+    expect(box.x2).toBeCloseTo(-20, 9);
+    expect(box.y1).toBeCloseTo(10, 9);
+    expect(box.y2).toBeCloseTo(50, 9);
+  });
+
+  it('reads a <use> of a basic shape inside a clipPath, as Illustrator Save As writes it', () => {
+    const root = 'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 200 100"';
+    const defs =
+      '<rect id="SVGID_1_" x="10" y="10" width="20" height="20"/>' +
+      '<clipPath id="SVGID_2_"><use xlink:href="#SVGID_1_" style="overflow:visible;"/></clipPath>';
+    const body =
+      '<g id="grp" style="clip-path:url(#SVGID_2_);"><rect width="100" height="100"/></g>';
+    const text = svg(defs, body, root);
+    expect(corners(clipOf(text, 'grp'))).toEqual([{ x1: 10, y1: 10, x2: 30, y2: 30 }]);
+    // The rect in defs is not drawn.
+    expect(importSvg(text, 't.svg').children.map((c) => c.name)).toEqual(['grp']);
+    // x and y move it, after the use's transform, and the shape's own transform goes inside.
+    const placed =
+      '<path id="s" d="M0 0H10V10H0Z" transform="scale(2)"/>' +
+      '<clipPath id="c"><use href="#s" x="5" y="1" transform="translate(100 0)"/></clipPath>';
+    expect(
+      corners(
+        clipOf(svg(placed, '<rect id="r" width="200" height="100" clip-path="url(#c)"/>'), 'r')
+      )
+    ).toEqual([{ x1: 105, y1: 1, x2: 125, y2: 21 }]);
+    // The shape takes clip-rule and visibility from the use when it has none of its own.
+    const hidden =
+      '<rect id="s" width="10" height="10"/>' +
+      '<clipPath id="c"><use href="#s" visibility="hidden"/><rect x="50" width="10" height="10"/></clipPath>';
+    expect(
+      corners(
+        clipOf(svg(hidden, '<rect id="r" width="100" height="100" clip-path="url(#c)"/>'), 'r')
+      )
+    ).toEqual([{ x1: 50, y1: 0, x2: 60, y2: 10 }]);
+    const evenodd =
+      '<rect id="s" width="10" height="10"/>' +
+      '<clipPath id="c"><use id="u" href="#s" clip-rule="evenodd"/></clipPath>';
+    expect(() =>
+      importSvg(svg(evenodd, '<rect id="r" width="10" height="10" clip-path="url(#c)"/>'), 't.svg')
+    ).toThrow(/evenodd rule/);
+  });
+
+  it('refuses a <use> in a clipPath that does not point at a basic shape, and says what to do', () => {
+    const body = '<rect id="r" width="10" height="10" clip-path="url(#c)"/>';
+    const group = svg(
+      '<g id="s"><rect width="5" height="5"/></g><clipPath id="c"><use id="u" href="#s"/></clipPath>',
+      body
+    );
+    expect(() => importSvg(group, 't.svg')).toThrow(
+      /<use id="u"> points at a <g> inside a clipPath, which cannot be drawn\. Put the shape itself in the clipPath/
+    );
+    const missing = svg('<clipPath id="c"><use id="u" href="#x"/></clipPath>', body);
+    expect(() => importSvg(missing, 't.svg')).toThrow(
+      /<use id="u"> has href="#x", which points at nothing/
+    );
+    const nothing = svg('<clipPath id="c"><use id="u"/></clipPath>', body);
+    expect(() => importSvg(nothing, 't.svg')).toThrow(/<use id="u"> points at nothing/);
+    const clipped = svg(
+      '<clipPath id="d"><rect width="1" height="1"/></clipPath><rect id="s" width="5" height="5" clip-path="url(#d)"/><clipPath id="c"><use href="#s"/></clipPath>',
+      body
+    );
+    expect(() => importSvg(clipped, 't.svg')).toThrow(/<rect id="s"> clips a clip/);
+  });
+
   it('refuses clip units it cannot read, a flat box, and a clip-path at something else', () => {
     const body = '<rect id="r" width="10" height="10" clip-path="url(#c)"/>';
     expect(() =>
@@ -747,8 +902,13 @@ describe('importSvg clip paths', () => {
     expect(() => importSvg(other, 't.svg')).toThrow(/points at a <linearGradient>, not a clipPath/);
     const text = svg('<clipPath id="c"><text id="t">hi</text></clipPath>', body);
     expect(() => importSvg(text, 't.svg')).toThrow(UnsupportedSvgError);
-    const use = svg('<clipPath id="c"><use id="u" href="#x"/></clipPath>', body);
-    expect(() => importSvg(use, 't.svg')).toThrow(/<use id="u"> cannot be drawn in a clip/);
+    const image = svg(
+      '<clipPath id="c"><polyline id="u" points="0 0"/><switch id="w"/></clipPath>',
+      body
+    );
+    expect(() => importSvg(image, 't.svg')).toThrow(
+      /<switch id="w"> cannot be drawn in a clip\. Only path, rect, circle, ellipse, line, polygon, polyline and a <use> of one are read/
+    );
     const shared = svg('<clipPath id="c"/><clipPath id="c"/>', body);
     expect(() => importSvg(shared, 't.svg')).toThrow(/points at id "c", which two elements share/);
   });
