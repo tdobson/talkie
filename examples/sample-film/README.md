@@ -53,5 +53,8 @@ Where each helper is used:
 - `gauge`: `line`, `path`, `circle`, `draw`, `tween`, plus a line with its own caption
 - `setting-out`: `node`, a `position` tween, and a fade out
 
+`art/tile.svg` shows the two paint features art can carry: the clay is a `linearGradient`, and a
+`clipPath` stops the grooves at the curve of the tile's foot.
+
 Keep the picture above y 560 on this 1280 by 720 stage. The strip below is kept clear for
 captions, and `talkie qa` fails a scene that draws into it.

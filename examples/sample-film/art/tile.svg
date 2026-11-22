@@ -1,4 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 200">
-  <path id="body" d="M0 0 H150 V180 Q75 200 0 180 Z" fill="#b5533c"/>
+  <defs>
+    <!-- The clay is lighter at the head of the tile and darker at its curved foot. -->
+    <linearGradient id="clay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c8664b"/>
+      <stop offset="1" stop-color="#9c4532"/>
+    </linearGradient>
+    <!-- The outline of the tile, so the grooves stop at the curve of the foot. -->
+    <clipPath id="outline">
+      <path d="M0 0 H150 V180 Q75 200 0 180 Z"/>
+    </clipPath>
+  </defs>
+  <path id="body" d="M0 0 H150 V180 Q75 200 0 180 Z" fill="url(#clay)"/>
+  <g id="grooves" clip-path="url(#outline)">
+    <path d="M38 24 V200 M75 24 V200 M112 24 V200" fill="none" stroke="#8f3f2d" stroke-width="4"/>
+  </g>
   <rect id="nib" x="55" y="0" width="40" height="14" fill="#8f3f2d"/>
 </svg>
