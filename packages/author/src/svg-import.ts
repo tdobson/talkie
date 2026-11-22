@@ -1,5 +1,6 @@
 import { parseSync, type INode } from 'svgson';
-import type { BezierPath, ShapeItem, Style, Vec } from './model';
+import type { BezierPath, GradientStop, Paint, ShapeItem, Style, Vec } from './model';
+import { applyMatrix, bakeLinear, invert, isNearSimilarity, tightBox } from './paint';
 import { parsePathD, transformPaths, type Matrix } from './path';
 
 /** The drawing uses something the importer cannot turn into plain filled and stroked paths. */
@@ -31,23 +32,34 @@ const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 /** Control point distance for a quarter circle of radius 1. */
 const KAPPA = 0.5522847498307936;
 
-/** Things that draw nothing themselves. */
-const SKIPPED = new Set(['defs', 'title', 'desc', 'metadata', 'clipPath']);
+/** Things that draw nothing themselves. Gradients and clip paths are read when something uses them. */
+const SKIPPED = new Set([
+  'defs',
+  'title',
+  'desc',
+  'metadata',
+  'clipPath',
+  'linearGradient',
+  'radialGradient',
+]);
+const GRADIENTS = new Set(['linearGradient', 'radialGradient']);
 /** Things we refuse wherever they appear, used or not. */
 const REFUSED: Record<string, string> = {
-  filter: 'is a filter',
-  mask: 'is a mask',
-  pattern: 'is a pattern fill',
-  image: 'is a bitmap image',
-  text: 'is live text. Convert it to paths, or use label()',
-  linearGradient: 'is a gradient',
-  radialGradient: 'is a gradient',
+  filter: 'is a filter, which cannot be drawn',
+  mask: 'is a mask, which cannot be drawn',
+  pattern: 'is a pattern fill, which cannot be drawn',
+  image: 'is a bitmap image, which cannot be drawn',
+  text: 'is live text, which cannot be drawn. Convert it to paths, or use label()',
+  style:
+    'is a style sheet, which the importer does not read. Export with presentation attributes (Illustrator: Styling, Presentation Attributes)',
 };
-const REFUSED_ATTRIBUTES: Record<string, string> = {
-  'clip-path': 'uses a clip path',
-  mask: 'uses a mask',
-  filter: 'uses a filter',
-  'stroke-dasharray': 'has a dashed stroke',
+/** Attributes we refuse on anything drawn, unless they have the harmless value given. */
+const REFUSED_ATTRIBUTES: Record<string, { reason: string; harmless: string }> = {
+  'clip-path': { reason: 'uses a clip path, which cannot be drawn', harmless: 'none' },
+  mask: { reason: 'uses a mask, which cannot be drawn', harmless: 'none' },
+  filter: { reason: 'uses a filter, which cannot be drawn', harmless: 'none' },
+  'stroke-dasharray': { reason: 'has a dashed stroke, which cannot be drawn', harmless: 'none' },
+  'mix-blend-mode': { reason: 'uses a blend mode, which cannot be drawn', harmless: 'normal' },
 };
 const INHERITED = [
   'fill',
@@ -95,6 +107,10 @@ const multiply = (a: Matrix, b: Matrix): Matrix => [
 ];
 
 const NUMBER = /[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi;
+const NUMBER_TEXT = '[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?';
+const PLAIN = new RegExp(`^${NUMBER_TEXT}$`, 'i');
+const PERCENT = new RegExp(`^(${NUMBER_TEXT})%$`, 'i');
+const PIXELS = new RegExp(`^(${NUMBER_TEXT})(?:px)?$`, 'i');
 const numbers = (text: string): number[] => (text.match(NUMBER) ?? []).map(Number);
 
 const polyline = (points: Vec[], closed: boolean): BezierPath => ({
@@ -148,18 +164,58 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     throw new Error(`${file}: the outer element is <${root.name}>, not <svg>`);
   }
 
+  // Browsers resolve an id to the first element that has it. One that two elements share is
+  // refused when something points at it, so the film never picks a different one.
   const byId = new Map<string, INode>();
+  const shared = new Set<string>();
+  const parentOf = new Map<INode, INode>();
   const index = (el: INode) => {
-    if (el.attributes?.id) {
-      byId.set(el.attributes.id, el);
+    const id = el.attributes?.id;
+    if (id) {
+      if (byId.has(id)) {
+        shared.add(id);
+      } else {
+        byId.set(id, el);
+      }
     }
-    (el.children ?? []).forEach(index);
+    for (const child of el.children ?? []) {
+      parentOf.set(child, el);
+      index(child);
+    }
   };
   index(root);
 
   const fail = (el: INode, reason: string): never => {
     throw new UnsupportedSvgError(el.name, el.attributes?.id ?? null, file, reason);
   };
+
+  /** The element a local reference "#id" points at, refusing ids that are missing or shared. */
+  const target = (el: INode, ref: string, what: string): INode => {
+    if (!ref.startsWith('#')) {
+      return fail(el, `has ${what}, which points outside this file`);
+    }
+    const id = ref.slice(1);
+    if (shared.has(id)) {
+      return fail(el, `points at id "${id}", which two elements share`);
+    }
+    return byId.get(id) ?? fail(el, `has ${what}, which points at nothing`);
+  };
+  /** The reference inside url(...), quoted or not, or null when the value is not a url. */
+  const urlOf = (value: string): string | null => {
+    const match = /^url\(\s*(['"]?)([^'")]*)\1\s*\)/.exec(value);
+    return match ? match[2].trim() : null;
+  };
+
+  // Percentages in userSpaceOnUse are read against the viewport: the viewBox, else width and height.
+  const viewport = ((): Vec | null => {
+    const vb = root.attributes?.viewBox ? numbers(root.attributes.viewBox) : [];
+    if (vb.length === 4) {
+      return [vb[2], vb[3]];
+    }
+    const w = PIXELS.exec(root.attributes?.width?.trim() ?? '');
+    const h = PIXELS.exec(root.attributes?.height?.trim() ?? '');
+    return w && h ? [parseFloat(w[1]), parseFloat(h[1])] : null;
+  })();
 
   /** Attributes with the inline style laid over them, as CSS would. */
   const props = (el: INode): Record<string, string> => {
@@ -197,19 +253,8 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
     return Math.min(1, Math.max(0, n));
   };
 
-  /** A paint as #rrggbb, or undefined for none. */
-  const colour = (el: INode, name: string, value: string | undefined): string | undefined => {
-    if (value === undefined || value === 'none' || value === 'transparent') {
-      return undefined;
-    }
-    const ref = /^url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(value);
-    if (ref) {
-      const target = byId.get(ref[1]);
-      if (target) {
-        return fail(target, REFUSED[target.name] ?? `is used as a ${name}, which is not a colour`);
-      }
-      return fail(el, `has ${name}="${value}", which points at nothing`);
-    }
+  /** A plain colour as #rrggbb. */
+  const colourValue = (el: INode, name: string, value: string): string => {
     const lower = value.toLowerCase();
     if (/^#[0-9a-f]{6}$/.test(lower)) {
       return lower;
@@ -383,11 +428,252 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
 
   const SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon']);
 
+  /** The gradient an element points at, then the ones it inherits from through href, in order. */
+  const gradientChain = (start: INode): INode[] => {
+    const chain = [start];
+    for (let at = start; ;) {
+      const href = (at.attributes?.href ?? at.attributes?.['xlink:href'])?.trim();
+      if (href === undefined) {
+        return chain;
+      }
+      const next = target(at, href, `href="${href}"`);
+      if (!GRADIENTS.has(next.name)) {
+        return fail(at, `has href="${href}", which points at a <${next.name}>, not a gradient`);
+      }
+      if (chain.includes(next)) {
+        const names = [...chain, next].map((g) => g.attributes?.id ?? g.name);
+        return fail(start, `has an href loop: ${names.join(', ')}`);
+      }
+      chain.push(next);
+      at = next;
+    }
+  };
+
+  /** A paint and the opacity it adds, which folds into the node like fill-opacity. */
+  interface Painted {
+    paint?: Paint;
+    opacity: number;
+  }
+
+  /**
+   * A gradient as the paint of one shape. `matrix` maps the shape's own coordinates to the item's,
+   * `paths` is its outline in its own coordinates.
+   */
+  const gradient = (
+    el: INode,
+    name: 'fill' | 'stroke',
+    start: INode,
+    matrix: Matrix,
+    paths: BezierPath[]
+  ): Painted => {
+    const chain = gradientChain(start);
+    const kind = start.name;
+    /** The first value of an attribute along the chain, with the element that holds it. */
+    const read = (attr: string, sameKind = false): [string, INode] | null => {
+      for (const g of chain) {
+        if (sameKind && g.name !== kind) {
+          continue;
+        }
+        const value = g.attributes?.[attr];
+        if (value !== undefined) {
+          return [value.trim(), g];
+        }
+      }
+      return null;
+    };
+    for (const g of chain) {
+      for (const child of g.children ?? []) {
+        if (child.type === 'element' && !['stop', 'title', 'desc'].includes(child.name)) {
+          fail(child, 'is inside a gradient, which only holds stops');
+        }
+      }
+      if (props(g)['color-interpolation'] === 'linearRGB') {
+        fail(g, 'asks for linearRGB colour mixing, which cannot be drawn');
+      }
+    }
+    const spread = read('spreadMethod');
+    if (spread && spread[0] !== 'pad') {
+      fail(spread[1], `uses spreadMethod="${spread[0]}", which cannot be drawn. Use pad`);
+    }
+    const unitsAt = read('gradientUnits');
+    const units = unitsAt?.[0] ?? 'objectBoundingBox';
+    if (unitsAt && units !== 'objectBoundingBox' && units !== 'userSpaceOnUse') {
+      fail(unitsAt[1], `has gradientUnits="${units}", which cannot be read`);
+    }
+    const box = units === 'objectBoundingBox';
+
+    // Stops come from the first gradient in the chain that has any.
+    const holder = chain.find((g) => (g.children ?? []).some((c) => c.name === 'stop'));
+    let last = 0;
+    const stops: GradientStop[] = (holder?.children ?? [])
+      .filter((c) => c.name === 'stop')
+      .map((stop) => {
+        const p = props(stop);
+        const raw = stop.attributes?.offset?.trim() ?? '0';
+        const percent = PERCENT.exec(raw);
+        if (!percent && !PLAIN.test(raw)) {
+          fail(stop, `has offset="${raw}", which is not a number`);
+        }
+        const value = percent ? parseFloat(percent[1]) / 100 : parseFloat(raw);
+        // SVG clamps an offset to 0 to 1, then raises it to at least the one before.
+        last = Math.max(last, Math.min(1, Math.max(0, value)));
+        const colour = p['stop-color'] ?? 'black';
+        if (['currentcolor', 'inherit'].includes(colour.toLowerCase())) {
+          fail(
+            stop,
+            `has stop-color="${colour}", so it takes its colour from elsewhere. Write it as #rrggbb`
+          );
+        }
+        return {
+          offset: last,
+          colour: colourValue(stop, 'stop-color', colour),
+          opacity: fraction(stop, 'stop-opacity', p['stop-opacity']),
+        };
+      });
+    if (stops.length === 0) {
+      return { opacity: 1 };
+    }
+    const flat = (stop: GradientStop): Painted => ({ paint: stop.colour, opacity: stop.opacity });
+    const first = stops[0];
+    if (stops.every((stop) => stop.colour === first.colour && stop.opacity === first.opacity)) {
+      return flat(first);
+    }
+
+    /** One coordinate: x and y against the width and height, r against their diagonal. */
+    const coordinate = (attr: string, fallback: string, axis: 0 | 1 | 2): number => {
+      const at = read(attr, true);
+      const value = at?.[0] ?? fallback;
+      const g = at?.[1] ?? start;
+      const percent = PERCENT.exec(value);
+      if (box) {
+        if (!percent && !PLAIN.test(value)) {
+          fail(g, `has ${attr}="${value}". Only plain numbers and percentages are read`);
+        }
+        return percent ? parseFloat(percent[1]) / 100 : parseFloat(value);
+      }
+      if (percent) {
+        if (!viewport) {
+          return fail(
+            g,
+            `has ${attr}="${value}" as a percentage, and the drawing has no viewBox or width and height to read it against`
+          );
+        }
+        const [w, h] = viewport;
+        const size = axis === 2 ? Math.sqrt((w * w + h * h) / 2) : viewport[axis];
+        return (parseFloat(percent[1]) / 100) * size;
+      }
+      return length(g, attr, value);
+    };
+
+    let space = matrix;
+    if (box) {
+      const b = tightBox(paths);
+      if (!b || b.width === 0 || b.height === 0) {
+        fail(
+          el,
+          `has a ${name} gradient that uses objectBoundingBox, and the shape has no width or height, so browsers draw nothing. Use gradientUnits="userSpaceOnUse"`
+        );
+      }
+      const { x, y, width, height } = b as NonNullable<typeof b>;
+      space = multiply(space, [width, 0, 0, height, x, y]);
+    }
+    const transformAt = read('gradientTransform');
+    if (transformAt) {
+      space = multiply(space, matrixOf(transformAt[1], transformAt[0]));
+    }
+    if (!invert(space)) {
+      fail(transformAt?.[1] ?? start, 'is squashed flat, so it cannot be drawn');
+    }
+    const lastStop = stops[stops.length - 1];
+
+    if (kind === 'linearGradient') {
+      const p1: Vec = [coordinate('x1', '0%', 0), coordinate('y1', '0%', 1)];
+      const p2: Vec = [coordinate('x2', '100%', 0), coordinate('y2', '0%', 1)];
+      if (p1[0] === p2[0] && p1[1] === p2[1]) {
+        return flat(lastStop);
+      }
+      const baked =
+        bakeLinear(p1, p2, space) ?? fail(start, 'is squashed flat, so it cannot be drawn');
+      return { paint: { type: 'linear', from: baked.from, to: baked.to, stops }, opacity: 1 };
+    }
+
+    const centre: Vec = [coordinate('cx', '50%', 0), coordinate('cy', '50%', 1)];
+    const r = coordinate('r', '50%', 2);
+    const fxAt = read('fx', true);
+    const fyAt = read('fy', true);
+    const focal: Vec = [
+      fxAt ? coordinate('fx', '', 0) : centre[0],
+      fyAt ? coordinate('fy', '', 1) : centre[1],
+    ];
+    const fr = read('fr', true);
+    if (fr && coordinate('fr', '0', 2) !== 0) {
+      fail(fr[1], 'has a focal radius (fr), which cannot be drawn');
+    }
+    if (r < 0) {
+      fail(read('r', true)?.[1] ?? start, `has r="${r}", which is below 0`);
+    }
+    if (r === 0) {
+      return flat(lastStop);
+    }
+    if (Math.hypot(focal[0] - centre[0], focal[1] - centre[1]) >= 0.99 * r) {
+      fail(
+        fxAt?.[1] ?? fyAt?.[1] ?? start,
+        'has its focal point fx, fy on or outside the circle, which cannot be drawn. Move it inside'
+      );
+    }
+    if (isNearSimilarity(space, r)) {
+      const scale = Math.sqrt(Math.abs(space[0] * space[3] - space[1] * space[2]));
+      return {
+        paint: {
+          type: 'radial',
+          centre: applyMatrix(space, centre),
+          radius: r * scale,
+          focal: applyMatrix(space, focal),
+          stops,
+        },
+        opacity: 1,
+      };
+    }
+    if (name === 'stroke') {
+      fail(el, 'has a radial gradient stroke that is stretched, which cannot be drawn');
+    }
+    return {
+      paint: { type: 'radial', centre, radius: r, focal, stops, matrix: space },
+      opacity: 1,
+    };
+  };
+
+  /** A fill or stroke value as a paint, resolving url(#id) against this shape. */
+  const paint = (
+    el: INode,
+    name: 'fill' | 'stroke',
+    value: string | undefined,
+    matrix: Matrix,
+    paths: BezierPath[]
+  ): Painted => {
+    if (value === undefined || value === 'none' || value === 'transparent') {
+      return { opacity: 1 };
+    }
+    const ref = urlOf(value);
+    if (ref === null) {
+      return { paint: colourValue(el, name, value), opacity: 1 };
+    }
+    // A fallback after the url is only used when the id is missing, which is refused anyway.
+    const used = target(el, ref, `${name}="${value}"`);
+    if (!GRADIENTS.has(used.name)) {
+      return fail(
+        used,
+        REFUSED[used.name] ?? `is used as a ${name}, which is not a gradient or a colour`
+      );
+    }
+    return gradient(el, name, used, matrix, paths);
+  };
+
   const walk = (el: INode, parent: Matrix, inherited: Inherited, name: string): ArtNode | null => {
     const p = props(el);
-    for (const attribute of Object.keys(REFUSED_ATTRIBUTES)) {
-      if (p[attribute] !== undefined && p[attribute] !== 'none') {
-        fail(el, `${REFUSED_ATTRIBUTES[attribute]}, which cannot be drawn`);
+    for (const [attribute, { reason, harmless }] of Object.entries(REFUSED_ATTRIBUTES)) {
+      if (p[attribute] !== undefined && p[attribute] !== harmless) {
+        fail(el, reason);
       }
     }
     if (p.display === 'none' || p.visibility === 'hidden') {
@@ -421,16 +707,19 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
       return null;
     }
     // A line encloses nothing, so its fill never shows.
-    const fill = el.name === 'line' ? undefined : colour(el, 'fill', style.fill ?? 'black');
-    const stroke = colour(el, 'stroke', style.stroke);
+    const filled: Painted =
+      el.name === 'line' ? { opacity: 1 } : paint(el, 'fill', style.fill ?? 'black', matrix, paths);
+    const stroked = paint(el, 'stroke', style.stroke, matrix, paths);
+    const fill = filled.paint;
+    const stroke = stroked.paint;
     if (!fill && !stroke) {
       return null;
     }
     if (fill && style['fill-rule'] === 'evenodd') {
       fail(el, 'is filled with the evenodd rule, which cannot be drawn. Use nonzero');
     }
-    const fillOpacity = fraction(el, 'fill-opacity', style['fill-opacity']);
-    const strokeOpacity = fraction(el, 'stroke-opacity', style['stroke-opacity']);
+    const fillOpacity = fraction(el, 'fill-opacity', style['fill-opacity']) * filled.opacity;
+    const strokeOpacity = fraction(el, 'stroke-opacity', style['stroke-opacity']) * stroked.opacity;
     if (fill && stroke && fillOpacity !== strokeOpacity) {
       fail(el, 'has a fill-opacity and a stroke-opacity that differ, which cannot be drawn');
     }
@@ -466,13 +755,13 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
 
   const visit = (el: INode, parent: Matrix, inherited: Inherited): ArtNode | null => {
     if (REFUSED[el.name]) {
-      return fail(el, `${REFUSED[el.name]}, which cannot be drawn`);
+      return fail(el, REFUSED[el.name]);
     }
     if (SKIPPED.has(el.name)) {
       // Definitions draw nothing, but a refused feature inside them still stops the build.
       const check = (inner: INode) => {
         if (REFUSED[inner.name]) {
-          fail(inner, `${REFUSED[inner.name]}, which cannot be drawn`);
+          fail(inner, REFUSED[inner.name]);
         }
         (inner.children ?? []).forEach(check);
       };

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="sky"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#00f"/></linearGradient>
+    <linearGradient id="sky"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#f00"/></linearGradient>
+  </defs>
+  <rect id="plate" width="50" height="10" fill="url(#sky)"/>
+</svg>
