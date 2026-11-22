@@ -104,8 +104,9 @@ Line ids must be unique across the whole film.
 </svg>
 ```
 
-A scene loads it by name: `art('bracket')` reads `art/bracket.svg`. Art must be plain filled and
-stroked shapes. See "Art rules" in [authoring.md](authoring.md).
+A scene loads it by name: `art('bracket')` reads `art/bracket.svg`. Art is shapes filled and
+stroked with flat colours or linear and radial gradients, and it may use clip paths. Filters,
+masks and live text are refused. See [Art rules](authoring.md#art-rules) in authoring.md.
 
 ## 5. Write the first scene
 
@@ -316,7 +317,7 @@ here so you can find it in the code. These are the ones you will meet.
 | `bracket: <linearGradient id="sheen"> uses spreadMethod="reflect", which cannot be drawn. Use pad` (`UnsupportedSvgError`) | Gradients and clip paths are read, but not every form of them. The message says which part and why. | Do what it says. The full list is in [authoring.md](authoring.md#gradients) and [clip paths](authoring.md#clip-paths). |
 | `bracket: <rect id="frame"> points at id "clip0", which two elements share` (`UnsupportedSvgError`) | Two elements in the drawing have the same id, so the importer cannot tell which one `url(#clip0)` means. | Rename one of them. |
 | `draw cannot trim "shadow" (n4): its radial gradient is stretched, and a trim would not follow the drawing` | `draw` on a shape filled with a radial gradient squashed into an oval, such as a soft shadow. | Bring it in with `fade` or `rise` instead. |
-| `node "window" (n7) reaches too far from its origin to be drawn inside a precomp` | A clipped node that sits inside a fade has art more than 7680 pixels from its origin. | Keep the art near the stage, or move the clip or the fade. |
+| `node "window" (n7) reaches too far from its origin to be drawn inside a precomp` | A clipped node drawn as a precomp (one inside a fade, or one with layers of its own under it) has art more than 7680 pixels from its origin at some frame. | Keep the art near the stage, or move the clip or the fade. |
 | `scene s01-bracket: label "200 mm" states 200 mm, and "200 mm" is listed as a figure the sources disagree about. Take the figure out, or settle it and remove it from conflicts.` (`FactConflictError`) | The label shows a figure listed in `conflicts` in `talkie.config.ts`. | Settle the figure and remove it from `conflicts`, or take it off the screen. |
 | `scenes/s01-bracket.ts exports scene "s01"; the id must match the file name` | The id in `scene('...')` differs from the file name. | Make them the same. |
 | `no drawing called "brakcet" (art/brakcet.svg)` | `art()` names a file that is not there. | Fix the name. `art('roof/tile')` reads `art/roof/tile.svg`. |

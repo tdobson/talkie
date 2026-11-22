@@ -198,6 +198,7 @@ It refuses, with an `UnsupportedSvgError` that names the element and says why:
 - Live text. Convert it to paths in your drawing tool, or use `c.label`.
 - `<style>` sheets. Export with presentation attributes instead (see the tips below).
 - Dashed strokes and the `evenodd` fill rule.
+- A fill and a stroke on one shape with different opacities. Draw them as two shapes.
 - A `url(#id)` or `href` that points at nothing, into another file, or at an id two elements
   share.
 - The gradient and clip path forms listed below.
