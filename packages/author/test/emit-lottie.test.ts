@@ -97,6 +97,10 @@ describe('emitLottie on the gauge scene', () => {
 describe('emitLottie on a full scene', () => {
   const json = emitLottie(everything());
 
+  it('matches the golden file', () => {
+    expect(JSON.parse(JSON.stringify(json))).toEqual(golden('everything', json));
+  });
+
   it('puts the last node added straight after the camera, so it draws on top', () => {
     expect(json.layers.map((layer) => [layer.ind, layer.nm])).toEqual([
       [1, 'camera'],

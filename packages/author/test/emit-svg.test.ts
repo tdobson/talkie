@@ -1,5 +1,5 @@
 import { compileScene, scene, svgAt } from '../src/index';
-import { everything, gauge } from './scenes';
+import { everything, gauge, golden } from './scenes';
 
 const attr = (svg: string, name: string) =>
   [...svg.matchAll(new RegExp(` ${name}="([^"]*)"`, 'g'))].map((match) => match[1]);
@@ -67,5 +67,10 @@ describe('svgAt', () => {
     );
     const svg = svgAt(compileScene(def, { size: [100, 100], lines: [], duration: 1 }), 0);
     expect(svg.match(/<path /g)).toHaveLength(1);
+  });
+
+  it('matches the golden file for the full scene at several times', () => {
+    const frames = [0, 1.6, 2.5, 5.7, 10].map((t) => svgAt(everything(), t));
+    expect(frames).toEqual(golden('everything-svg', frames));
   });
 });
