@@ -3,7 +3,11 @@ import type { BezierPath, GradientStop, Paint, ShapeItem, Style, Vec } from './m
 import { applyMatrix, bakeLinear, invert, isNearSimilarity, tightBox } from './paint';
 import { parsePathD, transformPaths, type Matrix } from './path';
 
-/** The drawing uses something the importer cannot turn into plain filled and stroked paths. */
+/**
+ * The drawing uses something the importer cannot draw exactly as a browser does: a filter, mask,
+ * pattern, bitmap, live text, style sheet or blend mode, or a gradient or clip path in a form the
+ * film cannot honour. The message names the element and why.
+ */
 export class UnsupportedSvgError extends Error {
   constructor(
     /** The tag name of the element at fault. */
@@ -151,8 +155,10 @@ function ellipse(cx: number, cy: number, rx: number, ry: number): BezierPath {
  * Turns an SVG drawing into a tree of plain shapes: one node per element, in document order,
  * with every transform baked into the points. `base` is applied on top of the drawing's own
  * transforms, which is how a scene places and scales a piece of art. The viewBox origin is moved
- * to 0,0; lengths stay in the drawing's own units. Anything the importer cannot draw faithfully
- * throws UnsupportedSvgError.
+ * to 0,0; lengths stay in the drawing's own units. Fills and strokes may be flat colours or linear
+ * and radial gradients, which are baked into the same space as the points. clip-path on a shape,
+ * a group or the root becomes closed contours on that node. Anything the importer cannot draw
+ * faithfully throws UnsupportedSvgError.
  */
 export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): ArtNode {
   let root: INode;
