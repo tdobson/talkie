@@ -7,6 +7,7 @@ import {
   scene,
   UnsupportedSvgError,
   type ArtNode,
+  type BezierPath,
   type Gradient,
   type LinearGradient,
   type Loaders,
@@ -200,7 +201,6 @@ describe('importSvg refuses what it cannot draw', () => {
   it.each([
     ['unsupported-filter', 'filter', 'blur', ''],
     ['unsupported-mask', 'mask', 'hole', ''],
-    ['unsupported-clip-path', 'rect', 'clipped', ''],
     ['unsupported-pattern', 'pattern', 'dots', ''],
     ['unsupported-image', 'image', 'photo', ''],
     ['unsupported-text', 'text', 'words', ''],
@@ -215,6 +215,13 @@ describe('importSvg refuses what it cannot draw', () => {
     ['unsupported-duplicate-id', 'rect', 'plate', 'points at id "sky", which two elements share'],
     ['unsupported-blend-mode', 'rect', 'shadow', 'blend mode'],
     ['unsupported-radial-stroke-stretched', 'ellipse', 'dish', 'stretched'],
+    ['unsupported-clip-group-child', 'g', 'bundle', 'browsers ignore a group inside a clipPath'],
+    ['unsupported-clip-evenodd', 'path', 'ring', 'evenodd rule'],
+    ['unsupported-clip-evenodd-on-defs', 'path', 'ring', 'evenodd rule'],
+    ['unsupported-clip-overlap', 'path', 'frame', 'subpaths that overlap'],
+    ['unsupported-clip-inset', 'rect', 'plate', 'only url(#id) of a clipPath is read'],
+    ['unsupported-clip-missing', 'rect', 'plate', 'points at nothing'],
+    ['unsupported-clip-clips-a-clip', 'clipPath', 'cut', 'clips a clip'],
   ])('%s', (name, element, id, reason) => {
     let caught: unknown;
     try {
@@ -636,3 +643,136 @@ function multiplyAll(ms: Matrix[]): Matrix {
     a[1] * b[4] + a[3] * b[5] + a[5],
   ]);
 }
+
+describe('importSvg clip paths', () => {
+  const svg = (defs: string, body: string, root = 'viewBox="0 0 200 100"') =>
+    `<svg xmlns="http://www.w3.org/2000/svg" ${root}><defs>${defs}</defs>${body}</svg>`;
+  const clipOf = (text: string, id: string) =>
+    find(importSvg(text, 't.svg'), id).clip as BezierPath[];
+  const corners = (paths: BezierPath[]) => paths.map((path) => bbox(path.v));
+
+  it('reads the clip fixture as one contour on the clipped shape', () => {
+    const clipped = find(load('clip-rect'), 'clipped');
+    expect(clipped.clip).toHaveLength(1);
+    expect(clipped.clip?.[0].closed).toBe(true);
+    expect(corners(clipped.clip ?? [])).toEqual([{ x1: 0, y1: 0, x2: 5, y2: 5 }]);
+    expect(clipped.items).toHaveLength(1);
+  });
+
+  it('clips a group in user space, with the transforms of the group, the clipPath and the child', () => {
+    const defs =
+      '<clipPath id="c" transform="translate(10 0)"><rect x="0" y="0" width="20" height="10" transform="scale(2)"/></clipPath>';
+    const body =
+      '<g id="grp" transform="translate(0 5)" clip-path="url(#c)"><rect width="100" height="100"/></g>';
+    const clip = clipOf(svg(defs, body), 'grp');
+    expect(corners(clip)).toEqual([{ x1: 10, y1: 5, x2: 50, y2: 25 }]);
+  });
+
+  it('clips a rotated shape with an objectBoundingBox ellipse', () => {
+    const defs =
+      '<clipPath id="c" clipPathUnits="objectBoundingBox"><ellipse cx="0.5" cy="0.5" rx="0.5" ry="0.25"/></clipPath>';
+    const body =
+      '<rect id="r" x="20" y="10" width="40" height="20" transform="rotate(90)" clip-path="url(#c)"/>';
+    const [contour] = clipOf(svg(defs, body), 'r');
+    // The box is 40 by 20 at 20, 10, then the rotation turns x into y.
+    const box = bbox(contour.v);
+    expect(box.x1).toBeCloseTo(-25, 9);
+    expect(box.x2).toBeCloseTo(-15, 9);
+    expect(box.y1).toBeCloseTo(20, 9);
+    expect(box.y2).toBeCloseTo(60, 9);
+  });
+
+  it('makes a union of the children and of disjoint subpaths, skipping hidden ones and lines', () => {
+    const defs =
+      '<clipPath id="c">' +
+      '<rect x="0" y="0" width="10" height="10"/>' +
+      '<path d="M20 0H30V10H20ZM40 0H50V10H40Z"/>' +
+      '<rect x="60" width="10" height="10" display="none"/>' +
+      '<rect x="80" width="10" height="10" visibility="hidden"/>' +
+      '<line x1="0" y1="50" x2="100" y2="50"/>' +
+      '</clipPath>' +
+      '<g visibility="hidden"><clipPath id="h"><rect width="5" height="5"/></clipPath></g>';
+    const body = '<rect id="r" width="100" height="100" clip-path="url(#c)"/>';
+    expect(corners(clipOf(svg(defs, body), 'r'))).toEqual([
+      { x1: 0, y1: 0, x2: 10, y2: 10 },
+      { x1: 20, y1: 0, x2: 30, y2: 10 },
+      { x1: 40, y1: 0, x2: 50, y2: 10 },
+    ]);
+    // A clip whose only child is hidden through its ancestors clips everything away.
+    const hidden = svg(defs, '<rect id="r" width="100" height="100" clip-path="url(#h)"/>');
+    expect(importSvg(hidden, 't.svg').children).toEqual([]);
+  });
+
+  it('draws nothing for a clip with no contours', () => {
+    const text = svg(
+      '<clipPath id="c"/>',
+      '<g id="grp" clip-path="url(#c)"><rect width="10" height="10"/></g>'
+    );
+    expect(importSvg(text, 't.svg').children).toEqual([]);
+  });
+
+  it('clips the root svg', () => {
+    const text = svg(
+      '<clipPath id="c"><rect width="50" height="50"/></clipPath>',
+      '<rect id="r" width="100" height="100"/>',
+      'id="art" viewBox="10 10 200 100" clip-path="url(#c)"'
+    );
+    // The viewBox origin is moved to 0,0, and the clip moves with it.
+    expect(corners(importSvg(text, 't.svg').clip ?? [])).toEqual([
+      { x1: -10, y1: -10, x2: 40, y2: 40 },
+    ]);
+  });
+
+  it('reads the box of a group for objectBoundingBox, unpainted shapes included', () => {
+    const defs =
+      '<clipPath id="c" clipPathUnits="objectBoundingBox"><rect width="0.5" height="1"/></clipPath>';
+    const body =
+      '<g id="grp" clip-path="url(#c)"><rect x="10" y="10" width="20" height="20"/><rect x="50" y="10" width="50" height="40" fill="none"/></g>';
+    expect(corners(clipOf(svg(defs, body), 'grp'))).toEqual([{ x1: 10, y1: 10, x2: 55, y2: 50 }]);
+  });
+
+  it('refuses clip units it cannot read, a flat box, and a clip-path at something else', () => {
+    const body = '<rect id="r" width="10" height="10" clip-path="url(#c)"/>';
+    expect(() =>
+      importSvg(svg('<clipPath id="c" clipPathUnits="strokeBox"/>', body), 't.svg')
+    ).toThrow(/clipPathUnits="strokeBox", which cannot be read/);
+    const flat = svg(
+      '<clipPath id="c" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath>',
+      '<line id="r" x2="10" stroke="#000" clip-path="url(#c)"/>'
+    );
+    expect(() => importSvg(flat, 't.svg')).toThrow(
+      /<line id="r"> has a clip path that uses objectBoundingBox/
+    );
+    const other = svg('<linearGradient id="c"/>', body);
+    expect(() => importSvg(other, 't.svg')).toThrow(/points at a <linearGradient>, not a clipPath/);
+    const text = svg('<clipPath id="c"><text id="t">hi</text></clipPath>', body);
+    expect(() => importSvg(text, 't.svg')).toThrow(UnsupportedSvgError);
+    const use = svg('<clipPath id="c"><use id="u" href="#x"/></clipPath>', body);
+    expect(() => importSvg(use, 't.svg')).toThrow(/<use id="u"> cannot be drawn in a clip/);
+    const shared = svg('<clipPath id="c"/><clipPath id="c"/>', body);
+    expect(() => importSvg(shared, 't.svg')).toThrow(/points at id "c", which two elements share/);
+  });
+
+  it('lets a child say nonzero over an evenodd ancestor', () => {
+    const defs =
+      '<clipPath id="c" clip-rule="evenodd"><rect width="5" height="5" clip-rule="nonzero"/></clipPath>';
+    expect(
+      clipOf(svg(defs, '<rect id="r" width="10" height="10" clip-path="url(#c)"/>'), 'r')
+    ).toHaveLength(1);
+  });
+
+  it('hands the clip to the scene node', () => {
+    const model = compileScene(
+      scene('s', (ctx) => ctx.add(ctx.art('clip-rect', { at: [10, 20], scale: 2 }))),
+      {
+        size: [320, 180],
+        lines: [],
+        duration: 1,
+        loaders: { svg: read, font: () => new ArrayBuffer(0) },
+      }
+    );
+    const clipped = model.nodes[0].children[0];
+    expect(corners(clipped.clip ?? [])).toEqual([{ x1: 10, y1: 20, x2: 20, y2: 30 }]);
+    expect(model.nodes[0]).not.toHaveProperty('clip');
+  });
+});

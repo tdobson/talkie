@@ -140,6 +140,11 @@ function itemSvg(
 
 function nodeSvg(scope: string, node: Node, t: number): string {
   checkTrim(node);
+  if (node.clip) {
+    throw new Error(
+      `node "${node.name}" (${node.id}) has a clip path, which the mirror cannot draw yet`
+    );
+  }
   const tr = transformAt(node, t);
   const matrix = matrixOf(tr).map(round6);
   const plain = matrix.join(' ') === '1 0 0 1 0 0';

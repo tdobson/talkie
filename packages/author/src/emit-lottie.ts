@@ -395,6 +395,9 @@ const transformShape = (tr: LottieTransform): LottieShape => ({
  * later children come first. A node's own items are painted over its children.
  */
 function group(node: Node, tr: LottieTransform): LottieShape {
+  if (node.clip) {
+    throw new Error(`node ${label(node)} has a clip path, which the film cannot draw yet`);
+  }
   // A style applies to every path before it in its group, so two items with their own styles
   // each need a group of their own.
   const items: LottieShape[] =

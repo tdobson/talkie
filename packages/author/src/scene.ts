@@ -152,6 +152,9 @@ export function compileScene(def: SceneDef, input: CompileInput): SceneModel {
       art.children.map((child) => fromArt(child, child.name))
     );
     n.transform.opacity = art.opacity;
+    if (art.clip) {
+      n.clip = art.clip;
+    }
     return n;
   };
 

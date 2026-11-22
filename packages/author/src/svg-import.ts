@@ -26,6 +26,8 @@ export interface ArtNode {
   children: ArtNode[];
   /** Percent, as in Transform. */
   opacity: number;
+  /** Closed contours, in the same space as the items, whose union clips this node and its children. */
+  clip?: BezierPath[];
 }
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
@@ -55,7 +57,6 @@ const REFUSED: Record<string, string> = {
 };
 /** Attributes we refuse on anything drawn, unless they have the harmless value given. */
 const REFUSED_ATTRIBUTES: Record<string, { reason: string; harmless: string }> = {
-  'clip-path': { reason: 'uses a clip path, which cannot be drawn', harmless: 'none' },
   mask: { reason: 'uses a mask, which cannot be drawn', harmless: 'none' },
   filter: { reason: 'uses a filter, which cannot be drawn', harmless: 'none' },
   'stroke-dasharray': { reason: 'has a dashed stroke, which cannot be drawn', harmless: 'none' },
@@ -428,6 +429,138 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
 
   const SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon']);
 
+  const CLIP_SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline']);
+
+  /** The value of an inherited property on el, else on the nearest ancestor in the document. */
+  const inheritedProp = (el: INode, name: string): string | undefined => {
+    for (let at: INode | undefined = el; at; at = parentOf.get(at)) {
+      const value = props(at)[name];
+      if (value !== undefined && value !== 'inherit') {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
+  /**
+   * The outlines of an element and everything under it, in its own user space, for an
+   * objectBoundingBox. Unpainted shapes, lines and hidden shapes count; display:none does not, and
+   * neither do the clips of children.
+   */
+  const geometry = (el: INode): BezierPath[] => {
+    if (SHAPES.has(el.name)) {
+      return outline(el, props(el)) ?? [];
+    }
+    if (el.name !== 'g' && el !== root) {
+      return [];
+    }
+    return (el.children ?? []).flatMap((child) => {
+      const p = child.type === 'element' ? props(child) : {};
+      if (child.type !== 'element' || p.display === 'none') {
+        return [];
+      }
+      return transformPaths(geometry(child), matrixOf(child, p.transform));
+    });
+  };
+
+  /**
+   * The clip of an element as closed contours in item space, or undefined when it has none.
+   * `matrix` maps the element's own user space, its transform included, to item space.
+   */
+  const clipOf = (
+    el: INode,
+    p: Record<string, string>,
+    matrix: Matrix
+  ): BezierPath[] | undefined => {
+    const value = p['clip-path'];
+    if (value === undefined || value === 'none') {
+      return undefined;
+    }
+    const ref = urlOf(value);
+    if (ref === null) {
+      return fail(el, `uses clip-path="${value}", only url(#id) of a clipPath is read`);
+    }
+    const clip = target(el, ref, `clip-path="${value}"`);
+    if (clip.name !== 'clipPath') {
+      return fail(el, `has clip-path="${value}", which points at a <${clip.name}>, not a clipPath`);
+    }
+    const cp = props(clip);
+    if (cp['clip-path'] !== undefined && cp['clip-path'] !== 'none') {
+      fail(clip, 'clips a clip, which cannot be drawn');
+    }
+    const units = clip.attributes?.clipPathUnits?.trim() ?? 'userSpaceOnUse';
+    if (units !== 'userSpaceOnUse' && units !== 'objectBoundingBox') {
+      fail(clip, `has clipPathUnits="${units}", which cannot be read`);
+    }
+    let space = matrix;
+    if (units === 'objectBoundingBox') {
+      const box = tightBox(geometry(el));
+      if (!box || box.width === 0 || box.height === 0) {
+        fail(
+          el,
+          'has a clip path that uses objectBoundingBox, and the shape has no width or height, so browsers draw nothing. Use clipPathUnits="userSpaceOnUse"'
+        );
+      }
+      const { x, y, width, height } = box as NonNullable<typeof box>;
+      space = multiply(space, [width, 0, 0, height, x, y]);
+    }
+    space = multiply(space, matrixOf(clip, cp.transform));
+    if (!invert(space)) {
+      fail(clip, 'is squashed flat, so it cannot be drawn');
+    }
+    const contours: BezierPath[] = [];
+    for (const child of clip.children ?? []) {
+      if (child.type !== 'element' || child.name === 'title' || child.name === 'desc') {
+        continue;
+      }
+      if (child.name === 'g') {
+        fail(
+          child,
+          'browsers ignore a group inside a clipPath. Put the shapes straight in the clipPath'
+        );
+      }
+      if (!CLIP_SHAPES.has(child.name) && child.name !== 'line') {
+        fail(child, 'cannot be drawn in a clip');
+      }
+      const c = props(child);
+      if (c['clip-path'] !== undefined && c['clip-path'] !== 'none') {
+        fail(child, 'clips a clip, which cannot be drawn');
+      }
+      const visibility = inheritedProp(child, 'visibility');
+      // A line adds no area, and fill, stroke and opacity do not count in a clip.
+      if (c.display === 'none' || visibility === 'hidden' || visibility === 'collapse') {
+        continue;
+      }
+      if (inheritedProp(child, 'clip-rule') === 'evenodd') {
+        fail(child, 'is clipped with the evenodd rule, which cannot be drawn. Use nonzero');
+      }
+      const paths = child.name === 'line' ? null : outline(child, c);
+      if (!paths) {
+        continue;
+      }
+      // Separate subpaths make a union, as the masks that draw them do, only while they do not
+      // overlap: an inner one would cut a hole under nonzero.
+      const boxes = paths.map((path) => tightBox([path]));
+      boxes.forEach((a, n) =>
+        boxes.slice(n + 1).forEach((b) => {
+          if (
+            a &&
+            b &&
+            a.x < b.x + b.width &&
+            b.x < a.x + a.width &&
+            a.y < b.y + b.height &&
+            b.y < a.y + a.height
+          ) {
+            fail(child, 'has subpaths that overlap, so its holes cannot be drawn as a clip');
+          }
+        })
+      );
+      const placed = transformPaths(paths, multiply(space, matrixOf(child, c.transform)));
+      contours.push(...placed.map((path) => ({ ...path, closed: true })));
+    }
+    return contours;
+  };
+
   /** The gradient an element points at, then the ones it inherits from through href, in order. */
   const gradientChain = (start: INode): INode[] => {
     const chain = [start];
@@ -687,6 +820,12 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
       }
     }
     const opacity = fraction(el, 'opacity', p.opacity);
+    const clip = clipOf(el, p, matrix);
+    if (clip && clip.length === 0) {
+      // A clip with no area hides the element and everything under it.
+      return null;
+    }
+    const clipped = clip ? { clip } : {};
 
     if (!SHAPES.has(el.name)) {
       const children: ArtNode[] = [];
@@ -699,7 +838,7 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
           children.push(made);
         }
       }
-      return { name, items: [], children, opacity: opacity * 100 };
+      return { name, items: [], children, opacity: opacity * 100, ...clipped };
     }
 
     const paths = outline(el, p);
@@ -750,6 +889,7 @@ export function importSvg(svg: string, file: string, base: Matrix = IDENTITY): A
       items: [{ paths: transformPaths(paths, matrix), style: out }],
       children: [],
       opacity: opacity * (fill ? fillOpacity : strokeOpacity) * 100,
+      ...clipped,
     };
   };
 
