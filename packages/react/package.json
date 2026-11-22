@@ -1,6 +1,7 @@
 {
   "name": "@talkie/react",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Talkie player for React 19",
   "type": "module",
   "sideEffects": false,

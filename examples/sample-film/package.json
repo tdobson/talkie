@@ -1,6 +1,7 @@
 {
   "name": "@talkie/example-sample-film",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "description": "A small original film that uses every Talkie author helper",
   "type": "module",

@@ -65,7 +65,9 @@ These are not optional. The main machine (tragicomix) is a shared desktop.
    Use xebit-dev1, xebit-dev3 or asterix (ssh in, still through scripts/low).
    `--allow-here` is for the tiny test exports only (320x180, 2 seconds).
 3. Jest runs with 2 workers (`yarn jest` sets --maxWorkers=2). Playwright runs with 2 workers.
-4. Do not add dependencies or change yarn.lock without being asked.
+4. Do not add dependencies or change yarn.lock without being asked. The repo is AGPL-3.0-or-later,
+   so any dependency must be compatible: MIT, BSD, ISC, Apache-2.0, MPL-2.0, LGPL, GPL-3 are fine;
+   GPL-2.0-only, SSPL, BUSL and non-commercial licences are not.
 5. No em or en dashes in anything a person reads: docs, captions, UI text, comments.
 6. Build output is deterministic: no Date.now(), Math.random() or clock reads in build paths.
 ```

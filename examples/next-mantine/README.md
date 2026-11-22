@@ -42,3 +42,8 @@ Every script runs at low priority through `scripts/low`.
 - `jest`: run the tests (also `yarn test:examples` from the repo root)
 - `test`: all of the checks above
 - `storybook` and `storybook:build`: the template's Storybook
+
+## Licence
+
+Like the rest of the repo, this example is under the AGPL (see the root `LICENSE`). The Mantine
+template it started from is MIT licensed; its notice is kept in `LICENCE-MIT-template`.
