@@ -1,4 +1,5 @@
 import {
+  bboxAt,
   compileScene,
   outOfBand,
   scene,
@@ -127,5 +128,50 @@ describe('outOfBand', () => {
       ctx.camera(1, { dur: 2, scaleTo: 110 });
     });
     expect(outOfBand(model, band).map((hit) => hit.name)).toEqual(['floor', 'low']);
+  });
+
+  it('counts only the part a clip lets through', () => {
+    const model = build((ctx) => {
+      // Drawn down to 1000, but clipped at 800, so nothing shows in the band.
+      const tall = ctx.rect(100, 100, 200, 900, { fill: '#000000' }, 'tall');
+      tall.clip = ctx.rect(0, 0, 1920, 800, {}).items[0].paths;
+      const low = ctx.rect(100, 100, 200, 900, { fill: '#000000' }, 'low');
+      low.clip = ctx.rect(0, 0, 1920, 900, {}).items[0].paths;
+      ctx.add(tall, low);
+    });
+    expect(outOfBand(model, band)).toEqual([{ id: 'n3', name: 'low', t: 0, bottom: 900 }]);
+  });
+});
+
+describe('clip-aware boxes', () => {
+  it('pops a clipped node about the centre of the part that shows', () => {
+    const model = build((ctx) => {
+      const plate = ctx.rect(0, 0, 400, 400, { fill: '#000000' }, 'plate');
+      plate.clip = ctx.rect(100, 100, 100, 50, {}).items[0].paths;
+      ctx.add(plate);
+      ctx.pop(plate, 1);
+    });
+    expect(model.nodes[0].transform.anchor).toEqual([150, 125]);
+  });
+
+  it('gives no box for a node clipped away from all its paths', () => {
+    const model = build((ctx) => {
+      const plate = ctx.rect(0, 0, 10, 10, { fill: '#000000' }, 'plate');
+      plate.clip = ctx.rect(100, 100, 10, 10, {}).items[0].paths;
+      ctx.add(ctx.group('g', [plate]));
+    });
+    expect(bboxAt(model.nodes[0], 0)).toBeNull();
+  });
+
+  it('moves the clip with the clipped node and its children inside it', () => {
+    const model = build((ctx) => {
+      const child = ctx.rect(0, 0, 400, 400, { fill: '#000000' }, 'child');
+      child.transform.position = [50, 0];
+      const plate = ctx.group('plate', [child]);
+      plate.clip = ctx.rect(0, 0, 100, 100, {}).items[0].paths;
+      plate.transform.position = [10, 20];
+      ctx.add(plate);
+    });
+    expect(bboxAt(model.nodes[0], 0)).toEqual({ x: 60, y: 20, width: 50, height: 100 });
   });
 });

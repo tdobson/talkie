@@ -207,6 +207,46 @@ describe('motion defaults', () => {
   });
 });
 
+describe('draw and gradients', () => {
+  const stops = [
+    { offset: 0, colour: '#ffffff', opacity: 1 },
+    { offset: 1, colour: '#000000', opacity: 1 },
+  ];
+  const stretched = {
+    type: 'radial' as const,
+    centre: [0.5, 0.5] as [number, number],
+    radius: 0.5,
+    focal: [0.5, 0.5] as [number, number],
+    stops,
+    matrix: [80, 0, 0, 20, 10, 40] as [number, number, number, number, number, number],
+  };
+
+  it('refuses to draw a node with a stretched radial fill, in draw and in tween', () => {
+    build((ctx) => {
+      const dish = ctx.rect(10, 40, 80, 20, { fill: stretched }, 'dish');
+      ctx.add(dish);
+      expect(() => ctx.draw(dish, 1)).toThrow(
+        'draw cannot trim "dish" (n1): its radial gradient is stretched, and a trim would not follow the drawing'
+      );
+      expect(() => ctx.tween(dish, 'trimEnd', [{ t: 1, v: 0 }])).toThrow(
+        'its radial gradient is stretched'
+      );
+    });
+  });
+
+  it('draws a node with a linear gradient', () => {
+    const model = build((ctx) => {
+      const bar = ctx.line([0, 0], [100, 0], {
+        stroke: { type: 'linear', from: [0, 0], to: [100, 0], stops },
+        strokeWidth: 4,
+      });
+      ctx.add(bar);
+      ctx.draw(bar, 1);
+    });
+    expect(model.nodes[0].trimmed).toBe(true);
+  });
+});
+
 describe('motion rules', () => {
   it('merges and sorts keys on the same prop', () => {
     build((ctx) => {

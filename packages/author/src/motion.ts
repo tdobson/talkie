@@ -1,5 +1,6 @@
 import { localBboxAt } from './evaluate';
 import type { AnimProp, Ease, Key, Node, Vec } from './model';
+import { isStretched } from './paint';
 
 /** Two motions on the same node and property overlap in time, or disagree where they meet. */
 export class MotionConflictError extends Error {
@@ -205,6 +206,12 @@ export function pop(state: MotionState, n: Node, at: number, o: { dur?: number }
 function trim(n: Node): void {
   if (n.items.length === 0) {
     throw new Error(`draw needs a node with paths of its own, and ${label(n)} has none`);
+  }
+  // A stretched radial fill is drawn in a frame of its own, which a trim cannot follow.
+  if (n.items.some((item) => isStretched(item.style.fill))) {
+    throw new Error(
+      `draw cannot trim ${label(n)}: its radial gradient is stretched, and a trim would not follow the drawing`
+    );
   }
   n.trimmed = true;
 }

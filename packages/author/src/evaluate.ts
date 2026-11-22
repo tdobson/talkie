@@ -105,6 +105,33 @@ function pathPoints(path: BezierPath): Vec[] {
 
 function collect(node: Node, t: number, outer: Matrix, own: boolean, out: Vec[]): void {
   const m = own ? multiply(outer, matrixOf(transformAt(node, t))) : outer;
+  if (node.clip) {
+    // Only the part inside the clip shows: the box of the content, cut down to the box of the
+    // clip, both in the node's own frame, then carried out by the node's matrix.
+    const inner: Vec[] = [];
+    collect({ ...node, clip: undefined }, t, IDENTITY, false, inner);
+    const content = boxOf(inner);
+    const cut = boxOf(node.clip.flatMap(pathPoints));
+    if (!content || !cut) {
+      return;
+    }
+    const x1 = Math.max(content.x, cut.x);
+    const y1 = Math.max(content.y, cut.y);
+    const x2 = Math.min(content.x + content.width, cut.x + cut.width);
+    const y2 = Math.min(content.y + content.height, cut.y + cut.height);
+    if (x1 > x2 || y1 > y2) {
+      return;
+    }
+    for (const [x, y] of [
+      [x1, y1],
+      [x2, y1],
+      [x2, y2],
+      [x1, y2],
+    ]) {
+      out.push([m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+    }
+    return;
+  }
   for (const item of node.items) {
     for (const path of item.paths) {
       for (const [x, y] of pathPoints(path)) {
@@ -136,8 +163,9 @@ function boxOf(points: Vec[]): Box | null {
 
 /**
  * The node's bounding box at t seconds in its parent's coordinates, from path vertices and tangent
- * control points after the node's and its children's transforms. Stroke width is not counted.
- * null for a node with no paths.
+ * control points after the node's and its children's transforms. Stroke width is not counted. A
+ * clipped node counts only the part of its box inside the box of its clip. null for a node with
+ * no paths, or none that its clips let through.
  */
 export function bboxAt(node: Node, t: number): Box | null {
   const points: Vec[] = [];
