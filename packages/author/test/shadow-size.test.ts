@@ -1,5 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { compileScene, emitLottie, importSvg, scene, type SceneContext } from '../src/index';
+import { gradientShadow, shadowScene, stackedShadow } from './shadows';
 
 // A soft ground shadow under a card, drawn three ways. One radial gradient should cost less than
 // stacked flat copies, before and after gzip. The numbers are not pinned, only the order.
@@ -58,5 +59,21 @@ describe('soft shadow size', () => {
     expect(gradient.gzip).toBeLessThan(copies.gzip);
     expect(gradient.raw).toBeLessThan(rings.raw);
     expect(gradient.gzip).toBeLessThan(rings.gzip);
+  });
+});
+
+describe('soft shadow size, stepped copies against one radial gradient', () => {
+  const gradient = shadowScene(gradientShadow());
+
+  it('uses one gradient fill and no copies', () => {
+    expect(gradient.json.match(/"ty":"gf"/g)).toHaveLength(1);
+    expect(gradient.json).not.toContain('copy 1');
+  });
+
+  it.each([6, 8, 12])('is smaller than %i stepped copies, raw and gzipped', (copies) => {
+    const stacked = shadowScene(stackedShadow(copies));
+    expect(stacked.json.match(/"ty":"fl"/g)).toHaveLength(copies);
+    expect(gradient.raw).toBeLessThan(stacked.raw);
+    expect(gradient.gzip).toBeLessThan(stacked.gzip);
   });
 });
