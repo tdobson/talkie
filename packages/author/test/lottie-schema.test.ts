@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020';
 import { emitLottie } from '../src/index';
-import { everything, gauge } from './scenes';
+import { everything, gauge, shaded } from './scenes';
 
 // The Lottie 1.0.1 schema from https://lottie.github.io/lottie-spec/1.0.1/lottie.schema.json.
 // It nests its definitions two levels deep and carries a "$version" keyword, so ajv runs unstrict.
@@ -20,6 +20,9 @@ describe('Lottie 1.0.1 schema', () => {
 
   it('accepts a scene that uses every helper', () =>
     expect(errors(emitLottie(everything()))).toEqual([]));
+
+  it('accepts a scene with gradients, clips and precomps', () =>
+    expect(errors(emitLottie(shaded()))).toEqual([]));
 
   it('rejects a broken animation, so the check has teeth', () => {
     const broken = JSON.parse(JSON.stringify(emitLottie(gauge())));

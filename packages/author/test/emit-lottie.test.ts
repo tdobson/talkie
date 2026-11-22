@@ -1,12 +1,20 @@
 import {
   compileScene,
   emitLottie,
+  invert,
+  matrixOf,
+  multiply,
   parseColour,
+  parsePathD,
+  round3,
   scene,
+  transformPaths,
   type LottieLayer,
   type LottieShape,
+  type Matrix,
+  type Vec,
 } from '../src/index';
-import { everything, gauge, golden } from './scenes';
+import { everything, gauge, golden, shaded } from './scenes';
 
 type Group = Extract<LottieShape, { ty: 'gr' }>;
 const only = <T extends LottieShape['ty']>(group: Group, ty: T) =>
@@ -319,5 +327,260 @@ describe('emitLottie refusals', () => {
     });
     const model = compileScene(def, { size: [100, 100], lines: [], duration: 1 });
     expect(() => emitLottie(model)).toThrow('two opacity keys land on frame 30');
+  });
+});
+
+describe('emitLottie gradients', () => {
+  const STOPS = [
+    { offset: 0, colour: '#ffffff', opacity: 1 },
+    { offset: 1, colour: '#0000ff', opacity: 1 },
+  ];
+  const lin = {
+    type: 'linear' as const,
+    from: [10, 20] as Vec,
+    to: [110, 20] as Vec,
+    stops: STOPS,
+  };
+  const emit = (build: Parameters<typeof scene>[1]) =>
+    emitLottie(compileScene(scene('g', build), { size: [320, 180], lines: [], duration: 2 }));
+  const shapesOf = (json: ReturnType<typeof emitLottie>) =>
+    (json.layers[1].shapes?.[0] as Group).it;
+
+  it('writes a linear fill as gf, with p before k and no alpha stops when all are opaque', () => {
+    const shapes = shapesOf(emit((c) => c.add(c.rect(0, 0, 120, 40, { fill: lin }, 'plate'))));
+    expect(shapes.map((shape) => shape.ty)).toEqual(['sh', 'gf', 'tr']);
+    const gf = shapes[1];
+    expect(gf).toEqual({
+      ty: 'gf',
+      nm: 'fill',
+      o: { a: 0, k: 100 },
+      r: 1,
+      t: 1,
+      s: { a: 0, k: [10, 20] },
+      e: { a: 0, k: [110, 20] },
+      g: { p: 2, k: { a: 0, k: [0, 1, 1, 1, 1, 0, 0, 1] } },
+    });
+    expect(Object.keys((gf as { g: object }).g)).toEqual(['p', 'k']);
+  });
+
+  it('adds alpha stops at the same offsets when any stop is see-through', () => {
+    const stops = [
+      { offset: 0, colour: '#000000', opacity: 0.6 },
+      { offset: 0.5, colour: '#000000', opacity: 0.6 },
+      { offset: 0.5, colour: '#ff0000', opacity: 1 },
+      { offset: 1, colour: '#ff0000', opacity: 0 },
+    ];
+    const shapes = shapesOf(emit((c) => c.add(c.rect(0, 0, 120, 40, { fill: { ...lin, stops } }))));
+    expect((shapes[1] as { g: unknown }).g).toEqual({
+      p: 4,
+      k: {
+        a: 0,
+        k: [0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1, 0, 0, 1, 1, 0, 0, 0, 0.6, 0.5, 0.6, 0.5, 1, 1, 0],
+      },
+    });
+  });
+
+  it('writes a radial fill with e one radius to the right, and the focal point as h and a', () => {
+    const radial = {
+      type: 'radial' as const,
+      centre: [50, 50] as Vec,
+      radius: 20,
+      focal: [50, 60] as Vec,
+      stops: STOPS,
+    };
+    const shapes = shapesOf(emit((c) => c.add(c.circle([50, 50], 20, { fill: radial }))));
+    expect(shapes[1]).toEqual({
+      ty: 'gf',
+      nm: 'fill',
+      o: { a: 0, k: 100 },
+      r: 1,
+      t: 2,
+      s: { a: 0, k: [50, 50] },
+      e: { a: 0, k: [70, 50] },
+      g: { p: 2, k: { a: 0, k: [0, 1, 1, 1, 1, 0, 0, 1] } },
+      h: { a: 0, k: 50 },
+      a: { a: 0, k: 90 },
+    });
+    const centred = shapesOf(
+      emit((c) => c.add(c.circle([50, 50], 20, { fill: { ...radial, focal: [50, 50] } })))
+    );
+    expect(centred[1]).not.toHaveProperty('h');
+    expect(centred[1]).not.toHaveProperty('a');
+  });
+
+  it('writes a gradient stroke as gs, over the fill', () => {
+    const shapes = shapesOf(
+      emit((c) =>
+        c.add(
+          c.rect(0, 0, 120, 40, { fill: '#000000', stroke: lin, strokeWidth: 4, lineCap: 'round' })
+        )
+      )
+    );
+    expect(shapes.map((shape) => shape.ty)).toEqual(['sh', 'gs', 'fl', 'tr']);
+    expect(shapes[1]).toEqual({
+      ty: 'gs',
+      nm: 'stroke',
+      o: { a: 0, k: 100 },
+      w: { a: 0, k: 4 },
+      lc: 2,
+      lj: 1,
+      ml: 4,
+      t: 1,
+      s: { a: 0, k: [10, 20] },
+      e: { a: 0, k: [110, 20] },
+      g: { p: 2, k: { a: 0, k: [0, 1, 1, 1, 1, 0, 0, 1] } },
+    });
+  });
+
+  describe('a stretched radial gradient', () => {
+    // A circle of radius 0.5 in the unit box, stretched onto an 80 by 20 box at 10, 40 and turned.
+    const turn = (30 * Math.PI) / 180;
+    const box: Matrix = [80, 0, 0, 20, 10, 40];
+    const rotate: Matrix = [Math.cos(turn), Math.sin(turn), -Math.sin(turn), Math.cos(turn), 0, 0];
+    const matrix = multiply(rotate, box);
+    const stretched = {
+      type: 'radial' as const,
+      centre: [0.5, 0.5] as Vec,
+      radius: 0.5,
+      focal: [0.6, 0.5] as Vec,
+      stops: STOPS,
+      matrix,
+    };
+    const outline = 'M10 40H90V60H10Z';
+    const json = emit((c) => {
+      const n = c.path(outline, { fill: stretched, stroke: '#123456', strokeWidth: 2 }, 'dish');
+      n.items[0].paths = transformPaths(n.items[0].paths, rotate);
+      c.add(n);
+    });
+    const shapes = shapesOf(json);
+    const [strokeGroup, fillGroup] = shapes as Group[];
+
+    it('puts the stroke in a sibling group in front of the fill group', () => {
+      expect(shapes.map((shape) => shape.ty)).toEqual(['gr', 'gr', 'tr']);
+      expect(strokeGroup.it.map((shape) => shape.ty)).toEqual(['sh', 'st', 'tr']);
+      expect(only(strokeGroup, 'tr')[0].s).toEqual({ a: 0, k: [100, 100] });
+    });
+
+    it('keeps the gf and the stretching tr in one group with no stroke', () => {
+      expect(fillGroup.nm).toBe('fill');
+      expect(fillGroup.it.map((shape) => shape.ty)).toEqual(['sh', 'gf', 'tr']);
+      const [tr] = only(fillGroup, 'tr');
+      const s = (tr.s as { k: number[] }).k;
+      expect(s[0]).toBe(100);
+      expect(s[1]).toBeCloseTo(25, 4);
+      expect((tr.r as { k: number }).k).toBeCloseTo(30, 4);
+      expect((tr.p as { k: number[] }).k).toEqual([round3(matrix[4]), round3(matrix[5])]);
+      const [gf] = only(fillGroup, 'gf');
+      const sk = (gf.s as { k: number[] }).k;
+      const ek = (gf.e as { k: number[] }).k;
+      expect(ek[0] - sk[0]).toBeCloseTo(40, 2);
+      expect(ek[1]).toBe(sk[1]);
+      expect(gf).toMatchObject({ t: 2, h: { a: 0, k: 20 }, a: { a: 0, k: 0 } });
+    });
+
+    it('draws the path where it was, once the group tr is applied', () => {
+      const [tr] = only(fillGroup, 'tr');
+      const m = matrixOf({
+        position: (tr.p as unknown as { k: Vec }).k,
+        anchor: [0, 0],
+        scale: (tr.s as unknown as { k: Vec }).k,
+        rotation: (tr.r as { k: number }).k,
+        opacity: 100,
+      });
+      const [sh] = only(fillGroup, 'sh');
+      const want = transformPaths(parsePathD(outline), rotate)[0].v;
+      sh.ks.k.v.forEach(([x, y], n) => {
+        expect(Math.abs(m[0] * x + m[2] * y + m[4] - want[n][0])).toBeLessThan(2e-3);
+        expect(Math.abs(m[1] * x + m[3] * y + m[5] - want[n][1])).toBeLessThan(2e-3);
+      });
+    });
+
+    it('gives every point the same place in the gradient as SVG does', () => {
+      const [tr] = only(fillGroup, 'tr');
+      const [gf] = only(fillGroup, 'gf');
+      const m = matrixOf({
+        position: (tr.p as unknown as { k: Vec }).k,
+        anchor: [0, 0],
+        scale: (tr.s as unknown as { k: Vec }).k,
+        rotation: (tr.r as { k: number }).k,
+        opacity: 100,
+      });
+      const inv = invert(m) as Matrix;
+      const toGradient = invert(matrix) as Matrix;
+      const centre = (gf.s as { k: number[] }).k;
+      const radius = (gf.e as { k: number[] }).k[0] - centre[0];
+      for (const [x, y] of [
+        [30, 60],
+        [55, 70],
+        [20, 45],
+      ] as Vec[]) {
+        // SVG: back into the unit box, then the distance from the centre over the radius.
+        const g: Vec = [
+          toGradient[0] * x + toGradient[2] * y + toGradient[4],
+          toGradient[1] * x + toGradient[3] * y + toGradient[5],
+        ];
+        const want = Math.hypot(g[0] - 0.5, g[1] - 0.5) / 0.5;
+        // The film: into the group's frame, then the same in a plain circle.
+        const f: Vec = [inv[0] * x + inv[2] * y + inv[4], inv[1] * x + inv[3] * y + inv[5]];
+        const got = Math.hypot(f[0] - centre[0], f[1] - centre[1]) / radius;
+        expect(Math.abs(got - want)).toBeLessThan(1e-4);
+      }
+    });
+
+    it('refuses a trim, even one set on the node by hand', () => {
+      const model = compileScene(
+        scene('g', (c) => {
+          const n = c.path(outline, { fill: stretched }, 'dish');
+          n.trimmed = true;
+          c.add(n);
+        }),
+        { size: [320, 180], lines: [], duration: 2 }
+      );
+      expect(() => emitLottie(model)).toThrow(
+        'draw cannot trim "dish" (n1): its radial gradient is stretched, and a trim would not follow the drawing'
+      );
+    });
+
+    it('refuses a stretched radial stroke', () => {
+      const model = compileScene(
+        scene('g', (c) => c.add(c.path(outline, { stroke: stretched, strokeWidth: 2 }, 'dish'))),
+        { size: [320, 180], lines: [], duration: 2 }
+      );
+      expect(() => emitLottie(model)).toThrow(
+        '"dish" (n1) has a radial gradient stroke that is stretched'
+      );
+    });
+  });
+
+  it('checks every gradient it draws', () => {
+    const model = compileScene(
+      scene('g', (c) =>
+        c.add(c.rect(0, 0, 10, 10, { fill: { ...lin, stops: [STOPS[0]] } }, 'plate'))
+      ),
+      { size: [320, 180], lines: [], duration: 2 }
+    );
+    expect(() => emitLottie(model)).toThrow(
+      'node "plate" (n1): its gradient needs at least 2 stops'
+    );
+  });
+
+  it('counts a gradient as one paint when deciding a fade needs its own layer', () => {
+    const json = emit((c) => {
+      const plate = c.rect(0, 0, 10, 10, { fill: lin, stroke: lin, strokeWidth: 2 }, 'plate');
+      c.add(c.group('holder', [plate]));
+      c.fade(plate, 0.5);
+    });
+    expect(json.layers.map((layer) => [layer.ty, layer.nm])).toEqual([
+      [3, 'camera'],
+      [4, 'plate'],
+      [3, 'holder'],
+    ]);
+  });
+});
+
+describe('emitLottie on the shaded scene', () => {
+  it('matches the golden file, byte for byte', () => {
+    const json = emitLottie(shaded());
+    expect(JSON.parse(JSON.stringify(json))).toEqual(golden('shaded', json));
   });
 });

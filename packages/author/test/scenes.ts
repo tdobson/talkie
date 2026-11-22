@@ -62,6 +62,33 @@ export const everythingDef = scene('everything', (ctx) => {
 export const everything = (): SceneModel =>
   compileScene(everythingDef, { size: SIZE, lines: LINES, duration: 10.3 });
 
+const ART = join(__dirname, 'fixtures', 'art');
+
+/**
+ * A scene drawn from art with gradients: see-through and hard stops, a stretched radial shadow, a
+ * focal point under a gradientTransform, gradient strokes and an href. It fades, rises and pops.
+ */
+export const shadedDef = scene('shaded', (ctx) => {
+  const art = ctx.art('shaded', { at: [0, 0] });
+  ctx.add(art);
+  const [, shadow, sun, card] = art.children;
+  ctx.fade(shadow, 0.2);
+  ctx.rise(card, 0.5);
+  ctx.pop(sun, 1);
+});
+export const shaded = (): SceneModel =>
+  compileScene(shadedDef, {
+    size: [320, 180],
+    lines: [],
+    duration: 3,
+    loaders: {
+      svg: (name) => readFileSync(join(ART, `${name}.svg`), 'utf8'),
+      font: () => {
+        throw new Error('no font in this scene');
+      },
+    },
+  });
+
 /** Reads a golden file. Run with UPDATE_GOLDEN=1 to rewrite it from the value under test. */
 export function golden(name: string, actual: unknown): unknown {
   const file = join(__dirname, '__golden__', `${name}.json`);

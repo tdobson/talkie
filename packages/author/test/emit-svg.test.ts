@@ -1,5 +1,5 @@
-import { compileScene, scene, svgAt } from '../src/index';
-import { everything, gauge, golden } from './scenes';
+import { compileScene, scene, svgAt, type Gradient, type Vec } from '../src/index';
+import { everything, gauge, golden, shaded } from './scenes';
 
 const attr = (svg: string, name: string) =>
   [...svg.matchAll(new RegExp(` ${name}="([^"]*)"`, 'g'))].map((match) => match[1]);
@@ -72,5 +72,89 @@ describe('svgAt', () => {
   it('matches the golden file for the full scene at several times', () => {
     const frames = [0, 1.6, 2.5, 5.7, 10].map((t) => svgAt(everything(), t));
     expect(frames).toEqual(golden('everything-svg', frames));
+  });
+});
+
+describe('svgAt gradients', () => {
+  const STOPS = [
+    { offset: 0, colour: '#FFFFFF', opacity: 1 },
+    { offset: 0.33333, colour: '#0000ff', opacity: 0.25 },
+  ];
+  const draw = (id: string, build: Parameters<typeof scene>[1]) =>
+    svgAt(compileScene(scene(id, build), { size: [320, 180], lines: [], duration: 2 }), 0);
+
+  it('writes a linear gradient fill in user space just before the path that uses it', () => {
+    const g: Gradient = { type: 'linear', from: [10, 20], to: [110.12345, 20], stops: STOPS };
+    const svg = draw('sky', (c) => c.add(c.rect(0, 0, 120, 40, { fill: g }, 'plate')));
+    expect(svg).toContain(
+      '<linearGradient id="sky-n1-f0" gradientUnits="userSpaceOnUse" x1="10" y1="20" x2="110.123" y2="20">' +
+        '<stop offset="0" stop-color="#ffffff"/><stop offset="0.333" stop-color="#0000ff" stop-opacity="0.25"/>' +
+        '</linearGradient><path d="M0 0L120 0L120 40L0 40Z" fill="url(#sky-n1-f0)"/>'
+    );
+  });
+
+  it('writes a radial gradient stroke, with the focal point only when it moves', () => {
+    const g: Gradient = {
+      type: 'radial',
+      centre: [50, 50],
+      radius: 20,
+      focal: [50, 60],
+      stops: STOPS,
+    };
+    const svg = draw('s', (c) =>
+      c.add(c.circle([50, 50], 20, { fill: '#000', stroke: g, strokeWidth: 3 }, 'bead'))
+    );
+    expect(svg).toContain(
+      '<radialGradient id="s-n1-s0" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="20" fx="50" fy="60">'
+    );
+    expect(svg).toContain('fill="#000" stroke="url(#s-n1-s0)" stroke-width="3"');
+    const centred = draw('s', (c) =>
+      c.add(c.circle([50, 50], 20, { fill: { ...g, focal: [50, 50] as Vec } }, 'bead'))
+    );
+    expect(centred).toContain(
+      '<radialGradient id="s-n1-f0" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="20">'
+    );
+  });
+
+  it('writes a stretched radial gradient with its matrix as gradientTransform', () => {
+    const g: Gradient = {
+      type: 'radial',
+      centre: [0.5, 0.5],
+      radius: 0.5,
+      focal: [0.5, 0.5],
+      stops: STOPS,
+      matrix: [80, 0, 0, 20, 10, 40.1234567],
+    };
+    const svg = draw('s', (c) => c.add(c.rect(10, 40, 80, 20, { fill: g }, 'dish')));
+    expect(svg).toContain(
+      '<radialGradient id="s-n1-f0" gradientUnits="userSpaceOnUse" cx="0.5" cy="0.5" r="0.5" gradientTransform="matrix(80 0 0 20 10 40.123457)">'
+    );
+  });
+
+  it('makes ids safe from the scene id, and unique per node and item', () => {
+    const g: Gradient = { type: 'linear', from: [0, 0], to: [10, 0], stops: STOPS };
+    const svg = draw('my scene/1 "x"', (c) => {
+      const two = c.node('two', [
+        { paths: c.rect(0, 0, 5, 5, {}).items[0].paths, style: { fill: g } },
+        { paths: c.rect(5, 0, 5, 5, {}).items[0].paths, style: { fill: g, stroke: g } },
+      ]);
+      c.add(two);
+    });
+    const ids = attr(svg, 'id');
+    expect(ids).toEqual(['my_scene_1__x_-n3-f0', 'my_scene_1__x_-n3-f1', 'my_scene_1__x_-n3-s1']);
+  });
+
+  it('refuses what the film refuses', () => {
+    const g: Gradient = { type: 'linear', from: [0, 0], to: [0, 0], stops: STOPS };
+    expect(() => draw('s', (c) => c.add(c.rect(0, 0, 5, 5, { fill: g }, 'plate')))).toThrow(
+      'node "plate" (n1): its gradient has from and to at the same point'
+    );
+  });
+});
+
+describe('svgAt on the shaded scene', () => {
+  it('matches the golden file', () => {
+    const frames = [0, 0.8, 3].map((t) => svgAt(shaded(), t));
+    expect(frames).toEqual(golden('shaded-svg', frames));
   });
 });

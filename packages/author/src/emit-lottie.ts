@@ -3,14 +3,27 @@ import { trackOf } from './evaluate';
 import {
   identity,
   type BezierPath,
+  type Gradient,
   type Node,
+  type Paint,
+  type RadialGradient,
   type SceneModel,
   type ShapeItem,
   type Track,
   type Transform,
   type Vec,
 } from './model';
-import { flatColour, round3 } from './paint';
+import {
+  checkGradient,
+  flatColour,
+  hasPaint,
+  isGradient,
+  isStretched,
+  radialFrame,
+  round3,
+  stopsOut,
+} from './paint';
+import type { Matrix } from './path';
 
 export { parseColour, round3 } from './paint';
 
@@ -38,6 +51,18 @@ export interface LottieBezier {
   i: number[][];
   o: number[][];
 }
+/**
+ * The geometry and stops of a gradient. t is 1 for linear and 2 for radial. g holds p colour stops
+ * [offset, r, g, b], then, when any stop is see-through, p alpha stops [offset, alpha].
+ */
+export interface LottieGradient {
+  t: 1 | 2;
+  s: LottieProp<number[]>;
+  e: LottieProp<number[]>;
+  g: { p: number; k: LottieProp<number[]> };
+  h?: LottieProp<number>;
+  a?: LottieProp<number>;
+}
 export type LottieShape =
   | { ty: 'gr'; nm: string; it: LottieShape[] }
   | { ty: 'sh'; nm: string; ks: { a: 0; k: LottieBezier } }
@@ -60,6 +85,16 @@ export type LottieShape =
       ml: number;
     }
   | { ty: 'fl'; nm: string; c: LottieProp<number[]>; o: LottieProp<number>; r: 1 }
+  | ({ ty: 'gf'; nm: string; o: LottieProp<number>; r: 1 } & LottieGradient)
+  | ({
+      ty: 'gs';
+      nm: string;
+      o: LottieProp<number>;
+      w: LottieProp<number>;
+      lc: 1 | 2 | 3;
+      lj: 1 | 2 | 3;
+      ml: number;
+    } & LottieGradient)
   | ({ ty: 'tr'; nm: string; sk: LottieProp<number>; sa: LottieProp<number> } & LottieTransform);
 export interface LottieLayer {
   ddd: 0;
@@ -159,14 +194,174 @@ const bezier = (path: BezierPath): LottieBezier => ({
   o: path.o.map(vec),
 });
 
+const label = (node: Node) => `"${node.name}" (${node.id})`;
+
+/** Throws when a node is trimmed and paints with a stretched radial gradient. */
+export function checkTrim(node: Node): void {
+  if (node.trimmed && node.items.some((item) => isStretched(item.style.fill))) {
+    throw new Error(
+      `draw cannot trim ${label(node)}: its radial gradient is stretched, and a trim would not follow the drawing`
+    );
+  }
+}
+
+/** The gradient stops as Lottie stores them: colour stops, then alpha stops when needed. */
+function gradientStops(g: Gradient): LottieGradient['g'] {
+  const stops = stopsOut(g.stops);
+  const colours = stops.flatMap((stop) => [stop.offset, ...stop.rgb]);
+  // Alpha stops reuse the colour offsets exactly, so a renderer pairs them, hard stops included.
+  const alpha = stops.some((stop) => stop.opacity < 1)
+    ? stops.flatMap((stop) => [stop.offset, stop.opacity])
+    : [];
+  return { p: stops.length, k: fixed([...colours, ...alpha]) };
+}
+
+/**
+ * A gradient in the space it is drawn in. A radial one is written with e one radius to the right
+ * of s, because renderers read the radius from the distance between them.
+ */
+function gradientShape(g: Gradient): LottieGradient {
+  if (g.type === 'linear') {
+    return { t: 1, s: fixed(vec(g.from)), e: fixed(vec(g.to)), g: gradientStops(g) };
+  }
+  const out: LottieGradient = {
+    t: 2,
+    s: fixed(vec(g.centre)),
+    e: fixed(vec([g.centre[0] + g.radius, g.centre[1]])),
+    g: gradientStops(g),
+  };
+  const dx = g.focal[0] - g.centre[0];
+  const dy = g.focal[1] - g.centre[1];
+  if (Math.hypot(dx, dy) > 1e-9) {
+    out.h = fixed(round3((100 * Math.hypot(dx, dy)) / g.radius));
+    out.a = fixed(round3((Math.atan2(dy, dx) * 180) / Math.PI));
+  }
+  return out;
+}
+
+/** Rounds to 6 decimals, and never gives a negative zero. */
+const round6 = (x: number): number => {
+  const r = Math.round(x * 1e6) / 1e6;
+  return r === 0 ? 0 : r;
+};
+
+function strokeShape(node: Node, style: ShapeItem['style']): LottieShape | null {
+  const where = `node ${label(node)}`;
+  if (!hasPaint(style.stroke)) {
+    return null;
+  }
+  const common = {
+    o: fixed(100),
+    w: fixed(round3(style.strokeWidth ?? 1)),
+    lc: LINE_CAP[style.lineCap ?? 'butt'],
+    lj: LINE_JOIN[style.lineJoin ?? 'miter'],
+    ml: 4,
+  };
+  const paint = style.stroke as Paint;
+  if (isGradient(paint)) {
+    checkGradient(paint, where);
+    if (isStretched(paint)) {
+      throw new Error(
+        `${where} has a radial gradient stroke that is stretched, which cannot be drawn`
+      );
+    }
+    return { ty: 'gs', nm: 'stroke', ...common, ...gradientShape(paint) };
+  }
+  const colour = flatColour(paint, where) as number[];
+  return { ty: 'st', nm: 'stroke', c: fixed([...colour, 1]), ...common };
+}
+
+function fillShape(node: Node, style: ShapeItem['style']): LottieShape | null {
+  const where = `node ${label(node)}`;
+  const paint = style.fill;
+  if (isGradient(paint)) {
+    checkGradient(paint, where);
+    return { ty: 'gf', nm: 'fill', o: fixed(100), r: 1, ...gradientShape(paint) };
+  }
+  const colour = flatColour(paint, where);
+  return colour ? { ty: 'fl', nm: 'fill', c: fixed([...colour, 1]), o: fixed(100), r: 1 } : null;
+}
+
+/**
+ * A fill with a stretched radial gradient, as one group. Its tr stretches a circle into the
+ * ellipse, so the paths inside are drawn in the circle's frame and the tr maps them back. The tr
+ * sits in the same group as the gf, so it moves the gradient too, and the group holds no stroke,
+ * whose width the stretch would change.
+ */
+function stretchedFill(
+  node: Node,
+  item: ShapeItem,
+  g: RadialGradient & { matrix: Matrix }
+): LottieShape {
+  checkGradient(g, `node ${label(node)}`);
+  const m = g.matrix;
+  const { rotation, s1, s2, turn } = radialFrame(m);
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const k = s1 / s2;
+  // Item space into the frame: undo the translation and the rotation, then the squash.
+  const tangent = ([x, y]: Vec): Vec => [cos * x + sin * y, k * (-sin * x + cos * y)];
+  const point = ([x, y]: Vec): Vec => tangent([x - m[4], y - m[5]]);
+  // Gradient space into the frame: a rotation and a uniform scale, so circles stay circles.
+  const ct = Math.cos(turn);
+  const st = Math.sin(turn);
+  const frame = ([x, y]: Vec): Vec => [s1 * (ct * x - st * y), s1 * (st * x + ct * y)];
+  const paths: LottieShape[] = item.paths.map((path, n) => ({
+    ty: 'sh',
+    nm: `path ${n + 1}`,
+    ks: fixed(
+      bezier({
+        closed: path.closed,
+        v: path.v.map(point),
+        i: path.i.map(tangent),
+        o: path.o.map(tangent),
+      })
+    ),
+  }));
+  const circle: RadialGradient = {
+    type: 'radial',
+    centre: frame(g.centre),
+    radius: s1 * g.radius,
+    focal: frame(g.focal),
+    stops: g.stops,
+  };
+  return {
+    ty: 'gr',
+    nm: 'fill',
+    it: [
+      ...paths,
+      { ty: 'gf', nm: 'fill', o: fixed(100), r: 1, ...gradientShape(circle) },
+      {
+        ty: 'tr',
+        nm: 'transform',
+        p: fixed(vec([m[4], m[5]])),
+        a: fixed([0, 0]),
+        s: fixed([100, round6((100 * s2) / s1)]),
+        r: fixed(round6((rotation * 180) / Math.PI)),
+        o: fixed(100),
+        sk: fixed(0),
+        sa: fixed(0),
+      },
+    ],
+  };
+}
+
 /** The paths of one item, then its trim, then its stroke over its fill. */
 function itemShapes(node: Node, item: ShapeItem): LottieShape[] {
   const where = `node "${node.name}" (${node.id})`;
-  const out: LottieShape[] = item.paths.map((path, n) => ({
-    ty: 'sh',
-    nm: `path ${n + 1}`,
-    ks: fixed(bezier(path)),
-  }));
+  checkTrim(node);
+  const paths = (): LottieShape[] =>
+    item.paths.map((path, n) => ({ ty: 'sh', nm: `path ${n + 1}`, ks: fixed(bezier(path)) }));
+  const { style } = item;
+  const stroke = strokeShape(node, style);
+  if (isStretched(style.fill)) {
+    // The stroke goes in a group of its own, in front, with the paths where they are.
+    const front: LottieShape[] = stroke
+      ? [{ ty: 'gr', nm: 'stroke', it: [...paths(), stroke, transformShape(still(identity()))] }]
+      : [];
+    return [...front, stretchedFill(node, item, style.fill as RadialGradient & { matrix: Matrix })];
+  }
+  const out = paths();
   if (node.trimmed) {
     out.push({
       ty: 'tm',
@@ -177,23 +372,12 @@ function itemShapes(node: Node, item: ShapeItem): LottieShape[] {
       m: 1,
     });
   }
-  const { style } = item;
-  const stroke = flatColour(style.stroke, where);
   if (stroke) {
-    out.push({
-      ty: 'st',
-      nm: 'stroke',
-      c: fixed([...stroke, 1]),
-      o: fixed(100),
-      w: fixed(round3(style.strokeWidth ?? 1)),
-      lc: LINE_CAP[style.lineCap ?? 'butt'],
-      lj: LINE_JOIN[style.lineJoin ?? 'miter'],
-      ml: 4,
-    });
+    out.push(stroke);
   }
-  const fill = flatColour(style.fill, where);
+  const fill = fillShape(node, style);
   if (fill) {
-    out.push({ ty: 'fl', nm: 'fill', c: fixed([...fill, 1]), o: fixed(100), r: 1 });
+    out.push(fill);
   }
   return out;
 }
@@ -230,10 +414,7 @@ function group(node: Node, tr: LottieTransform): LottieShape {
 /** How many fills and strokes a node paints, its children included. */
 function paints(node: Node): number {
   const own = node.items.reduce(
-    (sum, { style }) =>
-      sum +
-      (style.fill !== undefined && style.fill !== 'none' ? 1 : 0) +
-      (style.stroke !== undefined && style.stroke !== 'none' ? 1 : 0),
+    (sum, { style }) => sum + (hasPaint(style.fill) ? 1 : 0) + (hasPaint(style.stroke) ? 1 : 0),
     0
   );
   return node.children.reduce((sum, child) => sum + paints(child), own);

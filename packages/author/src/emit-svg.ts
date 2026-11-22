@@ -1,6 +1,7 @@
+import { checkTrim } from './emit-lottie';
 import { matrixOf, transformAt, trimAt } from './evaluate';
-import type { BezierPath, Node, SceneModel, ShapeItem } from './model';
-import { flatColour, round3 } from './paint';
+import type { BezierPath, Gradient, Node, Paint, SceneModel, ShapeItem } from './model';
+import { checkGradient, flatColour, isGradient, isStretched, round3, stopsOut } from './paint';
 
 const escape = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -40,11 +41,74 @@ function pathD(path: BezierPath): string {
   return path.closed ? `${d}Z` : d;
 }
 
-function itemSvg(node: Node, item: ShapeItem, trimEnd: number): string {
+/** An id made from the scene id, safe in a url(#id). */
+const safe = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, '_');
+
+/** A gradient in user space, with the same stop numbers as the film. */
+function gradientSvg(id: string, g: Gradient): string {
+  const stops = stopsOut(g.stops)
+    .map(
+      (stop) =>
+        `<stop${attrs([
+          ['offset', stop.offset],
+          ['stop-color', stop.colour],
+          ['stop-opacity', stop.opacity < 1 ? stop.opacity : null],
+        ])}/>`
+    )
+    .join('');
+  if (g.type === 'linear') {
+    const [x1, y1] = g.from.map(round3);
+    const [x2, y2] = g.to.map(round3);
+    return `<linearGradient${attrs([
+      ['id', id],
+      ['gradientUnits', 'userSpaceOnUse'],
+      ['x1', x1],
+      ['y1', y1],
+      ['x2', x2],
+      ['y2', y2],
+    ])}>${stops}</linearGradient>`;
+  }
+  // A stretched gradient keeps its own small coordinates, so it is written to 6 decimals.
+  const round = g.matrix ? round6 : round3;
+  const moved = Math.hypot(g.focal[0] - g.centre[0], g.focal[1] - g.centre[1]) > 1e-9;
+  return `<radialGradient${attrs([
+    ['id', id],
+    ['gradientUnits', 'userSpaceOnUse'],
+    ['cx', round(g.centre[0])],
+    ['cy', round(g.centre[1])],
+    ['r', round(g.radius)],
+    ['fx', moved ? round(g.focal[0]) : null],
+    ['fy', moved ? round(g.focal[1]) : null],
+    ['gradientTransform', g.matrix ? `matrix(${g.matrix.map(round6).join(' ')})` : null],
+  ])}>${stops}</radialGradient>`;
+}
+
+function itemSvg(
+  scope: string,
+  node: Node,
+  item: ShapeItem,
+  index: number,
+  trimEnd: number
+): string {
   const where = `node "${node.name}" (${node.id})`;
   const { style } = item;
-  const stroke = flatColour(style.stroke, where) ? (style.stroke as string) : null;
-  const fill = flatColour(style.fill, where) ? (style.fill as string) : 'none';
+  const defs: string[] = [];
+  const use = (paint: Paint | undefined, kind: 'f' | 's'): string | null => {
+    if (!isGradient(paint)) {
+      return flatColour(paint, where) ? (paint as string) : null;
+    }
+    checkGradient(paint, where);
+    if (kind === 's' && isStretched(paint)) {
+      throw new Error(
+        `${where} has a radial gradient stroke that is stretched, which cannot be drawn`
+      );
+    }
+    const id = `${scope}-${node.id}-${kind}${index}`;
+    defs.push(gradientSvg(id, paint));
+    return `url(#${id})`;
+  };
+  const fill = use(style.fill, 'f') ?? 'none';
+  const stroke = use(style.stroke, 's');
   const paint: Array<[string, string | number | null]> = [
     ['fill', fill],
     ['stroke', stroke],
@@ -54,24 +118,28 @@ function itemSvg(node: Node, item: ShapeItem, trimEnd: number): string {
   ];
   if (!node.trimmed) {
     // One element for the whole item, so that inner paths cut holes as they do in Lottie.
-    return `<path${attrs([['d', item.paths.map(pathD).join('')], ...paint])}/>`;
+    return `${defs.join('')}<path${attrs([['d', item.paths.map(pathD).join('')], ...paint])}/>`;
   }
   // Each path is trimmed on its own, as Lottie does with trim mode 1.
-  return item.paths
-    .map(
-      (path) =>
-        `<path${attrs([
-          ['d', pathD(path)],
-          ...paint,
-          ['pathLength', 100],
-          ['stroke-dasharray', 100],
-          ['stroke-dashoffset', round3(100 - trimEnd)],
-        ])}/>`
-    )
-    .join('');
+  return (
+    defs.join('') +
+    item.paths
+      .map(
+        (path) =>
+          `<path${attrs([
+            ['d', pathD(path)],
+            ...paint,
+            ['pathLength', 100],
+            ['stroke-dasharray', 100],
+            ['stroke-dashoffset', round3(100 - trimEnd)],
+          ])}/>`
+      )
+      .join('')
+  );
 }
 
-function nodeSvg(node: Node, t: number): string {
+function nodeSvg(scope: string, node: Node, t: number): string {
+  checkTrim(node);
   const tr = transformAt(node, t);
   const matrix = matrixOf(tr).map(round6);
   const plain = matrix.join(' ') === '1 0 0 1 0 0';
@@ -83,9 +151,9 @@ function nodeSvg(node: Node, t: number): string {
     ['opacity', opacity === 1 ? null : round3(opacity)],
   ])}>`;
   // Children first, then the node's own items on top, matching the Lottie group order.
-  const children = node.children.map((child) => nodeSvg(child, t)).join('');
+  const children = node.children.map((child) => nodeSvg(scope, child, t)).join('');
   const trimEnd = trimAt(node, t);
-  const items = node.items.map((item) => itemSvg(node, item, trimEnd)).join('');
+  const items = node.items.map((item, n) => itemSvg(scope, node, item, n, trimEnd)).join('');
   return `${open}${children}${items}</g>`;
 }
 
@@ -93,5 +161,5 @@ function nodeSvg(node: Node, t: number): string {
 export function svgAt(model: SceneModel, t: number): string {
   const [w, h] = model.size;
   const camera: Node = { ...model.camera, children: model.nodes };
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">${nodeSvg(camera, t)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">${nodeSvg(safe(model.id), camera, t)}</svg>`;
 }
