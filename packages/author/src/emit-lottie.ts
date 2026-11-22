@@ -10,6 +10,9 @@ import {
   type Transform,
   type Vec,
 } from './model';
+import { flatColour, round3 } from './paint';
+
+export { parseColour, round3 } from './paint';
 
 export interface LottieHandle {
   x: number[];
@@ -90,29 +93,7 @@ const FPS = 60;
 const LINE_CAP = { butt: 1, round: 2, square: 3 } as const;
 const LINE_JOIN = { miter: 1, round: 2, bevel: 3 } as const;
 
-/** Rounds to 3 decimals, and never gives a negative zero. */
-export const round3 = (x: number): number => {
-  const r = Math.round(x * 1000) / 1000;
-  return r === 0 ? 0 : r;
-};
 const vec = (v: Vec): number[] => [round3(v[0]), round3(v[1])];
-
-/**
- * Reads a #rgb or #rrggbb colour as [r, g, b] in 0 to 1. Gives null for no paint (undefined or
- * "none"). Throws on anything else, so a colour is never drawn differently from how it was written.
- */
-export function parseColour(colour: string | undefined, where: string): number[] | null {
-  if (colour === undefined || colour === 'none') {
-    return null;
-  }
-  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(colour);
-  const long = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(colour);
-  const parts = short ? short.slice(1).map((c) => c + c) : long?.slice(1);
-  if (!parts) {
-    throw new Error(`${where}: cannot use colour "${colour}", write it as #rrggbb`);
-  }
-  return parts.map((part) => round3(parseInt(part, 16) / 255));
-}
 
 const fixed = <V>(k: V): { a: 0; k: V } => ({ a: 0, k });
 
@@ -197,7 +178,7 @@ function itemShapes(node: Node, item: ShapeItem): LottieShape[] {
     });
   }
   const { style } = item;
-  const stroke = parseColour(style.stroke, where);
+  const stroke = flatColour(style.stroke, where);
   if (stroke) {
     out.push({
       ty: 'st',
@@ -210,7 +191,7 @@ function itemShapes(node: Node, item: ShapeItem): LottieShape[] {
       ml: 4,
     });
   }
-  const fill = parseColour(style.fill, where);
+  const fill = flatColour(style.fill, where);
   if (fill) {
     out.push({ ty: 'fl', nm: 'fill', c: fixed([...fill, 1]), o: fixed(100), r: 1 });
   }

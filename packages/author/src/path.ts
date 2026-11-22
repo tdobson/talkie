@@ -1,7 +1,7 @@
 import svgpath from 'svgpath';
-import type { BezierPath, Vec } from './model';
+import type { BezierPath, Matrix, Vec } from './model';
 
-export type Matrix = [number, number, number, number, number, number];
+export type { Matrix } from './model';
 
 const same = (a: Vec, b: Vec) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
 

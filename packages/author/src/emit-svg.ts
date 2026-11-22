@@ -1,6 +1,6 @@
-import { parseColour, round3 } from './emit-lottie';
 import { matrixOf, transformAt, trimAt } from './evaluate';
 import type { BezierPath, Node, SceneModel, ShapeItem } from './model';
+import { flatColour, round3 } from './paint';
 
 const escape = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -43,8 +43,8 @@ function pathD(path: BezierPath): string {
 function itemSvg(node: Node, item: ShapeItem, trimEnd: number): string {
   const where = `node "${node.name}" (${node.id})`;
   const { style } = item;
-  const stroke = parseColour(style.stroke, where) ? (style.stroke as string) : null;
-  const fill = parseColour(style.fill, where) ? (style.fill as string) : 'none';
+  const stroke = flatColour(style.stroke, where) ? (style.stroke as string) : null;
+  const fill = flatColour(style.fill, where) ? (style.fill as string) : 'none';
   const paint: Array<[string, string | number | null]> = [
     ['fill', fill],
     ['stroke', stroke],

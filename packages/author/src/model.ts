@@ -6,9 +6,43 @@ export interface BezierPath {
   i: Vec[];
   o: Vec[];
 }
+/** An affine matrix [a, b, c, d, e, f], as in SVG: x' = a x + c y + e, y' = b x + d y + f. */
+export type Matrix = [number, number, number, number, number, number];
+/** One colour stop. offset and opacity are 0 to 1, colour is #rrggbb. */
+export interface GradientStop {
+  offset: number;
+  colour: string;
+  opacity: number;
+}
+/** A linear gradient from one point to another, in the coordinates of the item it paints. */
+export interface LinearGradient {
+  type: 'linear';
+  from: Vec;
+  to: Vec;
+  stops: GradientStop[];
+}
+/**
+ * A radial gradient: a circle with a focal point, where offset 0 is at the focal point and offset 1
+ * on the circle. The focal point must be inside 0.99 of the radius.
+ */
+export interface RadialGradient {
+  type: 'radial';
+  centre: Vec;
+  radius: number;
+  focal: Vec;
+  stops: GradientStop[];
+  /**
+   * Gradient space to item space, for a circle the item stretches into an ellipse. Absent when the
+   * gradient is already in item space.
+   */
+  matrix?: Matrix;
+}
+export type Gradient = LinearGradient | RadialGradient;
+/** A flat colour (#rrggbb, or "none") or a gradient. */
+export type Paint = string | Gradient;
 export interface Style {
-  fill?: string;
-  stroke?: string;
+  fill?: Paint;
+  stroke?: Paint;
   strokeWidth?: number;
   lineCap?: 'butt' | 'round' | 'square';
   lineJoin?: 'miter' | 'round' | 'bevel';
@@ -45,6 +79,11 @@ export interface Node {
   transform: Transform;
   tracks: Track[];
   trimmed: boolean;
+  /**
+   * Closed contours in the node's own coordinates, before its transform. Their union clips the
+   * node and its children.
+   */
+  clip?: BezierPath[];
 }
 export interface PlannedLine {
   id: string;

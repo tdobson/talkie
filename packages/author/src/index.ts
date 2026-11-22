@@ -1,6 +1,7 @@
 export * from './model';
 export * from './ease';
 export * from './path';
+export * from './paint';
 export * from './timing';
 export * from './motion';
 export * from './scene';
