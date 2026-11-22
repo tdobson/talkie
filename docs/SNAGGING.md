@@ -16,6 +16,19 @@ Things to fix in due course. Newest at the bottom of each section. When an item 
   show through the inner half of the stroke as it does in a browser. Predates gradients. The art mirror
   test (`packages/cli/test/art-mirror.test.ts`) skips the `styles` fixture for this. Workaround in
   [authoring.md](authoring.md#art-rules): keep the stroke solid, or draw fill and stroke as two shapes.
+- **stroke-miterlimit is ignored.** The film always uses a miter limit of 4 (the SVG default), and
+  Illustrator writes 10, so a sharp miter join between about 11 and 29 degrees comes out bevelled in the
+  film. Refusing the attribute would refuse nearly all Illustrator art; the fix is to carry it into the
+  Lottie `ml` and the SVG mirror. Predates gradients.
+- **draw and trimEnd on a filled node.** The film trims the fill along with the stroke (the Lottie trim
+  cuts the path both use); the SVG mirror dashes only the stroke and draws the whole fill, so server
+  stills and mirror-based tests disagree with the film part way through. Either refuse a trim on a node
+  with a fill (the docs already say draw is for stroked paths) or clip the mirror's fill. Predates
+  gradients; check the films in use before refusing.
+- **Shared paint rules.** The stretched radial stroke refusal is written in svg-import, emit-lottie and
+  emit-svg, the stretched fill trim refusal in motion and emit-lottie, and round6, label and multiply are
+  copied between files. Move them into paint.ts and clip.ts so the film, the mirror and the importer
+  cannot drift apart.
 
 ## Talkie, fixed on branch `fix/talkie-handover` (merged into main 2026-11-21)
 

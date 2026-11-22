@@ -119,7 +119,9 @@ are `#rgb` or `#rrggbb`.
 a gradient, with points in the same stage pixels as the shape:
 
 ```ts
-const sky = {
+import type { LinearGradient } from '@talkie/author';
+
+const sky: LinearGradient = {
   type: 'linear',
   from: [0, 0],
   to: [0, 600],
@@ -198,6 +200,8 @@ It refuses, with an `UnsupportedSvgError` that names the element and says why:
 - Live text. Convert it to paths in your drawing tool, or use `c.label`.
 - `<style>` sheets. Export with presentation attributes instead (see the tips below).
 - Dashed strokes and the `evenodd` fill rule.
+- Markers (`marker-start`, `marker-mid`, `marker-end`). Draw arrowheads as shapes.
+- `paint-order` other than `normal`, and `vector-effect` other than `none`.
 - A fill and a stroke on one shape with different opacities. Draw them as two shapes.
 - A `url(#id)` or `href` that points at nothing, into another file, or at an id two elements
   share.
@@ -232,12 +236,15 @@ all the same, is a flat colour. A linear gradient whose two ends meet, or a radi
 Refused, each with the reason:
 
 - `spreadMethod="reflect"` or `"repeat"`. Use `pad`.
-- A focal radius (`fr` above 0), or a focal point on or outside the circle. Move it inside.
-- `color-interpolation="linearRGB"`.
+- A focal radius (`fr` above 0), or a focal point within 1% of the edge of the circle or beyond
+  it. Move it further in.
+- `color-interpolation="linearRGB"`, on the gradient or on anything around it in the file, such
+  as `defs` or the `svg` element. `auto` and `sRGB` are fine.
 - A `stop-color` of `currentColor` or `inherit`. Write the colour out.
 - An `href` loop, or an `href` that points at something that is not a gradient.
-- `objectBoundingBox` on a shape with no width or height, such as a straight line: browsers draw
-  nothing there. Use `userSpaceOnUse`.
+- An `objectBoundingBox` stroke on a shape with no width or height, such as a straight line:
+  browsers draw nothing there. Use `userSpaceOnUse`. A fill on such a shape paints nothing, as in
+  a browser, and its stroke still draws.
 - A radial gradient on a stroke when the shape stretches its circle into an oval. A radial fill
   can be stretched, a radial stroke cannot.
 
@@ -247,8 +254,12 @@ Refused, each with the reason:
 
 - `path`, `rect`, `circle`, `ellipse`, `polyline` and `polygon` inside the `clipPath`. Several
   shapes make one clip: whatever is inside any of them shows.
+- A `use` inside the `clipPath` that points at one of those shapes elsewhere in the file, with
+  its `x`, `y` and `transform`. Illustrator's Save As writes every clip this way.
 - `clipPathUnits`, both `userSpaceOnUse` (the default) and `objectBoundingBox`.
-- `transform` on the clipped element, on the `clipPath` and on each shape in it.
+- `transform` on the clipped element, on the `clipPath` and on each shape in it. With
+  `objectBoundingBox`, the numbers in the `clipPath`'s own `transform` are user units, not
+  fractions of the box, as browsers read them.
 - Shapes that are hidden, and lines, add nothing, as in a browser. A clip with no area hides the
   element.
 
@@ -257,8 +268,8 @@ the frame. When the art sits inside it and does not move, the build drops the cl
 
 Refused, each with the reason:
 
-- A `g`, `use` or `text` inside a `clipPath`. Browsers ignore a group there, so put the shapes
-  straight in the `clipPath`.
+- A `g` or `text` inside a `clipPath`, or a `use` that points at anything but a shape. Browsers
+  ignore a group there, so put the shapes straight in the `clipPath`.
 - `clip-rule="evenodd"`. Use `nonzero`.
 - One shape in a clip whose parts overlap, such as a ring drawn as two circles in one path. Its
   hole cannot be drawn as a clip.
