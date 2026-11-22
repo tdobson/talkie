@@ -2,7 +2,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { devices, expect, test } from '@playwright/test';
 import { cliImport, parseImport, uniqueCopy } from './global-setup';
-import { giveComment, readSessionComments, startReview, state, T, waitForState } from './helpers';
+import {
+  doPractice,
+  giveComment,
+  readSessionComments,
+  startReview,
+  state,
+  T,
+  waitForState,
+} from './helpers';
 
 test('invalid token shows the friendly page with 404', async ({ page }) => {
   const response = await page.goto('/r/not-a-real-token-at-all');
@@ -39,8 +47,9 @@ test('silent pause is stored but marked empty @silence', async ({ page }) => {
   // The fake mic says hello, so the check passes, and is silent from then on.
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(T.micMeter)).toHaveAttribute('data-lit', '0');
-  await page.getByTestId(T.startWatching).click();
   await expect(page.getByTestId(T.player)).toBeVisible();
+  // The practice pause never hears anything, so the reviewer presses play to carry on.
+  await doPractice(page, { talk: false });
   await giveComment(page);
   await expect.poll(async () => (await readSessionComments('Sid Silent')).length).toBe(1);
   const [comment] = await readSessionComments('Sid Silent');

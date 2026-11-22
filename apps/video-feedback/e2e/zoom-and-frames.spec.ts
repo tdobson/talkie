@@ -10,8 +10,7 @@ test('arrow keys step frames only while paused and hold-to-zoom logs zoom events
   const video = page.getByTestId(T.video);
   const time = () => video.evaluate((v: HTMLVideoElement) => v.currentTime);
 
-  // Play 1s, pause (this opens a comment), step frames.
-  await page.getByTestId(T.playPause).click();
+  // Play 1s (the practice run leaves it playing), pause (this opens a comment), step frames.
   await page.waitForTimeout(1000);
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.listening)).toBeVisible();

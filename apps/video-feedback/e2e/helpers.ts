@@ -111,7 +111,11 @@ export async function waitForState(
   return readComment(ref) as StoredComment;
 }
 
-/** Name, mic explain, mic check: leaves the reviewer on the paused player. */
+/**
+ * Name, mic explain, mic check and the practice run: leaves the reviewer watching the film,
+ * playing from the start. A resumed session has no practice run: pass `practice: false`, and
+ * the player is left paused, as it opens.
+ */
 export async function startReview(
   page: Page,
   name: string,
@@ -123,11 +127,41 @@ export async function startReview(
   await passMicCheck(page);
 }
 
-export async function passMicCheck(page: Page): Promise<void> {
+/**
+ * The mic check has no button: it moves on by itself once it hears the fake microphone. Then
+ * the practice run, unless `practice` is false (a resumed session).
+ */
+export async function passMicCheck(
+  page: Page,
+  { practice = true, talk = true }: { practice?: boolean; talk?: boolean } = {}
+): Promise<void> {
   await page.getByTestId(T.micContinue).click();
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId(T.startWatching).click();
-  await expect(page.getByTestId(T.player)).toBeVisible();
+  await expect(page.getByTestId(T.player)).toBeVisible({ timeout: 10_000 });
+  if (practice) await doPractice(page, { talk });
+  else await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
+}
+
+/**
+ * The practice run: the film starts by itself with a coach mark on Pause. Pausing listens;
+ * with `talk` the fake microphone talks until "Got that" and the film starts again by itself.
+ * Without it (a silent microphone) the reviewer presses play to carry on. Either way nothing
+ * is saved, and the film ends up playing from the start.
+ */
+export async function doPractice(page: Page, { talk = true }: { talk?: boolean } = {}) {
+  const playPause = page.getByTestId(T.playPause);
+  await expect(page.getByTestId(T.coachMark)).toBeVisible();
+  await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 20_000 });
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId(T.practiceListening)).toBeVisible();
+  if (talk) {
+    await expect(page.getByTestId(T.practiceGotThat)).toBeVisible({ timeout: 15_000 });
+  } else {
+    await page.keyboard.press('Space');
+  }
+  await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 10_000 });
+  await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
+  await expect(page.getByTestId(T.practiceListening)).toHaveCount(0);
 }
 
 /**

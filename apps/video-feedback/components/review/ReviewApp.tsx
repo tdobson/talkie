@@ -195,7 +195,11 @@ export function ReviewApp({
 
   // Session
 
-  const startWatching = async () => {
+  /**
+   * Opens the player. `practice` asks for the practice run first; a resumed session has been
+   * through it already, so it goes straight to the film.
+   */
+  const startWatching = async (practice: boolean) => {
     if (starting) return;
     if (state.sessionId !== null && state.version !== null) {
       dispatch({ type: 'sessionStarted', sessionId: state.sessionId, version: state.version });
@@ -209,6 +213,7 @@ export function ReviewApp({
         type: 'sessionStarted',
         sessionId: created.sessionId,
         version: created.version ?? latestVersion,
+        practice,
       });
     } catch {
       // Could not reach the server: the button comes back so the reviewer can try again.
@@ -274,7 +279,7 @@ export function ReviewApp({
             starting={starting}
             startFailed={startFailed}
             onHeard={() => dispatch({ type: 'micHeard' })}
-            onStart={() => void startWatching()}
+            onStart={(practice) => void startWatching(practice)}
           />
         </Fade>
       );

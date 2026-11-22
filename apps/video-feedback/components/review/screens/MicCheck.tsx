@@ -1,9 +1,9 @@
 'use client';
 
-import { Button, Text } from '@mantine/core';
+import { Button, Loader, Text } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { SpeechGate } from '@/lib/capture/micLevel';
-import { MIC_SPEECH_HOLD_MS } from '@/lib/constants';
+import { MIC_HEARD_SHOW_MS, MIC_SPEECH_HOLD_MS, MIC_SPEECH_THRESHOLD } from '@/lib/constants';
 import { copy } from '@/lib/review/copy';
 import { T } from '@/lib/testids';
 import { useMicLevel } from '../hooks/useMicLevel';
@@ -12,15 +12,17 @@ import classes from '../review.module.css';
 import { ScreenCard } from '../ScreenCard';
 
 /** Level, on the meter's 0..1 scale, that counts as speech. */
-export const SPEECH_THRESHOLD = 0.08;
+export const SPEECH_THRESHOLD = MIC_SPEECH_THRESHOLD;
 
 /** How long the meter may stay quiet before the screen suggests what to check. */
 export const QUIET_HELP_AFTER_MS = 8000;
 
 /**
- * Live level meter. Start watching unlocks once speech has been heard for MIC_SPEECH_HOLD_MS,
- * and stays unlocked. `starting` is true while the session is being created, and `startFailed`
- * after an attempt to create it did not work.
+ * Live level meter, and no button: once speech has been heard for MIC_SPEECH_HOLD_MS it says
+ * so for MIC_HEARD_SHOW_MS and then starts by itself, with `onStart(true)` (the practice run
+ * follows). If nothing is heard for a while it says what to check and offers to carry on
+ * anyway, with `onStart(false)`. `starting` is true while the session is being created, and
+ * `startFailed` after an attempt to create it did not work: a Try again button then appears.
  */
 export function MicCheck({
   stream,
@@ -31,7 +33,7 @@ export function MicCheck({
 }: {
   stream: MediaStream | null;
   onHeard: () => void;
-  onStart: () => void;
+  onStart: (practice: boolean) => void;
   starting?: boolean;
   startFailed?: boolean;
 }) {
@@ -40,6 +42,10 @@ export function MicCheck({
   const [heard, setHeard] = useState(false);
   const onHeardRef = useRef(onHeard);
   onHeardRef.current = onHeard;
+  const onStartRef = useRef(onStart);
+  onStartRef.current = onStart;
+  // What the last start was, so Try again repeats it.
+  const practiceRef = useRef(true);
 
   const levelRef = useRef(level);
   levelRef.current = level;
@@ -64,12 +70,27 @@ export function MicCheck({
     return () => clearInterval(timer);
   }, []);
 
-  // Nothing heard for a while: say what to check, so the disabled button is not a dead end.
+  // Heard: say so for a moment, then go on by itself.
+  useEffect(() => {
+    if (!heard) return;
+    const timer = setTimeout(() => {
+      practiceRef.current = true;
+      onStartRef.current(true);
+    }, MIC_HEARD_SHOW_MS);
+    return () => clearTimeout(timer);
+  }, [heard]);
+
+  // Nothing heard for a while: say what to check, and offer a way on so nobody is stuck here.
   const [quiet, setQuiet] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setQuiet(true), QUIET_HELP_AFTER_MS);
     return () => clearTimeout(timer);
   }, []);
+
+  const skip = () => {
+    practiceRef.current = false;
+    onStart(false);
+  };
 
   return (
     <ScreenCard testId={T.micCheck} heading={copy.micCheck.title}>
@@ -81,24 +102,31 @@ export function MicCheck({
           </Text>
         )}
       </div>
-      {quiet && !heard && (
-        <Text c="gray.7" size="sm" data-testid={T.micCheckHelp}>
-          {copy.micCheck.quietHelp}
-        </Text>
+      {starting && !startFailed && <Loader size="sm" aria-label={copy.micCheck.starting} />}
+      {quiet && !heard && !starting && (
+        <>
+          <Text c="gray.7" size="sm" data-testid={T.micCheckHelp}>
+            {copy.micCheck.quietHelp}
+          </Text>
+          <Button variant="subtle" size="xs" onClick={skip} data-testid={T.micSkip}>
+            {copy.micCheck.skip}
+          </Button>
+        </>
       )}
-      <Button
-        size="md"
-        disabled={!heard}
-        loading={starting}
-        onClick={onStart}
-        data-testid={T.startWatching}
-      >
-        {copy.micCheck.startWatching}
-      </Button>
       {startFailed && (
-        <Text c="red.8" role="alert">
-          {copy.micCheck.startFailed}
-        </Text>
+        <>
+          <Text c="red.8" role="alert">
+            {copy.micCheck.startFailed}
+          </Text>
+          <Button
+            size="md"
+            loading={starting}
+            onClick={() => onStart(practiceRef.current)}
+            data-testid={T.startWatching}
+          >
+            {copy.micCheck.tryAgain}
+          </Button>
+        </>
       )}
     </ScreenCard>
   );

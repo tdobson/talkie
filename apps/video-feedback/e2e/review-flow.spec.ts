@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readSessionComments, state, T, waitForState } from './helpers';
+import { passMicCheck, readSessionComments, state, T, waitForState } from './helpers';
 
 test('reviewer gives a moment comment and a general comment', async ({ page }) => {
   await page.goto(state().reviewUrl);
@@ -7,10 +7,7 @@ test('reviewer gives a moment comment and a general comment', async ({ page }) =
   await expect(page.getByTestId(T.startButton)).toBeDisabled();
   await page.getByTestId(T.nameInput).fill('Playwright Pat');
   await page.getByTestId(T.startButton).click();
-  await page.getByTestId(T.micContinue).click();
-  await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId(T.startWatching).click();
-  await page.getByTestId(T.playPause).click();
+  await passMicCheck(page); // and the practice run, which leaves the film playing
   await page.waitForTimeout(1200);
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.listening)).toBeVisible();

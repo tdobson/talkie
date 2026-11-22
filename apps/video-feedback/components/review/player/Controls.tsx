@@ -5,6 +5,7 @@ import {
   IconBadgeCc,
   IconBadgeCcFilled,
   IconMaximize,
+  IconMessageCircle,
   IconMinimize,
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
@@ -44,6 +45,13 @@ export interface ControlsProps {
   onVolume: (volume: number) => void;
   onFullscreen: () => void;
   onDone: () => void;
+  /**
+   * Shows "Give feedback" next to the scroll bar, which does the same as Pause. Only offered
+   * while the video plays: paused already means listening.
+   */
+  canGiveFeedback?: boolean;
+  /** A coach mark pointing at the play and pause button, with these words. */
+  coach?: string | null;
 }
 
 /** The bar under the picture. It never overlays the picture and never shows a time. */
@@ -63,6 +71,8 @@ export function Controls({
   onVolume,
   onFullscreen,
   onDone,
+  canGiveFeedback = false,
+  coach = null,
 }: ControlsProps) {
   const known = Number.isFinite(duration) && duration > 0;
   const position = known
@@ -72,16 +82,30 @@ export function Controls({
   return (
     <div className={classes.controls}>
       <div className={classes.controlRow}>
-        <ActionIcon
-          size="xl"
-          radius="xl"
-          variant="filled"
-          aria-label={playing ? 'Pause' : 'Play'}
-          onClick={onPlayPause}
-          data-testid={T.playPause}
-        >
-          {playing ? <IconPlayerPauseFilled size={22} /> : <IconPlayerPlayFilled size={22} />}
-        </ActionIcon>
+        <div className={classes.playPauseSlot}>
+          <ActionIcon
+            size="xl"
+            radius="xl"
+            variant="filled"
+            aria-label={playing ? 'Pause' : 'Play'}
+            aria-describedby={coach ? 'coach-mark' : undefined}
+            onClick={onPlayPause}
+            data-testid={T.playPause}
+          >
+            {playing ? <IconPlayerPauseFilled size={22} /> : <IconPlayerPlayFilled size={22} />}
+          </ActionIcon>
+          {coach && (
+            <div
+              id="coach-mark"
+              className={classes.coach}
+              role="status"
+              data-no-capture="true"
+              data-testid={T.coachMark}
+            >
+              {coach}
+            </div>
+          )}
+        </div>
         <Slider
           className={classes.scroll}
           min={0}
@@ -98,6 +122,19 @@ export function Controls({
           thumbSize={20}
           data-testid={T.scrollBar}
         />
+        <Button
+          className={classes.giveFeedback}
+          variant="white"
+          color="dark"
+          radius="xl"
+          leftSection={<IconMessageCircle size={18} aria-hidden="true" />}
+          onClick={onPlayPause}
+          disabled={!canGiveFeedback}
+          data-shown={canGiveFeedback}
+          data-testid={T.giveFeedback}
+        >
+          {copy.player.giveFeedback}
+        </Button>
         <div className={classes.volume}>
           {volume === 0 ? (
             <IconVolumeOff size={20} aria-hidden="true" />

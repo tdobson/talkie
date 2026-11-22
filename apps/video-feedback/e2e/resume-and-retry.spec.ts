@@ -13,15 +13,14 @@ test('a reload mid-review resumes the same session', async ({ page }) => {
   await giveComment(page);
   await page.reload();
   await expect(page.getByTestId(T.nameInput)).toHaveCount(0);
-  await passMicCheck(page);
+  await passMicCheck(page, { practice: false }); // done once already
   await giveComment(page);
   expect(findSessions('Rita Reload')).toHaveLength(1);
   await expect.poll(async () => (await readSessionComments('Rita Reload')).length).toBe(2);
 });
 
 test('going offline shows the trouble banner and recovers', async ({ page, context }) => {
-  await startReview(page, 'Otto Offline');
-  await page.getByTestId(T.playPause).click();
+  await startReview(page, 'Otto Offline'); // leaves the film playing
   await page.waitForTimeout(800);
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.listening)).toBeVisible();

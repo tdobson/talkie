@@ -18,7 +18,9 @@ export const copy = {
   micCheck: {
     title: 'Say hello so we know we can hear you',
     heard: 'Got you, loud and clear.',
-    startWatching: 'Start watching',
+    starting: 'Starting the video',
+    tryAgain: 'Try again',
+    skip: 'Carry on anyway',
     startFailed: "We couldn't get started. Check your connection and try again.",
     quietHelp:
       "Can't see the meter move? Check the right microphone is selected and not muted, then speak up.",
@@ -37,6 +39,8 @@ export const copy = {
   },
   player: {
     hint: 'Spotted something? Pause and tell me.',
+    giveFeedback: 'Give feedback',
+    idleHint: 'Got something to say? Pause any time.',
     done: "I'm done",
     listening: 'Listening',
     listeningHelp: "Point and explain. Press play when you're done.",
@@ -57,6 +61,15 @@ export const copy = {
       "Still can't reach a microphone. Check it's plugged in and allowed, then try again.",
     captionsOn: 'Captions on',
     captionsOff: 'Captions off',
+  },
+  practice: {
+    coachKeys: 'Press pause, or the space bar, whenever you want to say something.',
+    coachTouch: 'Tap pause whenever you want to say something.',
+    coachPlay: 'Press play to start.',
+    listening: 'Listening',
+    listeningHelp: 'Say anything and point at the picture. This one is just practice.',
+    gotThat: 'Got that',
+    gotThatHelp: "That's all there is to it. Starting from the beginning.",
   },
   end: {
     title: "That's the end of the video.",

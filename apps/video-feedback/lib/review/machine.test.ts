@@ -175,4 +175,60 @@ describe('review machine', () => {
     expect(open).toMatchObject({ screen: 'thanks', commentId: null, zoom: null, playing: false });
     expect(reducer(initialState, { type: 'done' }).screen).toBe('welcome');
   });
+
+  describe('practice', () => {
+    const micCheck: ReviewState = { ...initialState, screen: 'micCheck', name: 'Sarah' };
+    const coach = reducer(micCheck, {
+      type: 'sessionStarted',
+      sessionId: 'sid',
+      version: 1,
+      practice: true,
+    });
+
+    it('a new session starts on the practice run, an old one does not', () => {
+      expect(coach).toMatchObject({ screen: 'player', practice: 'coach', playing: false });
+      const plain = reducer(micCheck, { type: 'sessionStarted', sessionId: 'sid', version: 1 });
+      expect(plain.practice).toBeNull();
+    });
+
+    it('play keeps the coach mark; a practice pause opens no comment', () => {
+      let s = reducer(coach, { type: 'play' });
+      expect(s).toMatchObject({ playing: true, practice: 'coach' });
+      s = reducer(s, { type: 'practicePause' });
+      expect(s).toMatchObject({ playing: false, practice: 'listening', commentId: null });
+    });
+
+    it('heard, then back to the start for real', () => {
+      let s = reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' });
+      s = reducer(s, { type: 'practiceHeard' });
+      expect(s.practice).toBe('gotThat');
+      s = reducer(s, { type: 'play' });
+      expect(s).toMatchObject({ playing: true, practice: null, commentId: null });
+    });
+
+    it('pressing play while listening also ends the practice', () => {
+      const s = reducer(reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' }), {
+        type: 'play',
+      });
+      expect(s).toMatchObject({ playing: true, practice: null });
+    });
+
+    it('practice actions do nothing outside the practice', () => {
+      expect(reducer(playerState, { type: 'practicePause' })).toBe(playerState);
+      expect(reducer(playerState, { type: 'practiceHeard' })).toBe(playerState);
+      expect(reducer(coach, { type: 'practicePause' })).toBe(coach); // not playing yet
+      expect(reducer(coach, { type: 'practiceHeard' })).toBe(coach);
+    });
+
+    it('a real pause never happens during the practice', () => {
+      const playing = reducer(coach, { type: 'play' });
+      expect(reducer(playing, { type: 'pause', commentId: 'c' })).toBe(playing);
+    });
+
+    it('the film ending or Done drops the practice', () => {
+      const playing = reducer(coach, { type: 'play' });
+      expect(reducer(playing, { type: 'ended' }).practice).toBeNull();
+      expect(reducer(playing, { type: 'done' }).practice).toBeNull();
+    });
+  });
 });

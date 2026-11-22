@@ -6,10 +6,14 @@ import { ReviewApp, type ReviewAppProps, type ReviewUploader } from './ReviewApp
 
 // The level meter needs real audio; the screen itself is covered by MicCheck.test.tsx.
 vi.mock('./screens/MicCheck', () => ({
-  MicCheck: (props: { onStart: () => void; startFailed?: boolean }) => (
+  // Stands in for the screen starting by itself once it has heard the reviewer.
+  MicCheck: (props: { onStart: (practice: boolean) => void; startFailed?: boolean }) => (
     <>
-      <button type="button" data-testid="start-watching" onClick={props.onStart}>
+      <button type="button" data-testid="start-watching" onClick={() => props.onStart(true)}>
         Start watching
+      </button>
+      <button type="button" data-testid="start-no-practice" onClick={() => props.onStart(false)}>
+        Carry on anyway
       </button>
       {props.startFailed && <p role="alert">start failed</p>}
     </>
@@ -109,6 +113,8 @@ describe('ReviewApp', () => {
     });
     expect(localStorage.getItem(KEY)).toBe(SID);
     expect(screen.getByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
+    // A new reviewer starts on the practice run.
+    expect(screen.getByTestId(T.coachMark)).toBeInTheDocument();
 
     await user.click(screen.getByTestId(T.doneButton));
     expect(await screen.findByTestId(T.thanks)).toHaveTextContent('Thanks, Sarah.');
@@ -128,6 +134,8 @@ describe('ReviewApp', () => {
     expect(screen.queryByTestId(T.welcome)).toBeNull();
     await user.click(await screen.findByTestId(T.startWatching));
     expect(await screen.findByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=1');
+    // They had the practice run the first time.
+    expect(screen.queryByTestId(T.coachMark)).toBeNull();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
 
@@ -210,7 +218,8 @@ describe('ReviewApp', () => {
     await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
     await user.click(screen.getByTestId(T.startButton));
     await user.click(await screen.findByTestId(T.micContinue));
-    await user.click(await screen.findByTestId(T.startWatching));
+    // Past the practice run, which records nothing.
+    await user.click(await screen.findByTestId('start-no-practice'));
     await screen.findByTestId(T.player);
 
     mic.track.readyState = 'ended';
@@ -232,7 +241,8 @@ describe('ReviewApp', () => {
     await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
     await user.click(screen.getByTestId(T.startButton));
     await user.click(await screen.findByTestId(T.micContinue));
-    await user.click(await screen.findByTestId(T.startWatching));
+    // Past the practice run, which records nothing.
+    await user.click(await screen.findByTestId('start-no-practice'));
     await screen.findByTestId(T.player);
 
     mic.track.readyState = 'ended';
