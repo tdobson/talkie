@@ -11,3 +11,4 @@ docs
 coverage
 next-env.d.ts
 test/fixtures/talkie-mini
+test/fixtures/talkie-paint-clip.json

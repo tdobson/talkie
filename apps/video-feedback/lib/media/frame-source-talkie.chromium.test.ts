@@ -6,16 +6,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { chromium } from 'playwright-core';
 import sharp from 'sharp';
 import { renderMomentStill } from '@/lib/render/stills';
 import type { Moment, ProbeInfo } from '@/lib/types';
 import type { FrameSource } from './frame-source';
 import { talkieFrameSource } from './frame-source-talkie';
-import { openTalkieBrowser } from './talkie-browser';
+import { chromiumPath, openTalkieBrowser } from './talkie-browser';
 import { buildRenderPage } from './talkie-render-page/build';
 
 const run = promisify(execFile);
 const FIXTURE_FILM = fileURLToPath(new URL('../../test/fixtures/talkie-mini', import.meta.url));
+// A scene with linear and radial gradients and clip paths, built by @talkie/author from the
+// drawing in the repo's e2e fixtures. packages/author/test/still-fixture.test.ts keeps it current.
+const PAINT_SCENE = fileURLToPath(
+  new URL('../../test/fixtures/talkie-paint-clip.json', import.meta.url)
+);
+const PAINT_SVG = fileURLToPath(
+  new URL('../../../../e2e/fixtures/paint-clip.svg', import.meta.url)
+);
 const SIZE = { width: 320, height: 180 };
 const probe: ProbeInfo = {
   width: 320,
@@ -32,6 +41,7 @@ let tmp: string;
 let pageDir: string;
 let filmDir: string;
 let edgeFilmDir: string;
+let paintFilmDir: string;
 
 const source = (dir: string): FrameSource =>
   talkieFrameSource(dir, SIZE, { open: (d) => openTalkieBrowser(d, { pageDir }) });
@@ -89,6 +99,31 @@ async function softPixels(image: Buffer): Promise<number> {
   return n;
 }
 
+/** A 320 by 180 SVG drawn by headless Chromium on black, as a PNG. */
+async function chromiumPicture(svg: string): Promise<Buffer> {
+  const browser = await chromium.launch({
+    // The same wrapper as the stills browser: nice 19 and IO level 7.
+    executablePath: join(pageDir, 'chromium-lowprio.sh'),
+    env: { ...process.env, TALKIE_CHROMIUM_BIN: chromiumPath() } as Record<string, string>,
+    headless: true,
+    args: ['--disable-gpu', '--mute-audio'],
+  });
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 320, height: 180 },
+      deviceScaleFactor: 1,
+    });
+    const sized = svg.replace('<svg ', '<svg width="320" height="180" ');
+    await page.setContent(
+      `<body style="margin:0;background:#000"><img alt="" src="data:image/svg+xml,${encodeURIComponent(sized)}"></body>`
+    );
+    await page.locator('img').evaluate((img: HTMLImageElement) => img.decode());
+    return await page.screenshot({ clip: { x: 0, y: 0, width: 320, height: 180 } });
+  } finally {
+    await browser.close();
+  }
+}
+
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'vf-talkie-chromium-'));
   pageDir = await buildRenderPage(join(tmp, 'page'));
@@ -103,6 +138,10 @@ beforeAll(async () => {
   const triangle = '"v":[[0,0],[320,0],[0,180],[0,180]],"i":[[0,0],[0,0],[0,0],[0,0]]';
   if (!scene.includes(square)) throw new Error('the fixture scene has changed shape');
   await writeFile(join(edgeFilmDir, 'a', 's01.json'), scene.replace(square, triangle));
+  // A copy whose first scene is the gradient and clip drawing, the same size as the fixture.
+  paintFilmDir = join(tmp, 'paint-film');
+  await cp(FIXTURE_FILM, paintFilmDir, { recursive: true });
+  await cp(PAINT_SCENE, join(paintFilmDir, 'a', 's01.json'));
 }, 120_000);
 
 afterAll(async () => {
@@ -135,6 +174,47 @@ describe('talkieFrameSource @chromium', () => {
       const w = await sharp(wide).stats();
       expect(w.channels[0].mean).toBeGreaterThan(200);
       expect(w.channels[2].mean).toBeLessThan(50);
+    } finally {
+      await s.close();
+    }
+  }, 120_000);
+
+  it('draws gradients and clip paths as the drawing does', async () => {
+    const s = source(paintFilmDir);
+    try {
+      const still = await s.frame(1, 320);
+      const got = await sharp(still).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      expect([got.info.width, got.info.height]).toEqual([320, 180]);
+      // The drawing as Chromium draws it, on the black the stills page has behind the stage.
+      // Not librsvg (sharp): version 2.63 leaves out the clip in bounding box units on the turned
+      // shape, where Chromium, resvg and the film all apply it.
+      const want = await sharp(await chromiumPicture(await readFile(PAINT_SVG, 'utf8')))
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      expect([want.info.width, want.info.height, want.info.channels]).toEqual([320, 180, 3]);
+
+      let sum = 0;
+      let far = 0;
+      for (let p = 0; p < got.data.length; p += 3) {
+        let worst = 0;
+        for (let c = 0; c < 3; c += 1) {
+          const d = Math.abs(got.data[p + c] - want.data[p + c]);
+          sum += d;
+          worst = Math.max(worst, d);
+        }
+        if (worst > 48) far += 1;
+      }
+      const mean = sum / got.data.length;
+      const share = far / (got.data.length / 3);
+      console.log(
+        `paint-clip still against Chromium's SVG: mean ${mean.toFixed(2)} of 255, ${(share * 100).toFixed(2)}% of pixels off by more than 48`
+      );
+      // Edges are smoothed a little differently by the two renderers: a correct still measures
+      // a mean of 1.27 and no pixels off by more than 48. A lost clip or gradient shows as a whole
+      // area: leaving out the one clip on the turned shape puts about 1% of pixels past 48.
+      expect(mean).toBeLessThan(2);
+      expect(share).toBeLessThan(0.002);
     } finally {
       await s.close();
     }
