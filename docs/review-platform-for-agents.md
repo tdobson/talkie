@@ -56,6 +56,11 @@ curl -sS "${H[@]}" $VF/api/admin/videos | jq -r '.[] | "\(.videoId)  \(.title)  
 A refused import answers `{"ok":false,"reason":"..."}` and leaves the file in the inbox. The reason
 says what is wrong (not H.264, not a Talkie film, a newer format version, too big).
 
+Size: the platform stores a Talkie film's scene JSON gzipped, so a long film with heavy art is
+fine. The limits are 500 MB on disk with the scenes gzipped, and 2000 MB unpacked. A film of about
+an hour with soft shadows, which unpacks to 583 MB, takes 72 MB on disk. Do not make a film
+smaller to get it in.
+
 `GET $VF/api/admin/inbox` lists what is waiting in the inbox.
 
 **Give the review link to Tim**, not to reviewers. Sending anything to another person needs Tim's

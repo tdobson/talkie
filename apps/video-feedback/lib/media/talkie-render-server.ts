@@ -4,7 +4,9 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, sep } from 'node:path';
+import { createGunzip } from 'node:zlib';
 import { isSafeRelativePath, mimeFor } from '@talkie/format';
+import { acceptsGzip, locateFilmFile } from '@/lib/videos/film-files';
 
 // The local web server the headless browser loads the render page and one film from. It listens
 // on 127.0.0.1 only, on a port the system picks, and lives as long as its browser does.
@@ -48,20 +50,27 @@ function notFound(res: ServerResponse): void {
   res.end('Not found');
 }
 
+/**
+ * Sends one file. A `gzipped` file (a scene stored compressed) goes as it is with
+ * `Content-Encoding: gzip` when the browser takes gzip, and unzipped otherwise.
+ */
 async function sendFile(
   req: IncomingMessage,
   res: ServerResponse,
   file: string,
-  type: string
+  type: string,
+  gzipped = false
 ): Promise<void> {
   const info = await stat(file);
   if (!info.isFile()) {
     notFound(res);
     return;
   }
+  const asIs = !gzipped || acceptsGzip(req.headers['accept-encoding']);
   res.writeHead(200, {
     'Content-Type': type,
-    'Content-Length': info.size,
+    ...(asIs ? { 'Content-Length': info.size } : {}),
+    ...(gzipped && asIs ? { 'Content-Encoding': 'gzip' } : {}),
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
   });
@@ -70,9 +79,12 @@ async function sendFile(
     return;
   }
   await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(file);
+    const read = createReadStream(file);
+    read.on('error', reject);
+    const stream = asIs ? read : read.pipe(createGunzip());
     stream.on('error', reject);
     res.on('close', () => {
+      read.destroy();
       stream.destroy();
       resolve();
     });
@@ -145,9 +157,12 @@ export async function serveRenderPage(filmDir: string, pageDir: string): Promise
       }
       // The allow-list is the check: `..`, absolute paths and NUL bytes are never in it.
       if (!listed.has(name)) return notFound(res);
-      const real = await realpath(join(filmRoot, name)).catch(() => null);
+      // Scenes are stored gzipped (see film-files.ts); films imported before that have them plain.
+      const stored = await locateFilmFile(filmRoot, name);
+      if (stored === null) return notFound(res);
+      const real = await realpath(stored.file).catch(() => null);
       if (real === null || !real.startsWith(filmRoot + sep)) return notFound(res);
-      return sendFile(req, res, real, mimeFor(name));
+      return sendFile(req, res, real, mimeFor(name), stored.gzipped);
     }
     notFound(res);
   };

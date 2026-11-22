@@ -1,8 +1,9 @@
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { type RenderServer, serveRenderPage } from './talkie-render-server';
 
 const FIXTURE_FILM = fileURLToPath(new URL('../../test/fixtures/talkie-mini', import.meta.url));
@@ -15,8 +16,8 @@ let server: RenderServer;
 /** A raw request, so the path is sent exactly as written (fetch would tidy `..` away). */
 function get(
   path: string,
-  opts: { method?: string; host?: string } = {}
-): Promise<{ status: number; type: string; body: Buffer }> {
+  opts: { method?: string; host?: string; acceptEncoding?: string } = {}
+): Promise<{ status: number; type: string; encoding: string; body: Buffer }> {
   const { port } = new URL(server.url);
   return new Promise((resolve, reject) => {
     const req = request(
@@ -25,7 +26,10 @@ function get(
         port,
         path,
         method: opts.method ?? 'GET',
-        headers: opts.host ? { host: opts.host } : {},
+        headers: {
+          ...(opts.host ? { host: opts.host } : {}),
+          ...(opts.acceptEncoding ? { 'accept-encoding': opts.acceptEncoding } : {}),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -34,6 +38,7 @@ function get(
           resolve({
             status: res.statusCode ?? 0,
             type: String(res.headers['content-type'] ?? ''),
+            encoding: String(res.headers['content-encoding'] ?? ''),
             body: Buffer.concat(chunks),
           })
         );
@@ -52,6 +57,10 @@ beforeAll(async () => {
   pageDir = join(tmp, 'page');
   await cp(FIXTURE_FILM, filmDir, { recursive: true });
   await writeFile(join(filmDir, 'secret.txt'), 'not part of the film');
+  // Scenes are stored gzipped since the gzip change: s02 is, s01 is plain as in an older import.
+  const s02 = join(filmDir, 'a', 's02.json');
+  await writeFile(`${s02}.gz`, gzipSync(await readFile(s02)));
+  await rm(s02);
   await writeFile(join(tmp, 'outside.json'), '{"outside":true}');
   await mkdir(pageDir);
   await writeFile(join(pageDir, 'index.html'), '<!doctype html><title>render</title>');
@@ -66,6 +75,24 @@ afterAll(async () => {
 });
 
 describe('serveRenderPage', () => {
+  it('serves a scene stored gzipped: as it is to a browser that takes gzip, unzipped otherwise', async () => {
+    const want = await readFile(join(FIXTURE_FILM, 'a', 's02.json'));
+    const zipped = await get(`${base()}film/a/s02.json`, { acceptEncoding: 'gzip, deflate' });
+    expect([zipped.status, zipped.type, zipped.encoding]).toEqual([
+      200,
+      'application/json',
+      'gzip',
+    ]);
+    expect(gunzipSync(zipped.body).equals(want)).toBe(true);
+    const plain = await get(`${base()}film/a/s02.json`);
+    expect([plain.status, plain.encoding]).toEqual([200, '']);
+    expect(plain.body.equals(want)).toBe(true);
+    const older = await get(`${base()}film/a/s01.json`, { acceptEncoding: 'gzip' });
+    expect([older.status, older.encoding]).toEqual([200, '']);
+    expect(older.body.equals(await readFile(join(FIXTURE_FILM, 'a', 's01.json')))).toBe(true);
+    expect((await get(`${base()}film/a/s02.json.gz`)).status).toBe(404);
+  });
+
   it('listens on the loopback address only, on a port of its own', () => {
     const url = new URL(server.url);
     expect(url.hostname).toBe('127.0.0.1');

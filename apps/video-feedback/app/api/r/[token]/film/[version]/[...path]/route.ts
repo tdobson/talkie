@@ -1,10 +1,11 @@
 import { join } from 'node:path';
 import { isSafeRelativePath, mimeFor, validateFilm } from '@talkie/format';
 import { guarded, notFound } from '@/lib/review/http';
-import { resolveMediaVersion, serveFile } from '@/lib/review/media-route';
+import { resolveMediaVersion, serveFile, serveGzippedFile } from '@/lib/review/media-route';
 import { readJson } from '@/lib/storage/json';
 import { filmDir } from '@/lib/storage/paths';
 import { FILM_JSON, listedPaths } from '@/lib/videos/film';
+import { locateFilmFile } from '@/lib/videos/film-files';
 
 export const runtime = 'nodejs';
 
@@ -52,9 +53,12 @@ export function GET(req: Request, { params }: Ctx): Promise<Response> {
     const allowed = await servable(dir);
     if (allowed === null || !allowed.has(path)) return notFound();
 
-    return serveFile(req, join(dir, ...path.split('/')), {
-      'Content-Type': mimeFor(path),
-      ...LOCKED_DOWN,
-    });
+    // Scenes are stored gzipped (see film-files.ts); films imported before that have them plain.
+    const stored = await locateFilmFile(dir, path);
+    if (stored === null) return notFound();
+    const headers = { 'Content-Type': mimeFor(path), ...LOCKED_DOWN };
+    return stored.gzipped
+      ? serveGzippedFile(stored.file, headers)
+      : serveFile(req, stored.file, headers);
   });
 }

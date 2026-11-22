@@ -4,6 +4,7 @@ import { copyFile, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:
 import { dirname, join } from 'node:path';
 import { type Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { createGzip } from 'node:zlib';
 import { dotLottieManifest, packFilm, type TalkieFilm } from '@talkie/format';
 import yauzl from 'yauzl';
 import { limits } from '@/lib/limits';
@@ -11,6 +12,7 @@ import { writeJsonAtomic } from '@/lib/storage/json';
 import { stagingDir } from '@/lib/storage/paths';
 import type { ProbeInfo } from '@/lib/types';
 import { FILM_JSON, FilmRefused, invalidFilm, listedPaths, parseFilm } from './film';
+import { filmFilePath, GZIP_SUFFIX, readFilmFile, storedGzipped } from './film-files';
 
 export { FilmRefused } from './film';
 
@@ -22,6 +24,12 @@ const FILM_JSON_MAX_BYTES = 5 * 1024 * 1024;
 const tooLarge = () => {
   const mb = Math.floor(limits.filmUnpackedBytes / (1024 * 1024));
   return new FilmRefused(`This film is too large: it unpacks to more than ${mb} MB.`);
+};
+const tooLargeStored = () => {
+  const mb = Math.floor(limits.filmStoredBytes / (1024 * 1024));
+  return new FilmRefused(
+    `This film is too large: even with its scenes compressed it takes more than ${mb} MB.`
+  );
 };
 const tooMany = () =>
   new FilmRefused(`This film has too many files: the limit is ${limits.filmEntries}.`);
@@ -56,30 +64,61 @@ function refuseFileUnderFile(listed: string[]): void {
 const isDirEntry = (entry: yauzl.Entry) =>
   entry.fileName.endsWith('/') && entry.uncompressedSize === 0;
 
-const inFilm = (filmOut: string, path: string) => join(filmOut, ...path.split('/'));
+const inFilm = filmFilePath;
+/** Where a listed file is written: scenes gzipped (see film-files.ts), the rest as themselves. */
+const storedAt = (filmOut: string, path: string) =>
+  inFilm(filmOut, path) + (storedGzipped(path) ? GZIP_SUFFIX : '');
 
 /** Bytes still allowed for the film being unpacked. One budget is shared by all of its files. */
 export interface Budget {
   left: number;
 }
 
-/**
- * Streams `src` into the new file `dst`, taking every chunk off the budget as it passes. The
- * moment the budget runs out the copy stops with `FilmRefused` and the source is destroyed, so
- * a zip that declares a small size and then inflates for ever is cut off at the limit.
- */
-export async function copyCapped(src: Readable, dst: string, budget: Budget): Promise<void> {
-  const meter = new Transform({
+/** Takes every chunk that passes off `budget`, and fails with `refusal()` once it runs out. */
+function meter(budget: Budget, refusal: () => FilmRefused): Transform {
+  return new Transform({
     transform(chunk: Buffer, _encoding, done) {
       budget.left -= chunk.length;
-      if (budget.left < 0) done(tooLarge());
+      if (budget.left < 0) done(refusal());
       else done(null, chunk);
     },
   });
+}
+
+export interface StoreBudgets {
+  /** Bytes the film may unpack to. */
+  unpacked: Budget;
+  /** Bytes the film may take on disk, scenes counted gzipped. */
+  stored: Budget;
+}
+
+/**
+ * Streams `src` into the new file `dst`, gzipping it on the way when `gzip` is set. Every chunk
+ * is taken off the unpacked budget before it is compressed and off the stored budget after. The
+ * moment either runs out the copy stops with `FilmRefused` and the source is destroyed, so a zip
+ * that declares a small size and then inflates for ever is cut off at the limit.
+ */
+export async function copyCapped(
+  src: Readable,
+  dst: string,
+  budgets: StoreBudgets,
+  gzip = false
+): Promise<void> {
   await mkdir(dirname(dst), { recursive: true });
   // 'wx': a film never writes the same file twice.
-  await pipeline(src, meter, createWriteStream(dst, { flags: 'wx' }));
+  const out = createWriteStream(dst, { flags: 'wx' });
+  const unpacked = meter(budgets.unpacked, tooLarge);
+  const stored = meter(budgets.stored, tooLargeStored);
+  await (gzip
+    ? pipeline(src, unpacked, createGzip({ level: 6 }), stored, out)
+    : pipeline(src, unpacked, stored, out));
 }
+
+/** Fresh budgets for one film, from the limits. */
+const filmBudgets = (): StoreBudgets => ({
+  unpacked: { left: limits.filmUnpackedBytes },
+  stored: { left: limits.filmStoredBytes },
+});
 
 // Packed films
 
@@ -174,10 +213,10 @@ async function unpack(zip: yauzl.ZipFile, filmOut: string): Promise<TalkieFilm> 
   // A shortcut only: declared sizes are the zip's own claim. copyCapped counts the real bytes.
   if (declared > limits.filmUnpackedBytes) throw tooLarge();
 
-  const budget: Budget = { left: limits.filmUnpackedBytes };
+  const budgets = filmBudgets();
   for (const path of listed) {
     const stream = await entryStream(zip, byName.get(path) as yauzl.Entry);
-    await copyCapped(stream, inFilm(filmOut, path), budget);
+    await copyCapped(stream, storedAt(filmOut, path), budgets, storedGzipped(path));
   }
   return film;
 }
@@ -247,17 +286,17 @@ async function stageFolder(src: string, out: string): Promise<TalkieFilm> {
   const sources = new Map<string, string>();
   for (const path of listed) sources.set(path, await folderFile(rootReal, path));
 
-  const budget: Budget = { left: limits.filmUnpackedBytes };
+  const budgets = filmBudgets();
   const filmOut = join(out, 'film');
   for (const [path, file] of sources) {
-    await copyCapped(createReadStream(file), inFilm(filmOut, path), budget);
+    await copyCapped(createReadStream(file), storedAt(filmOut, path), budgets, storedGzipped(path));
   }
 
   // Pack what was copied, not the inbox folder, so film.lottie and film/ cannot differ.
   const files: Record<string, Uint8Array> = {
     [MANIFEST]: Buffer.from(`${JSON.stringify(dotLottieManifest(film), null, 2)}\n`),
   };
-  for (const path of listed) files[path] = await readFile(inFilm(filmOut, path));
+  for (const path of listed) files[path] = await readFilmFile(filmOut, path);
   await writeFile(join(out, 'film.lottie'), packFilm(files), { flag: 'wx' });
   return film;
 }
@@ -267,7 +306,7 @@ async function probeFilm(film: TalkieFilm, filmOut: string): Promise<ProbeInfo> 
   const first = film.scenes[0];
   let fps: unknown;
   try {
-    const scene: unknown = JSON.parse(await readFile(inFilm(filmOut, first.src), 'utf8'));
+    const scene: unknown = JSON.parse((await readFilmFile(filmOut, first.src)).toString('utf8'));
     fps = (scene as { fr?: unknown } | null)?.fr;
   } catch {
     throw invalidFilm([`scenes[0].src: ${first.src} is not valid JSON`]);

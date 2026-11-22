@@ -6,6 +6,7 @@ import { audioFileName, FILES } from '@/lib/pipeline/steps/types';
 import { readJson } from '@/lib/storage/json';
 import { commentDir, filmDir, ID_RE, versionDir } from '@/lib/storage/paths';
 import { getVideo, listComments, listSessions, readCommentMeta } from '@/lib/storage/repo';
+import { readFilmFile } from '@/lib/videos/film-files';
 import type {
   CaptureEvent,
   CommentKind,
@@ -136,6 +137,15 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /** A derived file that is missing or unreadable is simply left out of the export. */
+/** The timing fields of a scene, which may be stored gzipped (see film-files.ts), or null. */
+async function readSceneTiming(dir: string, src: string): Promise<Partial<SceneTiming> | null> {
+  try {
+    return JSON.parse((await readFilmFile(dir, src)).toString('utf8')) as Partial<SceneTiming>;
+  } catch {
+    return null;
+  }
+}
+
 async function readOptional<T>(path: string): Promise<T | null> {
   try {
     return await readJson<T>(path);
@@ -207,9 +217,7 @@ async function loadTalkie(
 
   const timings: (SceneTiming | number)[] = [];
   for (const scene of film.scenes) {
-    const lottie = isSafeRelativePath(scene.src)
-      ? await readOptional<Partial<SceneTiming>>(join(dir, scene.src))
-      : null;
+    const lottie = isSafeRelativePath(scene.src) ? await readSceneTiming(dir, scene.src) : null;
     timings.push(
       lottie && isCount(lottie.fr) && lottie.fr > 0 && isCount(lottie.ip) && isCount(lottie.op)
         ? { fr: lottie.fr, ip: lottie.ip, op: lottie.op }

@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { GET as getVideoRoute } from '@/app/api/r/[token]/video/route';
 import { filmDir, sourcePath, versionDir } from '@/lib/storage/paths';
 import { createVideo, saveVideo } from '@/lib/storage/repo';
@@ -35,14 +36,18 @@ interface Opts {
   version?: string;
   range?: string;
   token?: string;
+  acceptEncoding?: string;
 }
 
 /** Calls the route the way Next does: the catch-all arrives as decoded path segments. */
 function get(path: string | string[], opts: Opts = {}): Promise<Response> {
-  const { version = '2', range, token = video.token } = opts;
+  const { version = '2', range, token = video.token, acceptEncoding } = opts;
   const segments = typeof path === 'string' ? path.split('/') : path;
   const url = `http://localhost/api/r/${token}/film/${encodeURIComponent(version)}/${segments.map(encodeURIComponent).join('/')}`;
-  const req = new Request(url, { headers: range ? { Range: range } : {} });
+  const headers: Record<string, string> = {};
+  if (range) headers.Range = range;
+  if (acceptEncoding) headers['Accept-Encoding'] = acceptEncoding;
+  const req = new Request(url, { headers });
   return GET(req, { params: Promise.resolve({ token, version, path: segments }) });
 }
 
@@ -69,6 +74,30 @@ it('serves a scene, a caption and the poster with their types', async () => {
     expect(res.headers.get('Content-Type')).toBe(type);
     expect((await body(res)).equals(await fixture(path)), path).toBe(true);
   }
+});
+
+describe('a scene stored gzipped', () => {
+  // Since the gzip change a film's scenes are kept as <path>.gz; the plain file is gone.
+  beforeEach(async () => {
+    const plain = join(filmDir(video.videoId, 2), 'a', 's01.json');
+    await writeFile(`${plain}.gz`, gzipSync(await readFile(plain)));
+    await rm(plain);
+  });
+
+  it('is sent unzipped, whatever the client takes (Next drops a route Content-Encoding)', async () => {
+    for (const acceptEncoding of [undefined, 'gzip, deflate, br', 'identity']) {
+      const res = await get('a/s01.json', { acceptEncoding });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('application/json');
+      expect(res.headers.get('Content-Encoding')).toBeNull();
+      expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect((await body(res)).equals(await fixture('a/s01.json'))).toBe(true);
+    }
+  });
+
+  it('cannot be fetched by its stored name', async () => {
+    expect((await get('a/s01.json.gz', { acceptEncoding: 'gzip' })).status).toBe(404);
+  });
 });
 
 it('serves the audio with Range as 206', async () => {

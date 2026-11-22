@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { lstat, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
+import { createGunzip } from 'node:zlib';
 import { mediaKindOf } from '@/lib/media-kind';
 import type { MediaKind, VideoRecord } from '@/lib/types';
 import { notFound } from './http';
@@ -83,4 +84,19 @@ export async function serveFile(
   const headers: Record<string, string> = { ...base, 'Content-Length': String(end - start + 1) };
   if (range !== null) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
   return new Response(body, { status: range === null ? 200 : 206, headers });
+}
+
+/**
+ * Serves a file stored gzipped, unzipped as it streams out. It cannot go out as stored: Next drops
+ * a route's Content-Encoding header. Next's own compression gzips the response again for the
+ * browser, as it does for every JSON response. There is no Range: these are scene animations,
+ * which the player always fetches whole.
+ */
+export function serveGzippedFile(path: string, typeHeaders: Record<string, string>): Response {
+  const read = createReadStream(path);
+  const body = Readable.toWeb(read.pipe(createGunzip())) as ReadableStream;
+  return new Response(body, {
+    status: 200,
+    headers: { 'Accept-Ranges': 'none', 'Cache-Control': 'private, max-age=3600', ...typeHeaders },
+  });
 }

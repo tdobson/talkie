@@ -8,8 +8,13 @@ const GB = 1024 * MB;
 const MINUTE = 60_000;
 
 export const limits = {
-  /** Most bytes a Talkie film may unpack to on import. */
-  filmUnpackedBytes: FILM_MAX_UNPACKED_BYTES,
+  /**
+   * Most bytes a Talkie film may unpack to on import. Scenes are stored gzipped, so this only
+   * bounds the work of one import (a guard against zip bombs), not the disk it takes.
+   */
+  filmUnpackedBytes: 4 * FILM_MAX_UNPACKED_BYTES,
+  /** Most bytes a Talkie film may take on disk once imported, its scenes counted gzipped. */
+  filmStoredBytes: FILM_MAX_UNPACKED_BYTES,
   /** Most files a Talkie film may hold. */
   filmEntries: FILM_MAX_ENTRIES,
 

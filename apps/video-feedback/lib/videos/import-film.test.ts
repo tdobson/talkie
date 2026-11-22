@@ -1,7 +1,18 @@
 import { existsSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import {
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { gunzipSync } from 'node:zlib';
 import { FILM_MAX_ENTRIES } from '@/lib/constants';
 import { limits } from '@/lib/limits';
 import { fx } from '@/lib/media/testutil';
@@ -26,6 +37,7 @@ import {
 } from '@/test/helpers/talkieFixture';
 import { withTmpData } from '@/test/helpers/tmpData';
 import { importFromInbox, listInbox } from './import';
+import { GZIP_SUFFIX, readFilmFile, storedGzipped } from './film-files';
 import { copyCapped, FilmRefused } from './import-film';
 
 const PROBE = {
@@ -48,6 +60,15 @@ const FILM_FILES = [
   'u/narration.m4a',
   'u/narration.opus',
 ];
+
+/** The same files as stored on disk: the scenes gzipped. */
+const STORED_FILES = FILM_FILES.map((p) => (storedGzipped(p) ? p + GZIP_SUFFIX : p)).sort();
+/** Bytes the fixture film unpacks to. */
+async function unpackedSize(): Promise<number> {
+  let total = 0;
+  for (const path of FILM_FILES) total += (await stat(join(TALKIE_MINI_DIR, path))).size;
+  return total;
+}
 
 const savedLimits = { ...limits };
 let cleanup: () => Promise<void>;
@@ -74,10 +95,10 @@ async function expectNothingWritten(filename: string): Promise<void> {
 }
 
 async function sameFilmAsFixture(dir: string): Promise<void> {
-  expect(await listFiles(dir)).toEqual(FILM_FILES);
+  expect(await listFiles(dir)).toEqual(STORED_FILES);
   for (const path of FILM_FILES) {
     const want = await readFile(join(TALKIE_MINI_DIR, path));
-    expect((await readFile(join(dir, path))).equals(want), path).toBe(true);
+    expect((await readFilmFile(dir, path)).equals(want), path).toBe(true);
   }
 }
 
@@ -151,7 +172,7 @@ describe('importing a film folder', () => {
     await writeFile(inInbox('mini/notes.txt'), 'not part of the film');
     const r = await importNew('mini');
     if (!r.ok) throw new Error(r.reason);
-    expect(await listFiles(filmDir(r.videoId, 1))).toEqual(FILM_FILES);
+    expect(await listFiles(filmDir(r.videoId, 1))).toEqual(STORED_FILES);
   });
 
   it('refuses a listed file that is a symlink out of the folder', async () => {
@@ -316,6 +337,25 @@ describe('refusals of a packed film', () => {
     await expectNothingWritten('bad.lottie');
   });
 
+  it('takes a film that is over the stored limit unpacked but fits once its scenes are gzipped', async () => {
+    // The real case: a long film of soft shadows is mostly scene JSON, which gzips to a fraction.
+    limits.filmStoredBytes = (await unpackedSize()) - 1000;
+    await dropPacked('big.lottie');
+    const r = await importNew('big.lottie');
+    if (!r.ok) throw new Error(r.reason);
+    await sameFilmAsFixture(filmDir(r.videoId, 1));
+  });
+
+  it('refuses a film that is over the stored limit even with its scenes gzipped', async () => {
+    limits.filmStoredBytes = 10_000;
+    await dropPacked('bad.lottie');
+    expect(await importNew('bad.lottie')).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/even with its scenes compressed/),
+    });
+    await expectNothingWritten('bad.lottie');
+  });
+
   it('refuses a film that unpacks to more than the size limit', async () => {
     limits.filmUnpackedBytes = 10_000;
     await dropPacked('bad.lottie');
@@ -358,19 +398,40 @@ describe('copyCapped', () => {
         this.push(Buffer.alloc(1024));
       },
     });
-    const budget = { left: 10_000 };
+    const budgets = { unpacked: { left: 10_000 }, stored: { left: Infinity } };
     const dst = inInbox('out.bin');
-    await expect(copyCapped(endless, dst, budget)).rejects.toBeInstanceOf(FilmRefused);
+    await expect(copyCapped(endless, dst, budgets)).rejects.toBeInstanceOf(FilmRefused);
     expect(produced).toBeLessThan(1024 * 1024);
     expect(endless.destroyed).toBe(true);
   });
 
-  it('takes what it copies off the budget', async () => {
-    const budget = { left: 100 };
+  it('takes what it copies off both budgets', async () => {
+    const budgets = { unpacked: { left: 100 }, stored: { left: 100 } };
     const dst = inInbox('out.bin');
-    await copyCapped(Readable.from([Buffer.alloc(60)]), dst, budget);
-    expect(budget.left).toBe(40);
+    await copyCapped(Readable.from([Buffer.alloc(60)]), dst, budgets);
+    expect(budgets.unpacked.left).toBe(40);
+    expect(budgets.stored.left).toBe(40);
     expect((await readFile(dst)).byteLength).toBe(60);
+  });
+
+  it('gzips when asked: the unpacked budget counts the bytes in, the stored one the bytes out', async () => {
+    const budgets = { unpacked: { left: 1_000_000 }, stored: { left: 1_000_000 } };
+    const dst = inInbox('out.json.gz');
+    const data = Buffer.from(JSON.stringify({ layers: Array(5000).fill({ ty: 4 }) }));
+    await copyCapped(Readable.from([data]), dst, budgets, true);
+    const written = await readFile(dst);
+    expect(gunzipSync(written).equals(data)).toBe(true);
+    expect(budgets.unpacked.left).toBe(1_000_000 - data.byteLength);
+    expect(budgets.stored.left).toBe(1_000_000 - written.byteLength);
+    expect(written.byteLength).toBeLessThan(data.byteLength / 10);
+  });
+
+  it('refuses once the gzipped bytes pass the stored budget', async () => {
+    const budgets = { unpacked: { left: Infinity }, stored: { left: 50 } };
+    const noise = Buffer.from(Array.from({ length: 5000 }, (_, i) => (i * 7919) % 251));
+    await expect(
+      copyCapped(Readable.from([noise]), inInbox('out.gz'), budgets, true)
+    ).rejects.toThrow(/even with its scenes compressed/);
   });
 });
 
