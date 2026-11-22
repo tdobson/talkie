@@ -93,3 +93,25 @@ at once.
 
 `docs/` holds the Talkie guides, the deploy guide for the app, and the plans and designs for
 both projects.
+
+## Licence
+
+Copyright (C) 2026 Tim Dobson.
+
+This repository is free software: you can redistribute it and/or modify it under the terms of
+the GNU Affero General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. It is distributed in the hope
+that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+Every package in it (`@talkie/*`, the app, the examples, the drop player) is under the same
+licence (SPDX `AGPL-3.0-or-later`).
+
+Two things in it come from elsewhere and keep their own licences:
+
+- **Work Sans** (`label.ttf` and `WorkSans.ttf`), the label font, is under the SIL Open Font
+  License 1.1. The text is in `OFL.txt` next to each copy.
+- **`examples/next-mantine`** started from the Mantine Next.js template, MIT licensed. Its
+  notice is kept in `examples/next-mantine/LICENCE-MIT-template`.
+
+The AGPL covers use over a network: anyone who runs a changed version of the review app for
+other people must offer those people its source.

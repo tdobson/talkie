@@ -1,6 +1,7 @@
 {
   "name": "@talkie/cli",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Talkie command line: voice, build, check, qa, dev, export",
   "type": "module",
   "sideEffects": false,
