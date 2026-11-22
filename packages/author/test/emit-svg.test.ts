@@ -158,3 +158,35 @@ describe('svgAt on the shaded scene', () => {
     expect(frames).toEqual(golden('shaded-svg', frames));
   });
 });
+
+describe('svgAt clips', () => {
+  const draw = (build: Parameters<typeof scene>[1]) =>
+    svgAt(compileScene(scene('clip me', build), { size: [320, 180], lines: [], duration: 2 }), 0);
+  const rect = (x: number, y: number, w: number, h: number) =>
+    compileScene(
+      scene('r', (c) => c.add(c.rect(x, y, w, h, {}))),
+      { size: [320, 180], lines: [], duration: 1 }
+    ).nodes[0].items[0].paths[0];
+
+  it('writes a clipPath with one path per contour, used by the group that has the transform', () => {
+    const svg = draw((c) => {
+      const plate = c.rect(0, 0, 100, 100, { fill: '#000000' }, 'plate');
+      plate.clip = [rect(0, 0, 50, 50), rect(60, 0, 20, 20)];
+      plate.transform.position = [5, 6];
+      c.add(plate);
+    });
+    expect(svg).toContain(
+      '<clipPath id="clip_me-n1-c" clipPathUnits="userSpaceOnUse"><path d="M0 0L50 0L50 50L0 50Z"/><path d="M60 0L80 0L80 20L60 20Z"/></clipPath>' +
+        '<g data-node="n1" data-name="plate" transform="matrix(1 0 0 1 5 6)" clip-path="url(#clip_me-n1-c)">'
+    );
+  });
+
+  it('leaves out a clip that cuts nothing, as the film does', () => {
+    const svg = draw((c) => {
+      const plate = c.rect(10, 10, 100, 100, { fill: '#000000' }, 'plate');
+      plate.clip = [rect(0, 0, 320, 180)];
+      c.add(plate);
+    });
+    expect(svg).not.toContain('clip');
+  });
+});

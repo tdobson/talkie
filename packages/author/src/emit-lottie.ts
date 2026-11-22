@@ -1,5 +1,6 @@
+import { effectiveClip } from './clip';
 import { HANDLES } from './ease';
-import { trackOf } from './evaluate';
+import { localBboxAt, trackOf } from './evaluate';
 import {
   identity,
   type BezierPath,
@@ -96,10 +97,20 @@ export type LottieShape =
       ml: number;
     } & LottieGradient)
   | ({ ty: 'tr'; nm: string; sk: LottieProp<number>; sa: LottieProp<number> } & LottieTransform);
+/** One contour of a clip, as an additive layer mask. The masks of a layer draw their union. */
+export interface LottieMask {
+  nm: string;
+  inv: false;
+  mode: 'a';
+  pt: { a: 0; k: LottieBezier };
+  o: LottieProp<number>;
+  x: LottieProp<number>;
+}
+/** ty 0 draws a precomp asset, 3 is a null layer that only carries a transform, 4 holds shapes. */
 export interface LottieLayer {
   ddd: 0;
   ind: number;
-  ty: 3 | 4;
+  ty: 0 | 3 | 4;
   nm: string;
   parent?: number;
   sr: 1;
@@ -110,6 +121,18 @@ export interface LottieLayer {
   st: 0;
   bm: 0;
   shapes?: LottieShape[];
+  refId?: string;
+  w?: number;
+  h?: number;
+  hasMask?: true;
+  masksProperties?: LottieMask[];
+}
+/** A composition of layers that a ty 0 layer draws, clipped to its w by h box. */
+export interface LottiePrecomp {
+  id: string;
+  nm: string;
+  fr: 60;
+  layers: LottieLayer[];
 }
 export interface LottieAnimation {
   v: '5.12.0';
@@ -120,7 +143,7 @@ export interface LottieAnimation {
   h: number;
   nm: string;
   ddd: 0;
-  assets: [];
+  assets: LottiePrecomp[];
   layers: LottieLayer[];
 }
 
@@ -395,9 +418,6 @@ const transformShape = (tr: LottieTransform): LottieShape => ({
  * later children come first. A node's own items are painted over its children.
  */
 function group(node: Node, tr: LottieTransform): LottieShape {
-  if (node.clip) {
-    throw new Error(`node ${label(node)} has a clip path, which the film cannot draw yet`);
-  }
   // A style applies to every path before it in its group, so two items with their own styles
   // each need a group of their own.
   const items: LottieShape[] =
@@ -410,7 +430,15 @@ function group(node: Node, tr: LottieTransform): LottieShape {
             it: [...itemShapes(node, item), transformShape(still(identity()))],
           }))
           .reverse();
-  const children = node.children.map((child) => group(child, transform(child))).reverse();
+  const children = node.children
+    .map((child) => {
+      // Placement gives every clipped node a layer, because only a layer can hold a mask.
+      if (effectiveClip(child)) {
+        throw new Error(`node ${label(child)} is clipped but has no layer to hold its mask`);
+      }
+      return group(child, transform(child));
+    })
+    .reverse();
   return { ty: 'gr', nm: node.name, it: [...items, ...children, transformShape(tr)] };
 }
 
@@ -434,15 +462,51 @@ const fades = (node: Node): boolean =>
 const fadesWhole = (node: Node): boolean => fades(node) && paints(node) > 1;
 
 /**
- * True for a node that is taken apart into layers, so that a node under it can have a layer of
- * its own. A node that fades is never taken apart: a layer passes its transform on to the layers
- * under it but not its opacity, so the fade would be lost. Nodes under a fading node stay in its
- * group, and a node with several paints that fades inside another fade still fades paint by paint.
+ * Precomp content is shifted this far from the precomp's corner, because a precomp is clipped to
+ * its own w by h box, here 2 * OFF square.
  */
-const splits = (node: Node): boolean =>
-  !fades(node) && node.children.some((child) => fadesWhole(child) || splits(child));
+const OFF = 8192;
+/** How close precomp content may come to the edge of the box, to allow for frames in between. */
+const MARGIN = 512;
 
-/** The scene as a Lottie animation at 60 frames a second. The output is the same for the same model. */
+const masks = (clip: BezierPath[] | undefined, shift: number): Partial<LottieLayer> =>
+  clip
+    ? {
+        hasMask: true,
+        masksProperties: clip.map((contour, n) => ({
+          nm: `clip ${n + 1}`,
+          inv: false,
+          mode: 'a',
+          pt: fixed(
+            bezier({
+              closed: true,
+              v: contour.v.map(([x, y]): Vec => [x + shift, y + shift]),
+              i: contour.i,
+              o: contour.o,
+            })
+          ),
+          o: fixed(100),
+          x: fixed(0),
+        })),
+      }
+    : {};
+
+/**
+ * The scene as a Lottie animation at 60 frames a second. The output is the same for the same model.
+ *
+ * Each top-level node gets a layer. A node under it stays in its group, unless it needs a layer of
+ * its own, which happens when:
+ * - it fades as one finished picture (fadesWhole): a layer opacity fades the picture, as the SVG
+ *   mirror does, where a group opacity fades each paint on its own;
+ * - it is clipped, because only a layer can hold a mask;
+ * - it needs a precomp, so an outer fade or clip covers everything under it: a node that fades
+ *   with a clip below it, or a clipped node with a layer below it.
+ * A still, unclipped node above such a node is taken apart: a null layer carries its transform,
+ * its children follow as layers, then its own shapes. A node that fades is never taken apart,
+ * because a layer passes on its transform but not its opacity; nodes under it stay in its group, or
+ * go in a precomp when a clip needs a layer. Nested fades with no clip below still fade paint by
+ * paint, as before.
+ */
 export function emitLottie(model: SceneModel): LottieAnimation {
   const op = Math.round(model.duration * FPS);
   const rest = {
@@ -453,6 +517,32 @@ export function emitLottie(model: SceneModel): LottieAnimation {
     st: 0 as const,
     bm: 0 as const,
   };
+
+  const memo = <T>(fn: (node: Node) => T) => {
+    const cache = new Map<Node, T>();
+    return (node: Node): T => {
+      if (!cache.has(node)) {
+        cache.set(node, fn(node));
+      }
+      return cache.get(node) as T;
+    };
+  };
+  const clipOf = memo(effectiveClip);
+  const clipped = (node: Node) => clipOf(node) !== undefined;
+  const hasClipBelow: (node: Node) => boolean = memo((node) =>
+    node.children.some((child) => clipped(child) || hasClipBelow(child))
+  );
+  const precomp: (node: Node) => boolean = memo(
+    (node) => (fades(node) && hasClipBelow(node)) || (clipped(node) && hasLayerBelow(node))
+  );
+  const ownLayer = (node: Node) => fadesWhole(node) || clipped(node) || precomp(node);
+  const needsSplit: (node: Node) => boolean = memo(
+    (node) => !fades(node) && !clipped(node) && hasLayerBelow(node)
+  );
+  const hasLayerBelow: (node: Node) => boolean = memo((node) =>
+    node.children.some((child) => ownLayer(child) || needsSplit(child))
+  );
+
   const CAMERA = 1;
   const cameraLayer: LottieLayer = {
     ddd: 0,
@@ -462,12 +552,52 @@ export function emitLottie(model: SceneModel): LottieAnimation {
     ks: transform(model.camera),
     ...rest,
   };
-  // In draw order, the back one first.
-  const drawn: LottieLayer[] = [];
-  const shapeLayer = (nm: string, parent: number, ks: LottieTransform, node: Node): void => {
-    drawn.push({
+  const assets: LottiePrecomp[] = [];
+
+  /** Throws when content under a precomp node could reach the edge of the precomp box. */
+  const checkReach = (node: Node) => {
+    const times = new Set<number>([0]);
+    const walk = (n: Node) => {
+      n.tracks.forEach((track) => track.keys.forEach((key) => times.add(key.t)));
+      n.children.forEach(walk);
+    };
+    node.children.forEach(walk);
+    // Motion between keys can sweep further than the keys do, so every frame is looked at.
+    if (times.size > 1) {
+      for (let frame = 0; frame <= op; frame++) {
+        times.add(frame / FPS);
+      }
+    }
+    const limit = OFF - MARGIN;
+    for (const t of [...times].toSorted((a, b) => a - b)) {
+      const box = localBboxAt(node, t);
+      if (
+        box &&
+        (box.x <= -limit ||
+          box.y <= -limit ||
+          box.x + box.width >= limit ||
+          box.y + box.height >= limit)
+      ) {
+        throw new Error(
+          `node ${label(node)} reaches too far from its origin to be drawn inside a precomp`
+        );
+      }
+    }
+  };
+
+  // Each list is in draw order, the back one first. ind counts from 2 in the scene, after the
+  // camera, and from 2 in a precomp, after its origin.
+  const shapeLayer = (
+    into: LottieLayer[],
+    nm: string,
+    parent: number,
+    ks: LottieTransform,
+    node: Node,
+    clip?: BezierPath[]
+  ): void => {
+    into.push({
       ddd: 0,
-      ind: drawn.length + 2,
+      ind: into.length + 2,
       ty: 4,
       nm,
       parent,
@@ -475,23 +605,66 @@ export function emitLottie(model: SceneModel): LottieAnimation {
       ...rest,
       // The layer carries the node's transform, so its group stays put.
       shapes: [group(node, still(identity()))],
+      ...masks(clip, 0),
     });
   };
-  const place = (node: Node, parent: number): void => {
-    if (!splits(node)) {
-      shapeLayer(node.name, parent, transform(node), node);
+  const place = (node: Node, parent: number, into: LottieLayer[]): void => {
+    if (precomp(node)) {
+      checkReach(node);
+      const id = `p-${node.id}`;
+      const asset: LottiePrecomp = { id, nm: node.name, fr: FPS, layers: [] };
+      assets.push(asset);
+      // Inside, an origin null layer shifts everything well inside the precomp box.
+      const ORIGIN = 1;
+      const origin: LottieLayer = {
+        ddd: 0,
+        ind: ORIGIN,
+        ty: 3,
+        nm: 'origin',
+        ks: still({ ...identity(), position: [OFF, OFF] }),
+        ...rest,
+      };
+      const inner: LottieLayer[] = [];
+      node.children.forEach((child) => place(child, ORIGIN, inner));
+      if (node.items.length > 0) {
+        shapeLayer(inner, `${node.name} shapes`, ORIGIN, still(identity()), {
+          ...node,
+          children: [],
+        });
+      }
+      asset.layers = [origin, ...inner.toReversed()];
+      const ks = transform(node);
+      const [ax, ay] = node.transform.anchor;
+      into.push({
+        ddd: 0,
+        ind: into.length + 2,
+        ty: 0,
+        nm: node.name,
+        parent,
+        ks: { ...ks, a: fixed(vec([ax + OFF, ay + OFF])) },
+        ...rest,
+        refId: id,
+        w: 2 * OFF,
+        h: 2 * OFF,
+        ...masks(clipOf(node), OFF),
+      });
+      return;
+    }
+    if (!needsSplit(node)) {
+      shapeLayer(into, node.name, parent, transform(node), node, clipOf(node));
       return;
     }
     // A null layer carries the node's transform. Its children follow as layers of their own,
     // then its own shapes, which are painted over the children.
-    const ind = drawn.length + 2;
-    drawn.push({ ddd: 0, ind, ty: 3, nm: node.name, parent, ks: transform(node), ...rest });
-    node.children.forEach((child) => place(child, ind));
+    const ind = into.length + 2;
+    into.push({ ddd: 0, ind, ty: 3, nm: node.name, parent, ks: transform(node), ...rest });
+    node.children.forEach((child) => place(child, ind, into));
     if (node.items.length > 0) {
-      shapeLayer(`${node.name} shapes`, ind, still(identity()), { ...node, children: [] });
+      shapeLayer(into, `${node.name} shapes`, ind, still(identity()), { ...node, children: [] });
     }
   };
-  model.nodes.forEach((node) => place(node, CAMERA));
+  const drawn: LottieLayer[] = [];
+  model.nodes.forEach((node) => place(node, CAMERA, drawn));
   return {
     v: '5.12.0',
     fr: FPS,
@@ -501,7 +674,7 @@ export function emitLottie(model: SceneModel): LottieAnimation {
     h: model.size[1],
     nm: model.id,
     ddd: 0,
-    assets: [],
+    assets,
     // Lottie draws layers[0] on top, so the last node added comes straight after the camera.
     layers: [cameraLayer, ...drawn.toReversed()],
   };

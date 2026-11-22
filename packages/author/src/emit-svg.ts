@@ -1,3 +1,4 @@
+import { effectiveClip } from './clip';
 import { checkTrim } from './emit-lottie';
 import { matrixOf, transformAt, trimAt } from './evaluate';
 import type { BezierPath, Gradient, Node, Paint, SceneModel, ShapeItem } from './model';
@@ -140,11 +141,17 @@ function itemSvg(
 
 function nodeSvg(scope: string, node: Node, t: number): string {
   checkTrim(node);
-  if (node.clip) {
-    throw new Error(
-      `node "${node.name}" (${node.id}) has a clip path, which the mirror cannot draw yet`
-    );
-  }
+  const clip = effectiveClip(node);
+  const clipId = `${scope}-${node.id}-c`;
+  // One path per contour: in one path, a contour inside another could cut a hole under nonzero.
+  const clipDef = clip
+    ? `<clipPath${attrs([
+        ['id', clipId],
+        ['clipPathUnits', 'userSpaceOnUse'],
+      ])}>${clip
+        .map((contour) => `<path${attrs([['d', pathD({ ...contour, closed: true })]])}/>`)
+        .join('')}</clipPath>`
+    : '';
   const tr = transformAt(node, t);
   const matrix = matrixOf(tr).map(round6);
   const plain = matrix.join(' ') === '1 0 0 1 0 0';
@@ -154,12 +161,14 @@ function nodeSvg(scope: string, node: Node, t: number): string {
     ['data-name', node.name],
     ['transform', plain ? null : `matrix(${matrix.join(' ')})`],
     ['opacity', opacity === 1 ? null : round3(opacity)],
+    // The clip is in the node's own coordinates, so it sits on the group that has the transform.
+    ['clip-path', clip ? `url(#${clipId})` : null],
   ])}>`;
   // Children first, then the node's own items on top, matching the Lottie group order.
   const children = node.children.map((child) => nodeSvg(scope, child, t)).join('');
   const trimEnd = trimAt(node, t);
   const items = node.items.map((item, n) => itemSvg(scope, node, item, n, trimEnd)).join('');
-  return `${open}${children}${items}</g>`;
+  return `${clipDef}${open}${children}${items}</g>`;
 }
 
 /** The scene at t seconds as an SVG string. It mirrors the tree that emitLottie writes. */

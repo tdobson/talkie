@@ -7,7 +7,7 @@ import { compileScene, scene, svgAt } from '@talkie/author';
 // mirror of the scene the importer makes from it. They should match. This checks the importer
 // against the drawing with no browser. It cannot see Lottie differences; the e2e tests do that.
 const ART = join(__dirname, '..', '..', 'author', 'test', 'fixtures', 'art');
-const REFUSED = /^(unsupported-|mixed-opacity|clip-)/;
+const REFUSED = /^(unsupported-|mixed-opacity)/;
 /**
  * Drawings the importer knows it draws differently, with the reason. styles: a fill and a stroke
  * that are both see-through are faded as one picture, so the fill no longer shows through the

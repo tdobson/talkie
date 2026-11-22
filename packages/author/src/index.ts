@@ -6,6 +6,7 @@ export * from './timing';
 export * from './motion';
 export * from './scene';
 export * from './evaluate';
+export * from './clip';
 export * from './emit-lottie';
 export * from './emit-svg';
 export * from './loaders';

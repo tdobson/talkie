@@ -65,16 +65,28 @@ export const everything = (): SceneModel =>
 const ART = join(__dirname, 'fixtures', 'art');
 
 /**
- * A scene drawn from art with gradients: see-through and hard stops, a stretched radial shadow, a
- * focal point under a gradientTransform, gradient strokes and an href. It fades, rises and pops.
+ * A scene drawn from art with gradients and clips: see-through and hard stops, a stretched radial
+ * shadow, a focal point under a gradientTransform, gradient strokes, an href, a clipped group, an
+ * objectBoundingBox clip on a turned shape, a clip of two touching halves, and a fading node with
+ * a clipped child under a still one, which needs a precomp. It fades, rises, pops and pushes in.
  */
 export const shadedDef = scene('shaded', (ctx) => {
   const art = ctx.art('shaded', { at: [0, 0] });
   ctx.add(art);
-  const [, shadow, sun, card] = art.children;
-  ctx.fade(shadow, 0.2);
-  ctx.rise(card, 0.5);
-  ctx.pop(sun, 1);
+  const named = (name: string) => {
+    const hit = art.children.find((child) => child.name === name);
+    if (!hit) {
+      throw new Error(`no ${name} in the shaded art`);
+    }
+    return hit;
+  };
+  ctx.fade(named('shadow'), 0.2);
+  ctx.rise(named('card'), 0.5);
+  ctx.pop(named('sun'), 1);
+  ctx.fade(named('window'), 0.3);
+  ctx.rise(named('pair'), 0.8);
+  ctx.fade(named('holder').children[0], 1.2);
+  ctx.camera(0, { dur: 3 });
 });
 export const shaded = (): SceneModel =>
   compileScene(shadedDef, {

@@ -9,6 +9,7 @@ import {
   round3,
   scene,
   transformPaths,
+  type BezierPath,
   type LottieLayer,
   type LottieShape,
   type Matrix,
@@ -582,5 +583,254 @@ describe('emitLottie on the shaded scene', () => {
   it('matches the golden file, byte for byte', () => {
     const json = emitLottie(shaded());
     expect(JSON.parse(JSON.stringify(json))).toEqual(golden('shaded', json));
+  });
+});
+
+describe('emitLottie clips', () => {
+  const square = (x: number, y: number, w: number, h: number): BezierPath => ({
+    closed: true,
+    v: [
+      [x, y],
+      [x + w, y],
+      [x + w, y + h],
+      [x, y + h],
+    ],
+    i: [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    o: [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+  });
+  const diamond: BezierPath = {
+    closed: true,
+    v: [
+      [50, 0],
+      [100, 50],
+      [50, 100],
+      [0, 50],
+    ],
+    i: square(0, 0, 0, 0).i,
+    o: square(0, 0, 0, 0).o,
+  };
+  const emit = (build: Parameters<typeof scene>[1], duration = 2) =>
+    emitLottie(compileScene(scene('c', build), { size: [320, 180], lines: [], duration }));
+  const row = (layer: LottieLayer) => [layer.ind, layer.ty, layer.nm, layer.parent];
+  const FILL = { fill: '#336699' };
+
+  it('puts a clipped top-level node on a layer with one closed additive mask per contour', () => {
+    const json = emit((c) => {
+      const plate = c.rect(0, 0, 100, 100, FILL, 'plate');
+      plate.clip = [diamond, square(200, 0, 10, 10)];
+      c.add(plate);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [2, 4, 'plate', 1],
+    ]);
+    const layer = json.layers[1];
+    expect(layer.hasMask).toBe(true);
+    expect(layer.masksProperties).toHaveLength(2);
+    const [mask] = layer.masksProperties ?? [];
+    expect(Object.keys(mask)).toEqual(['nm', 'inv', 'mode', 'pt', 'o', 'x']);
+    expect(mask).toMatchObject({
+      nm: 'clip 1',
+      inv: false,
+      mode: 'a',
+      o: { a: 0, k: 100 },
+      x: { a: 0, k: 0 },
+    });
+    expect(mask.pt).toEqual({ a: 0, k: { c: true, v: diamond.v, i: diamond.i, o: diamond.o } });
+    // The new keys come after the old ones, so scenes with no clips keep their bytes.
+    expect(Object.keys(layer).slice(-2)).toEqual(['hasMask', 'masksProperties']);
+  });
+
+  it('splits a still parent so that its clipped child gets a layer of its own', () => {
+    const json = emit((c) => {
+      const inner = c.rect(0, 0, 100, 100, FILL, 'inner');
+      inner.clip = [diamond];
+      c.add(c.group('holder', [c.rect(0, 0, 5, 5, FILL, 'beside'), inner]));
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [4, 4, 'inner', 2],
+      [3, 4, 'beside', 2],
+      [2, 3, 'holder', 1],
+    ]);
+    expect(json.layers[1].masksProperties).toHaveLength(1);
+    expect(json.layers[2]).not.toHaveProperty('masksProperties');
+  });
+
+  it('gives a fading one-paint node with a clipped child a precomp, under a still parent', () => {
+    // The placement bug: the fading node does not fade whole, but its clipped child needs a layer.
+    const json = emit((c) => {
+      const leaf = c.rect(0, 0, 100, 100, FILL, 'leaf');
+      leaf.clip = [diamond];
+      const fading = c.node('fading', [], [leaf]);
+      c.add(c.group('still', [fading]));
+      c.fade(fading, 0.5);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [3, 0, 'fading', 2],
+      [2, 3, 'still', 1],
+    ]);
+    expect(json.layers[1].refId).toBe('p-n2');
+    expect(json.assets).toHaveLength(1);
+    const [asset] = json.assets;
+    expect(asset.layers.map(row)).toEqual([
+      [1, 3, 'origin', undefined],
+      [2, 4, 'leaf', 1],
+    ]);
+    expect(asset.layers[1].masksProperties?.[0].pt.k.v).toEqual(diamond.v);
+  });
+
+  it('puts a clip under a fading parent in a precomp, shifted well inside its box', () => {
+    const json = emit((c) => {
+      const leaf = c.rect(0, 0, 100, 100, FILL, 'leaf');
+      leaf.clip = [diamond];
+      const parent = c.group('parent', [leaf]);
+      parent.clip = [square(-10, -10, 50, 50)];
+      parent.transform.anchor = [3, 4];
+      c.add(parent);
+      c.fade(parent, 0.5);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [2, 0, 'parent', 1],
+    ]);
+    const layer = json.layers[1];
+    expect(layer).toMatchObject({
+      refId: 'p-n2',
+      w: 16384,
+      h: 16384,
+      ip: 0,
+      op: 120,
+      st: 0,
+      sr: 1,
+    });
+    expect(Number.isInteger(layer.w)).toBe(true);
+    expect(layer.ks.a).toEqual({ a: 0, k: [8195, 8196] });
+    expect(layer.ks.o).toMatchObject({ a: 1 });
+    expect(layer.masksProperties?.[0].pt.k.v).toEqual([
+      [8182, 8182],
+      [8232, 8182],
+      [8232, 8232],
+      [8182, 8232],
+    ]);
+    const [asset] = json.assets;
+    expect(asset).toMatchObject({ id: 'p-n2', nm: 'parent', fr: 60 });
+    expect(asset.layers[0].ks.p).toEqual({ a: 0, k: [8192, 8192] });
+    expect(asset.layers[1].masksProperties?.[0].pt.k.v).toEqual(diamond.v);
+  });
+
+  it('uses a precomp for a clip inside a clip, and for a whole fade inside a clip', () => {
+    const json = emit((c) => {
+      const inner = c.rect(0, 0, 100, 100, FILL, 'inner');
+      inner.clip = [diamond];
+      const outer = c.group('outer', [inner]);
+      outer.clip = [square(0, 0, 60, 60)];
+      const both = c.rect(
+        0,
+        0,
+        50,
+        50,
+        { fill: '#000000', stroke: '#ffffff', strokeWidth: 2 },
+        'both'
+      );
+      const shell = c.group('shell', [both]);
+      shell.clip = [square(0, 0, 30, 30)];
+      c.add(outer, shell);
+      c.fade(both, 0.5);
+    });
+    expect(json.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [3, 0, 'shell', 1],
+      [2, 0, 'outer', 1],
+    ]);
+    expect(json.assets.map((asset) => asset.id)).toEqual(['p-n2', 'p-n4']);
+    expect(json.assets[1].layers.map(row)).toEqual([
+      [1, 3, 'origin', undefined],
+      [2, 4, 'both', 1],
+    ]);
+  });
+
+  it('drops a clip that cuts nothing, as Figma writes round every export', () => {
+    const json = emit((c) => {
+      const art = c.group('frame', [
+        c.rect(10, 10, 50, 50, { ...FILL, stroke: '#000', strokeWidth: 4 }),
+      ]);
+      art.clip = [square(0, 0, 320, 180)];
+      c.add(art);
+      c.fade(art, 0.5);
+    });
+    expect(json.layers[1]).not.toHaveProperty('masksProperties');
+    expect(json.assets).toEqual([]);
+  });
+
+  it('keeps a clip when a stroke reaches past it, or something under it moves', () => {
+    const stroke = emit((c) => {
+      const art = c.group('frame', [
+        c.rect(10, 10, 50, 50, { ...FILL, stroke: '#000', strokeWidth: 6 }),
+      ]);
+      art.clip = [square(0, 0, 70, 70)];
+      c.add(art);
+    });
+    expect(stroke.layers[1].masksProperties).toHaveLength(1);
+    const moving = emit((c) => {
+      const box = c.rect(10, 10, 50, 50, FILL);
+      const art = c.group('frame', [box]);
+      art.clip = [square(0, 0, 320, 180)];
+      c.add(art);
+      c.tween(box, 'position', [
+        { t: 0, v: [0, 0] },
+        { t: 1, v: [400, 0] },
+      ]);
+    });
+    expect(moving.layers.map(row)).toEqual([
+      [1, 3, 'camera', undefined],
+      [2, 4, 'frame', 1],
+    ]);
+    expect(moving.layers[1].masksProperties).toHaveLength(1);
+  });
+
+  it('refuses a precomp whose content turns out of its box between keys', () => {
+    const model = compileScene(
+      scene('c', (c) => {
+        const arm = c.rect(-6000, -6000, 12000, 12000, FILL, 'arm');
+        const leaf = c.rect(0, 0, 10, 10, FILL, 'leaf');
+        leaf.clip = [square(0, 0, 5, 5)];
+        const parent = c.group('parent', [arm, leaf]);
+        c.add(parent);
+        c.fade(parent, 0.5);
+        // Square on at 0 and 90 degrees it reaches 6000 from the origin, but at 45 it reaches 8485.
+        c.tween(arm, 'rotation', [
+          { t: 0, v: 0, ease: 'linear' },
+          { t: 2, v: 90 },
+        ]);
+      }),
+      { size: [320, 180], lines: [], duration: 2 }
+    );
+    expect(() => emitLottie(model)).toThrow(
+      'node "parent" (n3) reaches too far from its origin to be drawn inside a precomp'
+    );
+  });
+
+  it('refuses a clip with no contours', () => {
+    const model = compileScene(
+      scene('c', (c) => {
+        const plate = c.rect(0, 0, 10, 10, FILL, 'plate');
+        plate.clip = [];
+        c.add(plate);
+      }),
+      { size: [320, 180], lines: [], duration: 1 }
+    );
+    expect(() => emitLottie(model)).toThrow('node "plate" (n1) has a clip with no contours');
   });
 });
