@@ -1,11 +1,19 @@
 'use client';
 
+import { Transition } from '@mantine/core';
 import { type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { EventLog } from '@/lib/capture/eventLog';
 import { CommentRecorder } from '@/lib/capture/recorder';
 import type { Uploader } from '@/lib/capture/uploader';
-import { CHUNK_MS, KEY_STEP_COLLAPSE_MS } from '@/lib/constants';
+import {
+  CHUNK_MS,
+  FEEDBACK_HINT_AFTER_MS,
+  FEEDBACK_HINT_SHOW_MS,
+  KEY_STEP_COLLAPSE_MS,
+  PRACTICE_GOT_THAT_MS,
+} from '@/lib/constants';
 import { containRect } from '@/lib/geometry';
+import { copy } from '@/lib/review/copy';
 import type { ReviewAction, ReviewState } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
 import type {
@@ -18,6 +26,7 @@ import type {
   ZoomState,
 } from '@/lib/types';
 import { useHoldToZoom } from '../hooks/useHoldToZoom';
+import { useIdleHint } from '../hooks/useIdleHint';
 import { useKeyboard } from '../hooks/useKeyboard';
 import {
   type CaptureEventInput,
@@ -33,6 +42,7 @@ import { GeneralComment } from '../screens/GeneralComment';
 import { Controls } from './Controls';
 import { CommentStopped, ListeningOverlay, VideoError, VideoLoading } from './ListeningOverlay';
 import { MicLost } from './MicLost';
+import { PracticeOverlay } from './PracticeOverlay';
 import classes from './player.module.css';
 import { type SaveState, SaveStatus, TroubleBanner } from './SaveStatus';
 import { VideoStage } from './VideoStage';
@@ -108,6 +118,11 @@ function newId(): string {
   b[8] = (b[8] & 0x3f) | 0x80;
   const hex = Array.from(b, (n) => n.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** A phone or tablet: no space bar to mention, and the button is tapped. */
+function isTouch(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
 }
 
 function micIsLive(stream: MediaStream | null): stream is MediaStream {
@@ -204,6 +219,10 @@ export function Player({
   const { version } = sessionRef.current;
   const micLostRef = useRef(state.micLost);
   micLostRef.current = state.micLost;
+  const practiceRef = useRef(state.practice);
+  practiceRef.current = state.practice;
+  // The practice run starts the film by itself, once.
+  const autoStartedRef = useRef(false);
 
   // Layout
 
@@ -481,6 +500,12 @@ export function Player({
       // A film's engine arrives some time after the controls do. Until then there is nothing
       // to start, and showing it as playing would make the next press open a comment.
       if (!adapter && mediaKind === 'talkie') return;
+      // Playing on after the practice pause is the real start: from the beginning.
+      const practice = practiceRef.current;
+      if (adapter && !alreadyPlaying && (practice === 'listening' || practice === 'gotThat')) {
+        adapter.currentTime = 0;
+        setCurrentTime(0);
+      }
       playingRef.current = true;
       void closeComment().catch(() => {});
       dispatch({ type: 'play' });
@@ -502,6 +527,13 @@ export function Player({
     playingRef.current = false;
     const adapter = adapterRef.current;
     adapter?.pause();
+    if (practiceRef.current === 'coach') {
+      // The practice pause listens, but nothing is recorded or sent.
+      practiceRef.current = 'listening';
+      dispatch({ type: 'practicePause' });
+      if (adapter) setCurrentTime(adapter.currentTime);
+      return;
+    }
     const commentId = openComment('moment');
     dispatch({ type: 'pause', commentId });
     if (adapter) setCurrentTime(adapter.currentTime);
@@ -626,6 +658,11 @@ export function Player({
     if (!adapter) return;
     setDuration(Number.isFinite(adapter.duration) ? adapter.duration : 0);
     measure();
+    // The practice run: the film starts by itself from the beginning.
+    if (practiceRef.current === 'coach' && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      play();
+    }
   };
 
   const onTimeUpdate = () => {
@@ -753,6 +790,20 @@ export function Player({
     return () => document.removeEventListener('fullscreenchange', update);
   }, []);
 
+  // Practice: "Got that" for a moment, then the film starts again from the beginning.
+  useEffect(() => {
+    if (state.practice !== 'gotThat') return;
+    const timer = setTimeout(() => play(), PRACTICE_GOT_THAT_MS);
+    return () => clearTimeout(timer);
+  }, [state.practice, play]);
+
+  // Playing a long time with no pause: a reminder that pausing is how to comment.
+  const idleHint = useIdleHint(
+    state.screen === 'player' && state.playing && state.practice === null,
+    FEEDBACK_HINT_AFTER_MS,
+    FEEDBACK_HINT_SHOW_MS
+  );
+
   // Buttons
 
   const changeVolume = (v: number) => {
@@ -803,6 +854,15 @@ export function Player({
   // The server refused part of the open comment: it is no longer being recorded.
   const stopped = refusedCommentId !== null && state.commentId === refusedCommentId;
   const general = state.screen === 'general';
+  const practising = state.practice === 'listening' || state.practice === 'gotThat';
+  const coach =
+    state.practice === 'coach' && state.screen === 'player'
+      ? state.playing
+        ? isTouch()
+          ? copy.practice.coachTouch
+          : copy.practice.coachKeys
+        : copy.practice.coachPlay
+      : null;
   const mic = { onReconnect: onReconnectMic, reconnecting, reconnectFailed };
 
   return (
@@ -834,6 +894,25 @@ export function Player({
             ) : (
               <ListeningOverlay stream={stream} />
             ))}
+          {practising && (
+            <PracticeOverlay
+              stream={stream}
+              gotThat={state.practice === 'gotThat'}
+              onHeard={() => dispatch({ type: 'practiceHeard' })}
+            />
+          )}
+          <Transition mounted={idleHint} transition="fade" duration={400}>
+            {(styles) => (
+              <div
+                className={classes.idleHint}
+                style={styles}
+                role="status"
+                data-testid={T.feedbackHint}
+              >
+                {copy.player.idleHint}
+              </div>
+            )}
+          </Transition>
           {buffering && !videoError && <VideoLoading />}
           {videoError && <VideoError onReload={() => window.location.reload()} />}
           {state.screen === 'end' && (
@@ -858,6 +937,8 @@ export function Player({
           onVolume={changeVolume}
           onFullscreen={toggleFullscreen}
           onDone={done}
+          canGiveFeedback={state.screen === 'player' && state.playing}
+          coach={coach}
         />
       </div>
       {general && (

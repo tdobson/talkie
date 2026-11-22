@@ -43,11 +43,19 @@ try {
   await page.fill(tid('name-input'), 'Smoke test');
   await page.click(tid('start-button'));
   await page.click(tid('mic-continue'));
+  // The mic check has no button: it moves on by itself once it hears the fake microphone.
   await page.waitForSelector(tid('mic-heard'), { timeout: 15_000 });
-  await page.click(tid('start-watching'));
-  // Play, wait until it really plays, then pause at once: the film can be short.
-  await page.click(tid('play-pause'));
-  await page.waitForSelector(`${tid('play-pause')}[aria-label="Pause"]`, { timeout: 20_000 });
+  // The practice run: the film starts by itself. Pause, let the fake microphone talk until
+  // "Got that", and the film starts again from the beginning. Nothing of this is saved.
+  const playing = `${tid('play-pause')}[aria-label="Pause"]`;
+  await page.waitForSelector(tid('coach-mark'), { timeout: 20_000 });
+  await page.waitForSelector(playing, { timeout: 20_000 });
+  await page.keyboard.press('Space');
+  await page.waitForSelector(tid('practice-listening'), { timeout: 10_000 });
+  await page.waitForSelector(tid('practice-got-that'), { timeout: 20_000 });
+  await page.waitForSelector(tid('practice-got-that'), { state: 'detached', timeout: 10_000 });
+  // Playing for real now: pause at once, the film can be short.
+  await page.waitForSelector(playing, { timeout: 20_000 });
   await page.waitForTimeout(400);
   await page.keyboard.press('Space');
   await page.waitForSelector(tid('listening-overlay'), { timeout: 10_000 }).catch(async (e) => {

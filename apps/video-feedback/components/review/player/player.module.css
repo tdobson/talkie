@@ -292,3 +292,64 @@
   pointer-events: none;
   z-index: 2;
 }
+
+/* Holds the play and pause button, so the coach mark can sit just above it. */
+.playPauseSlot {
+  position: relative;
+  flex: none;
+}
+
+/* A speech bubble above the play and pause button, pointing down at it. */
+.coach {
+  position: absolute;
+  bottom: calc(100% + 0.85rem);
+  left: -0.25rem;
+  width: max-content;
+  max-width: min(22rem, 80vw);
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-yellow-3);
+  color: var(--mantine-color-dark-9);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.coach::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 1.3rem;
+  border: 0.5rem solid transparent;
+  border-top-color: var(--mantine-color-yellow-3);
+}
+
+.giveFeedback {
+  flex: none;
+}
+
+/* Kept in the row while hidden, so the scroll bar does not change width on every pause. */
+.giveFeedback[data-shown='false'] {
+  visibility: hidden;
+}
+
+/* "Pause any time", low in the middle of the picture. Never in the way of the pointer. */
+.idleHint {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 80%;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: rgba(11, 11, 15, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 3;
+}

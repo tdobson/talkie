@@ -32,8 +32,7 @@ test('reviewer comments on a Talkie film and the export maps it to a scene', asy
   await page.getByTestId(T.startButton).click();
   await passMicCheck(page);
 
-  const playPause = page.getByTestId(T.playPause);
-  await playPause.click();
+  // The practice run leaves the film playing from the start.
   await expect(page.getByTestId(T.captionPlate)).toHaveText('Red scene.', { timeout: 10_000 });
   // The picture is up: one of the engine's two canvases has been shown.
   const shown = page.getByTestId(T.video).locator('canvas[style*="visibility: visible"]');
@@ -99,7 +98,6 @@ test('a Talkie film that will not load shows the error panel and a Reload button
   await page.getByTestId(T.startButton).click();
   await page.getByTestId(T.micContinue).click();
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId(T.startWatching).click();
   await expect(page.getByTestId(T.videoError)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(T.videoReload)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('talkie-load-failure.png') });

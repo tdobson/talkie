@@ -23,7 +23,25 @@ export const MAX_CHUNK_REQUESTS_PER_MIN = 120;
  */
 export const SAVE_TROUBLE_AFTER_MS =
   process.env.NEXT_PUBLIC_E2E_FAST_TIMERS === '1' ? 2_000 : 20_000;
+/** Level, on the mic meter's 0..1 scale, that counts as speech. */
+export const MIC_SPEECH_THRESHOLD = 0.08;
 export const MIC_SPEECH_HOLD_MS = 300;
+const FAST = process.env.NEXT_PUBLIC_E2E_FAST_TIMERS === '1';
+/** How long "Got you, loud and clear" shows before the film starts. */
+export const MIC_HEARD_SHOW_MS = 1000;
+/** Speech, in total, the practice pause waits for before it listens for a pause in it. */
+export const PRACTICE_SPEECH_MS = 1000;
+/**
+ * Quiet after that speech that ends the practice comment. Shorter in the E2E build: the fake
+ * microphone loops a phrase whose longest gaps are about 400ms.
+ */
+export const PRACTICE_SILENCE_MS = FAST ? 250 : 600;
+/** How long "Got that" shows before the film goes back to the start. */
+export const PRACTICE_GOT_THAT_MS = 2000;
+/** Playing this long with no pause brings up the "Pause any time" hint. */
+export const FEEDBACK_HINT_AFTER_MS = FAST ? 2000 : 60_000;
+/** How long that hint stays up. */
+export const FEEDBACK_HINT_SHOW_MS = 4000;
 export const SILENCE_NOISE_DB = -40;
 export const SILENCE_MIN_SPEECH_S = 0.3;
 export const STILL_MAX_WIDTH = 1920;

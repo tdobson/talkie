@@ -56,23 +56,11 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 - The old pre-monorepo install (`/srv/video-feedback/app`) can be deleted once the new release
   layout has run for a while.
 
-## Onboarding (sketch approved by Tim 2026-11-21: "looks good")
-
-Build on main now that the Talkie integration has landed. Six steps as sketched:
-
-1. Mic check: "Say hello". No button; it moves on by itself when it hears speech.
-2. "Got you, loud and clear" for 1 s.
-3. Practice: the real film starts playing with a coach mark on Pause (or the space bar).
-4. Paused: "Listening", say anything and point at the picture.
-5. About 1 s of speech then a short silence: "Got that", then after 2 s the film jumps back to the start
-   and plays. The practice comment is thrown away.
-6. Watching: a "Give feedback" button next to the scrub bar (same as pause). After 60 s of playing with
-   no pause, a hint fades in for 4 s: "Got something to say? Pause any time."
-
-Defaults taken (Tim didn't object): practise on the first seconds of the real film, keep the 60 s hint.
-
 ## Done
 
+- 2026-11-22: reviewer onboarding built (mp4 and Talkie): the mic check moves on by itself after
+  "Got you, loud and clear", a practice pause on the real film that is never saved, a Give feedback
+  button by the scroll bar, and the "Pause any time" hint after 60 s of playing.
 - 2026-11-21: one-command deploy (`scripts/deploy/video-feedback.sh`) with the old-CPU sharp build
   (`scripts/deploy/sharp-old-cpu.sh`), Chromium for Talkie stills on geriatrix, and rollback.
   Live Talkie smoke test (`scripts/deploy/smoke-talkie.mjs`) passed on the old CPU.

@@ -12,6 +12,12 @@ export const T = {
   micDenied: 'mic-denied',
   micRetry: 'mic-retry',
   startWatching: 'start-watching',
+  micSkip: 'mic-skip',
+  coachMark: 'coach-mark',
+  practiceListening: 'practice-listening',
+  practiceGotThat: 'practice-got-that',
+  giveFeedback: 'give-feedback',
+  feedbackHint: 'feedback-hint',
   player: 'player',
   videoStage: 'video-stage', // the element pointer coords are relative to
   video: 'video',

@@ -41,8 +41,9 @@ test('reviewer screens have no serious axe violations', async ({ page }) => {
 
   await page.getByTestId(T.micContinue).click();
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId(T.startWatching).click();
   await expect(page.getByTestId(T.player)).toBeVisible();
+  // The practice run's coach mark is up: it is checked with the player.
+  await expect(page.getByTestId(T.coachMark)).toBeVisible();
   await settled(page, T.player);
   expect(await seriousViolations(page), 'player').toEqual([]);
 
