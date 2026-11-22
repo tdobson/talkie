@@ -293,20 +293,23 @@ const allZero = (x: unknown): boolean =>
 
 /**
  * When a scene's picture changes, read from its Lottie JSON. null means "cannot tell, treat every
- * frame as new": the scene uses expressions or precomps, whose timing this does not follow.
+ * frame as new": the scene uses expressions, or a precomp whose timing this does not follow. A
+ * precomp layer that runs in step with the scene (st 0, sr 1, no time remap, the scene's ip and
+ * op) is followed into its asset, whose layers are read like the scene's own.
  */
 export function sceneActivity(animation: unknown): SceneActivity | null {
   if (!isObject(animation)) {
     return null;
   }
-  if (
-    Array.isArray(animation.assets) &&
-    animation.assets.some((a) => isObject(a) && 'layers' in a)
-  ) {
-    return null;
-  }
   const first = typeof animation.ip === 'number' ? animation.ip : -Infinity;
   const last = typeof animation.op === 'number' ? animation.op : Infinity;
+  const assets = new Map<unknown, Record<string, unknown>>();
+  for (const asset of Array.isArray(animation.assets) ? animation.assets : []) {
+    if (isObject(asset) && Array.isArray(asset.layers)) {
+      assets.set(asset.id, asset);
+    }
+  }
+  const inside = new Set<unknown>();
   const spans: Array<[number, number]> = [];
   const cuts = new Set<number>();
   let unknown = false;
@@ -327,7 +330,7 @@ export function sceneActivity(animation: unknown): SceneActivity | null {
       return;
     }
     if (isLayer) {
-      if (node.ty === 0 || 'tm' in node) {
+      if ('tm' in node) {
         unknown = true;
         return;
       }
@@ -335,6 +338,21 @@ export function sceneActivity(animation: unknown): SceneActivity | null {
         if (typeof edge === 'number' && edge > first && edge < last) {
           cuts.add(edge);
         }
+      }
+      if (node.ty === 0) {
+        const asset = assets.get(node.refId);
+        const inStep =
+          (node.st ?? 0) === 0 &&
+          (node.sr ?? 1) === 1 &&
+          node.ip === animation.ip &&
+          node.op === animation.op;
+        if (!asset || !inStep || inside.has(node.refId)) {
+          unknown = true;
+          return;
+        }
+        inside.add(node.refId);
+        (asset.layers as unknown[]).forEach((layer) => visit(layer, true));
+        inside.delete(node.refId);
       }
     }
     if (isKeyframes(node.k)) {

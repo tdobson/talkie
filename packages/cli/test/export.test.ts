@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { compileScene, emitLottie, scene } from '@talkie/author';
 import { chromium } from 'playwright-core';
 import { buildFilm } from '../src/build';
 import { exportCommand } from '../src/commands/export';
@@ -197,9 +198,64 @@ describe('held frames', () => {
     };
     expect(sceneActivity({ layers: [{ ks: { p: loop } }] })).toEqual({ spans: [[5, 9]], cuts: [] });
   });
-  test('expressions and precomps make the whole scene count as moving', () => {
+  test('expressions make the whole scene count as moving', () => {
     expect(sceneActivity({ layers: [{ ks: { o: { a: 0, k: 1, x: 'time' } } }] })).toBeNull();
-    expect(sceneActivity({ assets: [{ layers: [] }], layers: [] })).toBeNull();
+  });
+  test('a precomp in step with the scene is followed into its asset', () => {
+    const inner = {
+      ip: 0,
+      op: 60,
+      ks: {
+        p: {
+          a: 1,
+          k: [
+            { t: 10, s: [0, 0] },
+            { t: 20, s: [5, 5] },
+          ],
+        },
+      },
+    };
+    const precomp = { ty: 0, refId: 'p-n1', ip: 0, op: 60, st: 0, sr: 1, ks: {} };
+    const scene = { ip: 0, op: 60, assets: [{ id: 'p-n1', layers: [inner] }], layers: [precomp] };
+    expect(sceneActivity(scene)).toEqual({ spans: [[10, 20]], cuts: [] });
+    // Nested precomps are followed too.
+    const outer = { ...scene, assets: [...scene.assets, { id: 'p-n2', layers: [{ ...precomp }] }] };
+    expect(sceneActivity({ ...outer, layers: [{ ...precomp, refId: 'p-n2' }] })).toEqual({
+      spans: [[10, 20]],
+      cuts: [],
+    });
+  });
+  test('a precomp it cannot follow makes the whole scene count as moving', () => {
+    const precomp = { ty: 0, refId: 'p-n1', ip: 0, op: 60, st: 0, sr: 1, ks: {} };
+    const assets = [{ id: 'p-n1', layers: [] }];
+    const base = { ip: 0, op: 60, assets };
+    expect(sceneActivity({ ...base, layers: [{ ...precomp, refId: 'nowhere' }] })).toBeNull();
+    expect(sceneActivity({ ...base, layers: [{ ...precomp, st: 5 }] })).toBeNull();
+    expect(sceneActivity({ ...base, layers: [{ ...precomp, sr: 2 }] })).toBeNull();
+    expect(sceneActivity({ ...base, layers: [{ ...precomp, op: 30 }] })).toBeNull();
+    const looped = {
+      ip: 0,
+      op: 60,
+      assets: [{ id: 'p-n1', layers: [precomp] }],
+      layers: [precomp],
+    };
+    expect(sceneActivity(looped)).toBeNull();
+  });
+  test('reads a film with gradients, clips and precomps from the author', () => {
+    const json = emitLottie(
+      compileScene(
+        scene('c', (ctx) => {
+          const leaf = ctx.rect(0, 0, 10, 10, { fill: '#000000' }, 'leaf');
+          leaf.clip = ctx.rect(0, 0, 5, 5, {}).items[0].paths;
+          const parent = ctx.group('parent', [leaf]);
+          ctx.add(parent);
+          ctx.fade(parent, 0.5, { dur: 0.5 });
+        }),
+        { size: [320, 180], lines: [], duration: 2 }
+      )
+    );
+    expect(json.assets).toHaveLength(1);
+    expect(sceneActivity(json)).toEqual({ spans: [[30, 60]], cuts: [] });
   });
   test('two frames match when nothing moves from one to the other', () => {
     const activity = sceneActivity(animation);
