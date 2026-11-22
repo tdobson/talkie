@@ -95,9 +95,9 @@ The scene library. It never touches the file system: the caller hands it loaders
 | `planLines(lines, opts?): { lines, duration }` | Places voice lines on the scene clock and gives the scene's length. |
 | `readHold(words): number` | How long a caption of that many words stays up. |
 | `compileScene(def, input): SceneModel` | Runs a scene's `build` and returns the model. |
-| `emitLottie(model): LottieAnimation` | The model as Lottie JSON, 60 frames a second. Each top level node is a layer. A node below that which fades and has more than one paint gets a layer of its own, so it fades as one picture. |
-| `svgAt(model, t): string` | The picture at time `t` as an SVG string. |
-| `importSvg(svg, file, base?): ArtNode` | Turns an SVG drawing into plain shapes. Throws `UnsupportedSvgError`. |
+| `emitLottie(model): LottieAnimation` | The model as Lottie JSON, 60 frames a second. Each top level node is a layer. A node below that which fades and has more than one paint gets a layer of its own, so it fades as one picture. Gradients become gradient fills and strokes (`gf`, `gs`). A clipped node gets a layer with one mask per clip outline, and becomes a precomp when it sits under a fade or has layers of its own under it. |
+| `svgAt(model, t): string` | The picture at time `t` as an SVG string, with the same gradients and clip paths. |
+| `importSvg(svg, file, base?): ArtNode` | Turns an SVG drawing into shapes with flat or gradient paint, and clip outlines. Throws `UnsupportedSvgError` for anything it cannot draw exactly. |
 | `labelPaths(font, text, options): BezierPath[]` | Text as outlines. |
 | `assertNoConflict(text, conflicts): void` | The fact gate. Throws `FactConflictError`. |
 | `fade`, `rise`, `pop`, `draw`, `tween`, `camera` | The motion helpers, also on the scene context. |
@@ -105,7 +105,8 @@ The scene library. It never touches the file system: the caller hands it loaders
 | `TimingError`, `MotionConflictError`, `UnsupportedSvgError`, `FactConflictError` | The errors a scene can raise. |
 
 Read first: `src/scene.ts` (the `SceneContext` interface is the whole authoring API), then
-`src/motion.ts`, then `src/model.ts`. How to use it: [authoring.md](authoring.md).
+`src/motion.ts`, then `src/model.ts`. Gradient maths is in `src/paint.ts`, and the rule for
+dropping a clip that cuts nothing is in `src/clip.ts`. How to use it: [authoring.md](authoring.md).
 
 ## `@talkie/player`
 

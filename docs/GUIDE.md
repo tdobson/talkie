@@ -40,11 +40,15 @@ On tragicomix it is checked out at `~/dev/video-feedback.tdobson.net`.
   and stills are frames of the video.
 - **Talkie narration** is mastered to -16 LUFS integrated, true peak at most -1 dBTP, and encoded
   twice: WebM Opus (`u/narration.webm`) and AAC (`u/narration.m4a`). `talkie qa` checks both.
-- **Talkie art** is flat SVG: no gradients, clip paths, masks, filters, bitmaps or live text
-  ([authoring.md](authoring.md#art-rules)). Soft shadows are drawn as several flat copies, which
-  makes scene JSON big but is fine.
+- **Talkie art** is SVG shapes with flat colours, linear and radial gradients, and clip paths.
+  Filters (blurs, drop shadows), masks, patterns, bitmaps, live text, `<style>` sheets and blend
+  modes are refused, and so are a few gradient and clip forms
+  ([authoring.md](authoring.md#art-rules)). Draw a soft shadow as one ellipse with a radial
+  gradient. It is smaller than the old stacked flat copies: for one shadow, 2.0 KB against 6.6 KB,
+  or 456 bytes against 736 gzipped.
 - **Size on the platform:** a Talkie film may take 500 MB on disk (scene JSON is stored gzipped)
-  and unpack to 2000 MB. A one-hour film with soft shadows (583 MB unpacked) takes 72 MB.
+  and unpack to 2000 MB. A one-hour film with soft shadows drawn as stacked copies (583 MB
+  unpacked) takes 72 MB.
 - The evidence for Talkie's choices (WebM Opus, own SVG converter, sizes against H.264 and H.265)
   is in [spike/REPORT.md](../spike/REPORT.md).
 

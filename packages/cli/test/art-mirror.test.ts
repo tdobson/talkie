@@ -11,7 +11,7 @@ const REFUSED = /^(unsupported-|mixed-opacity)/;
 /**
  * Drawings the importer knows it draws differently, with the reason. styles: a fill and a stroke
  * that are both see-through are faded as one picture, so the fill no longer shows through the
- * inner half of the stroke. That predates gradients, and belongs in docs/SNAGGING.md.
+ * inner half of the stroke. That predates gradients, and is on docs/SNAGGING.md.
  */
 const KNOWN_GAPS = new Set(['styles']);
 const accepted = readdirSync(ART)

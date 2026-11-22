@@ -172,6 +172,11 @@ it as a URL. A reader MUST reject a film with an unsafe path and MUST NOT fetch 
 4. A time that falls exactly on a boundary between two scenes belongs to the later scene.
 5. Scenes MUST NOT contain live text. Text is converted to outlines when the film is built, so
    a reader needs no fonts. Captions are the only text track.
+6. Besides flat fills and strokes, a scene MAY use gradient fills and strokes (`gf` and `gs`,
+   linear and radial, a radial one with a focal point), layer masks in add mode (how clip paths
+   are drawn), and precomp layers whose asset is in the same animation. A reader MUST draw all of
+   them. Talkie's own writer uses shape layers, null layers, trim paths and the features above,
+   and writes no expressions, images or text layers.
 
 ### 4.4 Audio
 

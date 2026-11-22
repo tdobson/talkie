@@ -36,7 +36,7 @@ How the packages depend on each other: `format` stands alone. `author` and `play
 | Understand how the pieces connect | [docs/how-it-works.md](docs/how-it-works.md) |
 | Make a film from an empty folder | [docs/make-a-film.md](docs/make-a-film.md) |
 | Add a scene | [docs/authoring.md](docs/authoring.md#add-a-scene) |
-| Import SVG art | [docs/authoring.md](docs/authoring.md#art-rules) |
+| Import SVG art (gradients and clip paths work, filters and masks do not) | [docs/authoring.md](docs/authoring.md#art-rules) |
 | Change the narration | [docs/authoring.md](docs/authoring.md#change-the-narration) |
 | Check a film | [docs/cli.md](docs/cli.md#talkie-check) and [docs/cli.md](docs/cli.md#talkie-qa) |
 | Play a film on a web page | [docs/embedding.md](docs/embedding.md#script-tag) |
@@ -118,7 +118,7 @@ my-film/
   talkie.config.ts     title, chapters (which set the scene order), voice, size
   scenes/<id>.ts       one scene: drawings and motion, timed to voice lines
   script/<id>.json     the narration lines of that scene, and caption overrides
-  art/**/*.svg         drawings, loaded by name with art('roof/tile')
+  art/**/*.svg         drawings (gradients and clip paths are fine), loaded with art('roof/tile')
   fonts/label.ttf      the font labels are outlined with
   .talkie/             caches (voice takes, built scenes). Safe to delete.
   dist/film/           the built film, folder form

@@ -86,4 +86,6 @@ Exported 542 frames (310 held) at 1920x1080, h264 and aac
   shelf.mp4
 ```
 
-"Held" frames are ones where nothing moved, so the picture before was reused.
+"Held" frames are ones where nothing moved, so the picture before was reused. Export reads this from
+each scene's Lottie JSON, including the precomps that clipped art makes. A scene that uses
+expressions, or a precomp with its own timing, has no held frames: every frame is drawn.

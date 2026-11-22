@@ -91,8 +91,8 @@ says what is wrong (not H.264, not a Talkie film, a newer format version, too bi
 
 Size: the platform stores a Talkie film's scene JSON gzipped, so a long film with heavy art is
 fine. The limits are 500 MB on disk with the scenes gzipped, and 2000 MB unpacked. A film of about
-an hour with soft shadows, which unpacks to 583 MB, takes 72 MB on disk. Do not make a film
-smaller to get it in.
+an hour with soft shadows drawn as stacked copies, which unpacks to 583 MB, takes 72 MB on disk.
+Do not make a film smaller to get it in.
 
 `GET $VF/api/admin/inbox` lists what is waiting in the inbox.
 
@@ -141,7 +141,10 @@ Start at [AGENTS.md](../AGENTS.md), then [make-a-film.md](make-a-film.md) and
   go on asterix, xebit-dev1 or xebit-dev3.
 - Film projects live outside the repo (`~/dev/talkie-films/<film>/` on tragicomix), with
   `node_modules/@talkie/{author,cli}` symlinked to this repo's `packages/`.
-- No SVG gradients, clip paths or masks yet: flat fills. No em or en dashes in captions.
+- SVG art may use flat colours, linear and radial gradients, and clip paths. Masks, filters,
+  patterns, bitmaps, live text and `<style>` sheets are refused
+  ([authoring.md](authoring.md#art-rules)). A soft shadow is one radial gradient, not stacked
+  copies. No em or en dashes in captions.
 - Converters from the older animated-SVG films exist: MD films on asterix
   (`~/md-roofkit-films-bulk/talkie/converter/`, with the real-voice re-timing loop) and the Solfit
   film on xebit-dev1 (`~/dev/solfit-install-film/tools/talkie-port/`). Copy one, do not edit it in

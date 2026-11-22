@@ -5,17 +5,17 @@ Things to fix in due course. Newest at the bottom of each section. When an item 
 
 ## Talkie
 
-- **SVG gradients and clip paths.** The design spec (`docs/superpowers/specs/2026-11-21-talkie-design.md`
-  line 231) says the art importer covers them. The plan (line 641) and `packages/author/src/svg-import.ts`
-  (lines 43 and 44) refuse them. The spike's converter (`spike/proto/emit.mjs`) handled a linear gradient,
-  masks and a pattern, so porting is doable: gradients become Lottie `gf` fills. Tim: deferred, bring
-  Talkie across first. Decide, then either port and update `docs/authoring.md` "Art rules", or fix the spec.
 - **New screenshot baselines need Tim's eye.** After the sample-film background fix, the three chromium
   baselines in `e2e/player.spec.ts-snapshots/` are regenerated but not committed. Old and new copies go in
   `/tmp/talkie-baselines-old/` and `/tmp/talkie-baselines-new/` for comparison.
 - **Phone checks** of the spike pages and the real player on iPhone and Android (procedure in [phone-checks.md](phone-checks.md)). Set up after fixes 1 and 2 land.
   They decide whether WebM Opus or AAC is tried first (WebM is the current choice).
 - **React Native (Phase 2: T16 and T17)**, held until it can be tested on phones.
+- **See-through fill and stroke on one shape.** A shape whose fill and stroke are both see-through (the
+  same `fill-opacity` and `stroke-opacity` below 1) fades as one picture in the film, so the fill does not
+  show through the inner half of the stroke as it does in a browser. Predates gradients. The art mirror
+  test (`packages/cli/test/art-mirror.test.ts`) skips the `styles` fixture for this. Workaround in
+  [authoring.md](authoring.md#art-rules): keep the stroke solid, or draw fill and stroke as two shapes.
 
 ## Talkie, fixed on branch `fix/talkie-handover` (merged into main 2026-11-21)
 
@@ -58,6 +58,11 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 
 ## Done
 
+- 2026-11-22: SVG gradients and clip paths are accepted (branch `feat/svg-gradients-clips`). Linear and
+  radial gradients as fills and strokes become Lottie `gf` and `gs`; clip paths become layer masks, with
+  precomps under fades. Unsupported forms (reflect and repeat, masks, filters, patterns, `<style>` sheets,
+  blend modes, shared ids and others) are refused with the reason. A soft shadow is now one radial
+  gradient, smaller than stacked copies. Docs updated: [authoring.md](authoring.md#art-rules).
 - 2026-11-22: reviewer onboarding built (mp4 and Talkie): the mic check moves on by itself after
   "Got you, loud and clear", a practice pause on the real film that is never saved, a Give feedback
   button by the scroll bar, and the "Pause any time" hint after 60 s of playing.

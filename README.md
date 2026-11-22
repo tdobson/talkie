@@ -7,7 +7,7 @@ Two tools in one repo, built to go together:
 
 | | What it is | Live | Read |
 | --- | --- | --- | --- |
-| **Talkie** | A film format: vector drawings that move, plus a narration track. It plays in a web page like a video (scrub bar, chapters, captions, speed) but stays sharp at any size and is a fraction of an MP4's size. Films are written as code: scene files and SVG art in, a `.lottie` film out. | [talkie.tdobson.net](https://talkie.tdobson.net): drop a `.lottie` and it plays | [AGENTS.md](AGENTS.md), then [docs/README.md](docs/README.md) |
+| **Talkie** | A film format: vector drawings that move, plus a narration track. It plays in a web page like a video (scrub bar, chapters, captions, speed) but stays sharp at any size and is a fraction of an MP4's size. Films are written as code: scene files and SVG art (flat colours, gradients, clip paths) in, a `.lottie` film out. | [talkie.tdobson.net](https://talkie.tdobson.net): drop a `.lottie` and it plays | [AGENTS.md](AGENTS.md), then [docs/README.md](docs/README.md) |
 | **Video feedback** | A review app. Send someone a link; they watch a film (MP4 or Talkie), pause wherever they like, talk and point at the picture. The app turns that into feedback a person or a model can act on: transcripts, timecodes, stills with the pointer drawn on, and for Talkie films the exact scene and frame. | [video-feedback.tdobson.net](https://video-feedback.tdobson.net) (admin behind Cloudflare Access) | [apps/video-feedback/README.md](apps/video-feedback/README.md), [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## When to use which

@@ -115,7 +115,26 @@ are `#rgb` or `#rrggbb`.
 | `c.label(text, { at, size?, color?, anchor? })` | Text as outlines. `at` is on the baseline. `anchor` is `'start'` (default), `'middle'` or `'end'`. Default size 34, colour `#1d3b47`. |
 | `c.add(...nodes)` | Puts nodes on the stage. The first is at the back. |
 
-`style` is `{ fill?, stroke?, strokeWidth?, lineCap?, lineJoin? }`.
+`style` is `{ fill?, stroke?, strokeWidth?, lineCap?, lineJoin? }`. A fill or stroke is a colour or
+a gradient, with points in the same stage pixels as the shape:
+
+```ts
+const sky = {
+  type: 'linear',
+  from: [0, 0],
+  to: [0, 600],
+  stops: [
+    { offset: 0, colour: '#2b4c7e', opacity: 1 },
+    { offset: 1, colour: '#f6e7c1', opacity: 1 },
+  ],
+};
+c.rect(0, 0, 1920, 600, { fill: sky }, 'sky');
+// A radial one: { type: 'radial', centre, radius, focal, stops }. Put focal on the centre for
+// an even fade.
+```
+
+Most gradients come from art, where the importer works all this out for you (see
+[Art rules](#art-rules)).
 
 Nothing shows until you `c.add` it. A node inside a group is added with its group.
 
@@ -128,7 +147,7 @@ Nothing shows until you `c.add` it. A node inside a group is added with its grou
 | `c.fade(node, at, { dur?, from?, to?, ease? })` | Changes opacity. With `from: 0` the node is hidden until `at`. | `dur 0.4`, `from 0`, `to 100` |
 | `c.rise(node, at, { dur?, dy? })` | Moves up into place from `dy` pixels below while fading in. A negative `dy` drops it in from above. | `dur 0.6`, `dy 40` |
 | `c.pop(node, at, { dur? })` | Scales up from nothing with a small overshoot while fading in. | `dur 0.35` |
-| `c.draw(node, at, dur?)` | Draws a stroked path on, start to end. | `dur 1` |
+| `c.draw(node, at, dur?)` | Draws a stroked path on, start to end. Refused on a node filled with a stretched radial gradient (see [Gradients, clips and motion](#gradients-clips-and-motion)). | `dur 1` |
 | `c.tween(node, prop, keys)` | Any keyframes on `'position'`, `'scale'`, `'rotation'`, `'opacity'` or `'trimEnd'`. | |
 | `c.camera(at, { dur?, scaleTo?, origin? })` | Scales the whole stage about `origin`: a slow push in. | `dur 6`, `scaleTo 103.5`, `origin` the centre |
 
@@ -162,25 +181,143 @@ becomes a node named after its `id`, so give ids to the parts you care about.
 The importer reads:
 
 - `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon` and `g`.
-- Solid fills and strokes, as `#rgb`, `#rrggbb`, `rgb()` or a basic colour name.
+- Flat fills and strokes, as `#rgb`, `#rrggbb`, `rgb()` or a basic colour name.
+- Linear and radial gradients as fills and as strokes (`fill="url(#id)"`). See
+  [Gradients](#gradients).
+- Clip paths (`clip-path="url(#id)"`) on a shape, a group or the whole drawing. See
+  [Clip paths](#clip-paths).
 - `stroke-width`, `stroke-linecap`, `stroke-linejoin`, opacity, inline `style`.
 - `transform` on any element, and the `viewBox` origin.
 - Lengths as plain numbers or `px`.
 
-It refuses, with an `UnsupportedSvgError` that names the element:
+It refuses, with an `UnsupportedSvgError` that names the element and says why:
 
-- Gradients, patterns, filters, masks and clip paths.
+- Filters, masks, patterns and blend modes (`mix-blend-mode`). Blurs and drop shadows from a
+  drawing tool are filters.
 - Bitmap images.
 - Live text. Convert it to paths in your drawing tool, or use `c.label`.
+- `<style>` sheets. Export with presentation attributes instead (see the tips below).
 - Dashed strokes and the `evenodd` fill rule.
+- A `url(#id)` or `href` that points at nothing, into another file, or at an id two elements
+  share.
+- The gradient and clip path forms listed below.
 
-It refuses rather than guesses, so a film never shows something different from the drawing. When
-you export from a drawing tool: convert text to outlines, expand gradients to flat colour, and
-save as plain SVG.
+It refuses rather than guesses, so a film never shows something different from the drawing.
+One known gap, on the [snagging list](SNAGGING.md): a shape whose fill and stroke are both
+see-through (the same `fill-opacity` and `stroke-opacity` below 1) fades as one picture in the
+film, so the fill does not show through the inner half of the stroke as it does in a browser.
+Keep the stroke solid, or draw the fill and the stroke as two shapes.
 
 Keep art above y 845 on a 1080 stage. Below that is the caption band, and `talkie qa` fails art
 that reaches into it. A background is the exception: a node that covers the whole stage, such as
 `c.rect(0, 0, 1920, 1080, ...)`, should fill the frame, and `qa` lets it through.
+
+### Gradients
+
+`linearGradient` and `radialGradient` work as a fill or a stroke. The importer reads:
+
+- Stops, with `offset`, `stop-color` and `stop-opacity`. A see-through stop stays see-through.
+- `gradientUnits`, both `objectBoundingBox` (the default) and `userSpaceOnUse`.
+- `gradientTransform`.
+- `href` and `xlink:href`, so a gradient can take its stops and attributes from another one, as
+  Inkscape writes them.
+- `spreadMethod="pad"` (the default).
+- For a radial gradient: `cx`, `cy`, `r`, `fx` and `fy`.
+
+It does what a browser does with the odd cases. A gradient with one stop, or with stops that are
+all the same, is a flat colour. A linear gradient whose two ends meet, or a radial one with `r` of
+0, paints its last stop.
+
+Refused, each with the reason:
+
+- `spreadMethod="reflect"` or `"repeat"`. Use `pad`.
+- A focal radius (`fr` above 0), or a focal point on or outside the circle. Move it inside.
+- `color-interpolation="linearRGB"`.
+- A `stop-color` of `currentColor` or `inherit`. Write the colour out.
+- An `href` loop, or an `href` that points at something that is not a gradient.
+- `objectBoundingBox` on a shape with no width or height, such as a straight line: browsers draw
+  nothing there. Use `userSpaceOnUse`.
+- A radial gradient on a stroke when the shape stretches its circle into an oval. A radial fill
+  can be stretched, a radial stroke cannot.
+
+### Clip paths
+
+`clip-path="url(#id)"` must point at a `clipPath`. The importer reads:
+
+- `path`, `rect`, `circle`, `ellipse`, `polyline` and `polygon` inside the `clipPath`. Several
+  shapes make one clip: whatever is inside any of them shows.
+- `clipPathUnits`, both `userSpaceOnUse` (the default) and `objectBoundingBox`.
+- `transform` on the clipped element, on the `clipPath` and on each shape in it.
+- Shapes that are hidden, and lines, add nothing, as in a browser. A clip with no area hides the
+  element.
+
+A clip that cuts nothing costs nothing. Figma wraps every export in a rectangle clip the size of
+the frame. When the art sits inside it and does not move, the build drops the clip.
+
+Refused, each with the reason:
+
+- A `g`, `use` or `text` inside a `clipPath`. Browsers ignore a group there, so put the shapes
+  straight in the `clipPath`.
+- `clip-rule="evenodd"`. Use `nonzero`.
+- One shape in a clip whose parts overlap, such as a ring drawn as two circles in one path. Its
+  hole cannot be drawn as a clip.
+- A clip path on a `clipPath` or on a shape inside one.
+- `clip-path` written as a CSS shape, such as `circle(50%)` or `inset(10px)`.
+- `objectBoundingBox` on an element with no width or height.
+
+### Soft shadows
+
+Draw a soft shadow as one ellipse with a radial gradient that fades to nothing:
+
+```svg
+<defs>
+  <radialGradient id="soft">
+    <stop offset="0" stop-color="#000" stop-opacity="0.45"/>
+    <stop offset="1" stop-color="#000" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<ellipse id="shadow" cx="960" cy="680" rx="230" ry="40" fill="url(#soft)"/>
+```
+
+That replaces the old trick of stacking several see-through copies or rings, and it is smaller.
+For one shadow under a card, the scene came to 1978 bytes (456 gzipped) with the gradient,
+against 6646 (736) with 8 stacked copies and 9650 (992) with 12 rings. The test is
+`packages/author/test/shadow-size.test.ts`. The gradient's circle is stretched to fit the oval,
+so `c.draw` will not trim it. Bring a shadow in with `fade` or `rise` instead.
+
+### Gradients, clips and motion
+
+- A gradient belongs to its shape. When the shape moves, turns, scales or fades, the gradient
+  goes with it.
+- A clip belongs to the element it is on. Move that element and the clip moves with it. Move a
+  child inside a clipped group and the child slides under the clip, which stays put.
+- `c.draw` and a `trimEnd` tween refuse a node filled with a stretched radial gradient: a trim
+  would not follow the drawing. A radial gradient is stretched when its circle becomes an oval,
+  which is what `objectBoundingBox` does on any shape that is not square.
+- There is no colour motion, so stops never change during a scene. To change a colour, fade one
+  node out and another in.
+- `pop` and the caption band check in `talkie qa` count only the part of a clipped node that
+  shows.
+- A clipped node inside a fading node, or with layers of its own under it, is drawn as a
+  precomp (a small animation inside the scene). Its art must stay within 7680 pixels of the
+  node's origin at every frame. Stage art never comes close.
+
+### Exporting from a drawing tool
+
+- Convert text to outlines.
+- Save as plain SVG, with each part you want to move given an id (its layer name).
+- Leave gradients as gradients. There is no need to expand them to flat colour any more.
+- Remove blurs, drop shadows and other effects: they are filters. Draw the shadow as a radial
+  gradient instead.
+- **Illustrator:** in Export As SVG or Save As SVG, set Styling to Presentation Attributes (the
+  default, Internal CSS, writes a `<style>` sheet), Font to Convert to Outlines, and Object IDs to
+  Layer Names. Freeform and mesh gradients become bitmaps, so use linear or radial ones.
+- **Figma:** in the SVG export settings tick Outline text, and Include "id" attribute so the
+  parts keep their layer names. The frame's rectangle clip is dropped when it cuts nothing.
+- **Inkscape:** save as Plain SVG. Its gradients point at each other with `xlink:href`, which is
+  fine.
+- If two elements end up with the same id (copy and paste can do this), rename one. The importer
+  will not guess which one a `url(#id)` means.
 
 ## The fact gate
 

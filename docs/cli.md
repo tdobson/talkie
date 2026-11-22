@@ -69,7 +69,13 @@ talkie build path/to/project
 
 It needs `ffmpeg` on the `PATH`. It stops if any line has no current take: run `talkie voice`
 first. Scenes that have not changed come from the cache in `.talkie/build/`, and the summary
-says how many were rebuilt. The same project always gives the same bytes.
+says how many were rebuilt. A new version of Talkie that builds scenes differently ignores the old
+cache, so the first build after an update rebuilds every scene. The same project always gives the
+same bytes.
+
+A drawing the importer cannot draw exactly stops the build with the file, the element and the
+reason. Gradients and clip paths are read; filters, masks, patterns, bitmaps, live text and
+`<style>` sheets are not. See [authoring.md](authoring.md#art-rules).
 
 ## `talkie check`
 
