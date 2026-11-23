@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { masterNarration } from '../src/audio/master';
+import { AAC_ARGS, type Mastered, masterNarration } from '../src/audio/master';
 import { measureLoudness, parseEbur128 } from '../src/audio/measure';
 import { writeWav } from '../src/audio/wav';
 
@@ -46,6 +46,29 @@ function peakySpeech(): Int16Array {
   const peak = raw.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
   return Int16Array.from(raw, (v) => Math.round((v / peak) * 30000));
 }
+/**
+ * 6 s of broader-band peaky noise: peakySpeech with less low-passing (`smooth` 0.4 or 0.5 against
+ * its 0.15), so more of it sits in the top octaves. Hard-limited to -4 dBFS, its encodes overshoot:
+ * the quantisation noise the codecs add comes out as new peaks past -1 dBTP.
+ */
+function broadPeaky(seedIn: number, smooth: number): Int16Array {
+  let seed = seedIn;
+  let low = 0;
+  const raw = Float64Array.from({ length: RATE * 6 }, (_, i) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    low += smooth * (seed / 1073741824 - 1 - low);
+    const syllable = 0.5 - 0.5 * Math.cos((2 * Math.PI * 4 * i) / RATE);
+    return low * Math.abs(low) * syllable;
+  });
+  const peak = raw.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  return Int16Array.from(raw, (v) => Math.round((v / peak) * 30000));
+}
+
+test('the AAC encode turns temporal noise shaping off', () => {
+  // ffmpeg's native AAC encoder with TNS on put a full-scale burst (+3.6 dBTP) into the 64 min GSE
+  // narration at 1285.85 s from PCM limited to -4 dBFS; the same PCM with TNS off peaks at -2.3 dBTP
+  expect(AAC_ARGS.join(' ')).toContain('-aac_tns 0');
+});
 
 test('parseEbur128 reads the summary, not the per-frame lines', () => {
   const stderr = [
@@ -117,6 +140,30 @@ describeFfmpeg('needs ffmpeg (skipped when ffmpeg is not on the path)', () => {
       await rm(dir, { recursive: true, force: true });
     }
   }, 120000);
+
+  // without the guard the Opus encode of the first lands at -0.8 dBTP and the AAC encode of the
+  // second at -0.7 dBTP, both from PCM limited to -3.8 dBTP
+  test.each([
+    { name: 'Opus', seed: 7, smooth: 0.4, pick: (r: Mastered) => r.opus },
+    { name: 'AAC', seed: 2, smooth: 0.5, pick: (r: Mastered) => r.aac },
+  ])(
+    'masterNarration keeps the $name encode at or below -1 dBTP when the codec overshoots',
+    async ({ seed, smooth, pick }) => {
+      const dir = await mkdtemp(join(tmpdir(), 'talkie-master-'));
+      try {
+        const a = join(dir, 'broad.wav');
+        await writeFile(a, writeWav(broadPeaky(seed, smooth), RATE));
+        const result = await masterNarration([a], join(dir, 'film'), { opusContainer: 'webm' });
+        expect(result.truePeak).toBeLessThanOrEqual(-1);
+        const measured = await measureLoudness(pick(result));
+        expect(Math.abs(measured.integrated + 16)).toBeLessThanOrEqual(1);
+        expect(measured.truePeak).toBeLessThanOrEqual(-1);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180000
+  );
 
   test('masterNarration gives the same bytes for the same input', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'talkie-master-'));
