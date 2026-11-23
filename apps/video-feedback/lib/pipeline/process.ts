@@ -11,6 +11,7 @@ import type {
   StepName,
   StepState,
 } from '@/lib/types';
+import { isShuttingDown } from './shutdown';
 import { initialStatus, readStatus, updateStatus } from './status';
 import {
   audioFileName,
@@ -70,7 +71,8 @@ const NEEDS_SOUND: readonly StepName[] = ['silence', 'transcribe', 'clip'];
  *
  * The final state is `done` if no step failed, else `failed`, and `error` holds the first
  * failure. A pending clip does not hold the comment back: it is `done` once the rest is.
- * This never throws for a step failure.
+ * A step that stops while the server is shutting down is not a failure: it is left pending
+ * for the next run. This never throws for a step failure.
  */
 export async function processComment(ref: CommentRef, opts: ProcessOptions = {}): Promise<void> {
   const includeClip = opts.includeClip ?? true;
@@ -153,6 +155,12 @@ export async function processComment(ref: CommentRef, opts: ProcessOptions = {})
         continue;
       }
       if (await overtaken()) return;
+      if (isShuttingDown()) {
+        // Stopped by a restart, not broken: the step stays pending (and the comment
+        // `processing`, or `done` while its clip waits), so the next run carries on from here.
+        log('stopped by a server restart; it carries on when the server is back');
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       firstError ??= message;
       if (name === 'audio') stopped = 'failed';

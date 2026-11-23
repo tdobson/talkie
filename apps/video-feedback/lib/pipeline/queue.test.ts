@@ -14,6 +14,7 @@ import {
   startPipeline,
   stopStaleSweep,
 } from './queue';
+import { setShuttingDown } from './shutdown';
 import { readStatus, updateStatus } from './status';
 import { steps } from './steps';
 import { PROBE, seedComment, seedVideo, sleep } from './testutil';
@@ -96,6 +97,27 @@ it('keeps going after a job throws', async () => {
   q.enqueue(ref('good'));
   await q.idle();
   expect(seen).toEqual(['good', 'good']);
+});
+
+it('starts nothing new once the server is shutting down', async () => {
+  const seen: string[] = [];
+  const q = new ProcessingQueue({
+    process: async (r) => {
+      seen.push(r.commentId);
+      // A restart arrives while the first job runs.
+      setShuttingDown(true);
+      await sleep(5);
+    },
+  });
+  try {
+    q.enqueue(ref('a'));
+    q.enqueue(ref('b'));
+    await q.idle();
+    expect(seen).toEqual(['a']);
+    expect(q.size).toBe(0);
+  } finally {
+    setShuttingDown(false);
+  }
 });
 
 it('idle resolves at once on an empty queue', async () => {

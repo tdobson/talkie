@@ -8,6 +8,12 @@
 # Usage, from the repo root:
 #   scripts/deploy/video-feedback.sh              build, then deploy
 #   scripts/deploy/video-feedback.sh --no-build   deploy the build that is already there
+#   VF_DEPLOY_WAIT=0 scripts/deploy/...           restart without waiting for the queue
+#
+# Before the restart it waits (up to VF_DEPLOY_WAIT seconds, 900 by default) until no comment is
+# being processed and no clip is waiting, so a deploy does not cut a transcript or a clip off
+# half way. Since 2026-11-23 the server also leaves such work pending for the next run rather
+# than failing it, so the wait is belt and braces.
 #
 # Host layout (/srv/video-feedback is a symlink to /srv/data/video-feedback; the root disk is full):
 #   releases/<stamp>/   one standalone build each; the newest three are kept
@@ -73,6 +79,34 @@ low rsync -a --delete "${link_dest[@]}" "$stage/" "$HOST:$BASE/releases/$stamp/"
 
 say "check sharp loads on the host"
 ssh "$HOST" "cd $BASE/releases/$stamp/apps/video-feedback && /usr/local/bin/node -e \"require('sharp')({create:{width:8,height:8,channels:3,background:'red'}}).png().toBuffer().then(b=>console.log('sharp ok',b.length))\""
+
+say "wait for the processing queue to be empty"
+wait_s="${VF_DEPLOY_WAIT:-900}"
+busy() {
+  ssh "$HOST" "cd $BASE/data/videos 2>/dev/null && find . -name status.json -path '*/comments/*' -print0 \
+    | xargs -0 -r /usr/local/bin/node -e '
+      let n = 0;
+      for (const f of process.argv.slice(1)) {
+        try {
+          const s = JSON.parse(require(\"fs\").readFileSync(f, \"utf8\"));
+          if (s.state === \"queued\" || s.state === \"processing\") n++;
+          else if (s.state === \"done\" && s.steps && s.steps.stills === \"done\" && s.steps.clip === \"pending\") n++;
+        } catch {}
+      }
+      console.log(n);' || echo 0" | awk '{ s += $1 } END { print s + 0 }'
+}
+waited=0
+while :; do
+  n="$(busy)"
+  [[ "$n" == 0 ]] && { echo "queue empty"; break; }
+  if (( waited >= wait_s )); then
+    echo "still $n comments or clips in the queue after ${waited}s: restarting anyway (they resume after)"
+    break
+  fi
+  echo "$n comments or clips still processing, waiting (${waited}s of ${wait_s}s)"
+  sleep 15
+  waited=$(( waited + 15 ))
+done
 
 say "switch"
 ssh "$HOST" "set -e

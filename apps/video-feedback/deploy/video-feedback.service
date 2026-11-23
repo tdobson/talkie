@@ -21,6 +21,8 @@ Environment=NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3000
 ExecStart=/usr/local/bin/node server.js
 Restart=on-failure
 RestartSec=5
+# Next.js exits 143 after a clean SIGTERM (128 + 15). That is a normal stop, not a failure.
+SuccessExitStatus=143
 Nice=0
 # ffmpeg, sharp and Chromium work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
 

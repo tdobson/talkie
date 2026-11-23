@@ -4,6 +4,7 @@ import { listComments, listSessions, listVideos } from '@/lib/storage/repo';
 import type { CommentRef, CommentStatus } from '@/lib/types';
 import { setCommentCompleteHandler } from './enqueue';
 import { processComment, resumeStep } from './process';
+import { isShuttingDown, watchForShutdown } from './shutdown';
 import { readStatus } from './status';
 
 /** A queued job. `clip: true` marks the low-priority pass that only renders the clip. */
@@ -84,6 +85,12 @@ export class ProcessingQueue {
   private async drain(): Promise<void> {
     this.draining = true;
     for (let job = this.takeNext(); job !== undefined; job = this.takeNext()) {
+      // Shutting down: nothing new is started. What is waiting is still on disk as queued (or
+      // a pending clip), so the next run picks it up.
+      if (isShuttingDown()) {
+        this.pending.length = 0;
+        break;
+      }
       this.current = job;
       try {
         await this.process(job);
@@ -198,6 +205,7 @@ export function stopStaleSweep(): void {
  */
 export async function startPipeline(): Promise<{ resumed: number; clips: number }> {
   const queue = getQueue();
+  watchForShutdown();
   setCommentCompleteHandler((ref) => queue.enqueue(ref));
   await sweepStale();
   startStaleSweep();

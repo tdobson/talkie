@@ -9,6 +9,7 @@ import type { CaptureEvent, Moment, Transcript } from '@/lib/types';
 import eventsBasic from '@/test/fixtures/events-basic.json';
 import { withTmpData } from '@/test/helpers/tmpData';
 import { processComment, resumeStep } from './process';
+import { setShuttingDown } from './shutdown';
 import { readStatus, updateStatus } from './status';
 import { type StepFn, steps } from './steps';
 import { setTranscriberForTests } from './steps/transcribe';
@@ -349,5 +350,41 @@ describe('a comment recorded with no microphone', () => {
       error: null,
     });
     expect(steps.clip).not.toHaveBeenCalled();
+  });
+});
+
+describe('a server restart mid-step', () => {
+  afterEach(() => setShuttingDown(false));
+
+  // What systemd does on a deploy: SIGTERM to the server and to the ffmpeg it runs.
+  const killedByRestart = vi.fn<StepFn>(async () => {
+    setShuttingDown(true);
+    throw new Error('ffmpeg failed (exit 255):');
+  });
+
+  it('leaves the step pending and the comment processing, so the next run carries on', async () => {
+    const { ref } = await seedComment({ audio: speech, events });
+    steps.stills = killedByRestart;
+    await processComment(ref, { includeClip: false });
+    const s = await readStatus(ref);
+    expect(s).toMatchObject({
+      state: 'processing',
+      error: null,
+      steps: { transcribe: 'done', moments: 'done', stills: 'pending' },
+    });
+    if (s === null) throw new Error('no status');
+    expect(resumeStep(s)).toBe('stills');
+  });
+
+  it('leaves a clip pending on a done comment, for the startup scan of clips', async () => {
+    const { ref } = await seedComment({ audio: speech, events });
+    await processComment(ref, { includeClip: false });
+    steps.clip = killedByRestart;
+    await processComment(ref, { fromStep: 'clip' });
+    expect(await readStatus(ref)).toMatchObject({
+      state: 'done',
+      error: null,
+      steps: { stills: 'done', clip: 'pending' },
+    });
   });
 });
