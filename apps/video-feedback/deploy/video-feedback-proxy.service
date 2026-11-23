@@ -17,7 +17,10 @@ Environment=XDG_DATA_HOME=/srv/video-feedback/proxy/data XDG_CONFIG_HOME=/srv/vi
 ExecStart=/usr/bin/caddy run --environ=false --config /srv/video-feedback/proxy/Caddyfile --adapter caddyfile
 Restart=on-failure
 RestartSec=2
-TimeoutStopSec=10
+# Caddy 2.6.2 stops listening at once on SIGTERM but then hangs instead of exiting. It holds no
+# state, so it is killed after a second: a restart (only when the Caddyfile changes) is a gap
+# of about a second, not ten.
+TimeoutStopSec=1
 
 [Install]
 WantedBy=multi-user.target
