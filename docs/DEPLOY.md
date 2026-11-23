@@ -26,17 +26,20 @@ switches with no downtime (blue/green):
 2. The new release starts on the idle app slot, `video-feedback@3001` or `@3002`, beside the
    live one, and is checked on its own port. Not healthy: it is stopped, and the live site was
    never touched.
-3. The front proxy, `video-feedback-proxy` (a Caddy of its own on 127.0.0.1:3000, where the
-   Cloudflare tunnel points), is pointed at the new slot with a graceful reload. No request is
-   dropped.
-4. The public site is checked. If that fails the proxy goes straight back to the old slot, which
-   is still running.
-5. The old slot is stopped. The new one then takes over comment processing: only one server
-   processes at a time (`pipeline.lock` in the data directory, `lib/pipeline/leader.ts`), and work
-   a stopped server was in the middle of is left pending and carried on, never failed.
+3. The old slot is stopped. The front proxy, `video-feedback-proxy` (a Caddy of its own on
+   127.0.0.1:3000, where the Cloudflare tunnel points), always lists both slots and sends traffic
+   to the one that is up, retrying on the other any request a stopping slot cannot take. So
+   nothing is dropped, and its config never changes. It is never reloaded: the Caddy 2.6.2 on
+   geriatrix panics on a reload.
+4. The public site is checked. If that fails the old slot is started again and the new one
+   stopped.
+5. The new slot then takes over comment processing: only one server processes at a time
+   (`pipeline.lock` in the data directory, `lib/pipeline/leader.ts`), and work a stopped server
+   was in the middle of is left pending and carried on, never failed.
 
 It keeps the newest three releases, and any a slot still points at, so `--rollback` (start the
-other slot again, check it, switch the proxy back) is a few seconds with no downtime either.
+other slot again, check it, stop this one) is a few seconds with no downtime either. Checked on
+2026-11-23 with a probe twice a second on the public site: no failed request.
 
 The first deploy with this script hands port 3000 from the old single `video-feedback` service to
 the proxy: a gap of a second or two, once.
@@ -56,7 +59,7 @@ which needs Wasm SIMD. Headless Chromium and the dotLottie WASM do run on it (ch
   releases/<stamp>/    one standalone build each; the server is releases/<stamp>/apps/video-feedback/server.js
   current              symlink to the live release (what the CLI tools on the host run)
   slot-3001, slot-3002 symlinks to the release each app slot runs (video-feedback@<port>)
-  proxy/               Caddyfile, upstream.caddy (which slot is live), Caddy's admin socket and data
+  proxy/               the proxy's Caddyfile, admin socket and data
   data/                DATA_DIR: inbox, videos, sessions, comments
   env                  settings and secrets, mode 600
   ms-playwright/       chromium_headless_shell-<rev>, for Talkie stills
@@ -152,7 +155,7 @@ There is another Caddy on geriatrix for other sites; this one has its own config
 and touches nothing else.
 
 ```bash
-cat /srv/video-feedback/proxy/upstream.caddy                                      # the live slot
+systemctl is-active video-feedback@3001 video-feedback@3002                        # one is live
 systemctl status video-feedback-proxy 'video-feedback@*'
 journalctl -u video-feedback@3001 -u video-feedback@3002 -n 50
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/                  # 200
@@ -256,10 +259,10 @@ reviewer mid-review carries on (their requests go to whichever slot is live).
 Rolling back to the release before: `scripts/deploy/video-feedback.sh --rollback`. By hand:
 
 ```bash
-ssh geriatrix 'cat /srv/video-feedback/proxy/upstream.caddy; ls -l /srv/video-feedback/slot-*'
-# start the other slot, check it, point the proxy at it, stop the live one:
-ssh geriatrix 'sudo systemctl start video-feedback@3002 && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/'
-ssh geriatrix 'printf "reverse_proxy 127.0.0.1:3002 {\n\tflush_interval -1\n}\n" > /srv/video-feedback/proxy/upstream.caddy && sudo systemctl reload video-feedback-proxy && sudo systemctl stop video-feedback@3001'
+ssh geriatrix 'ls -l /srv/video-feedback/slot-*; systemctl is-active video-feedback@3001 video-feedback@3002'
+# say 3001 is live: start 3002 (the release before), check it, then stop 3001
+ssh geriatrix 'sudo systemctl start video-feedback@3002 && sleep 3 && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/'
+ssh geriatrix 'sudo systemctl stop video-feedback@3001 && sudo systemctl enable video-feedback@3002 && sudo systemctl disable video-feedback@3001'
 ```
 
 ## 8. Backups

@@ -52,11 +52,12 @@ describe('monorepo layout', () => {
     expect(unit).toContain('TALKIE_CHROMIUM_PATH');
   });
 
-  it('the front proxy listens where the tunnel points and reads the live slot from a file', () => {
+  it('the front proxy listens where the tunnel points and sends traffic to either slot', () => {
     const caddy = text(join(app, 'deploy', 'Caddyfile'));
     expect(caddy).toContain('http://:3000');
     expect(caddy).toContain('bind 127.0.0.1');
-    expect(caddy).toContain('import /srv/video-feedback/proxy/upstream.caddy');
+    expect(caddy).toContain('reverse_proxy 127.0.0.1:3001 127.0.0.1:3002');
+    expect(caddy).toContain('lb_try_duration');
     // Its own admin socket: there is another Caddy on the host, on the default admin port.
     expect(caddy).toContain('admin unix//srv/video-feedback/proxy/admin.sock');
   });

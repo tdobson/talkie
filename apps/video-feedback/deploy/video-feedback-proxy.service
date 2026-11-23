@@ -1,7 +1,8 @@
 # The front door: Caddy on 127.0.0.1:3000 (where the Cloudflare tunnel sends traffic), passing
-# every request to whichever app slot is live (proxy/upstream.caddy). A deploy rewrites that
-# file and reloads Caddy, which switches without dropping a request. This Caddy is separate from
-# any other on the machine: its own config, its own admin socket, no TLS.
+# every request to whichever app slot is running (see the Caddyfile). Its config never changes
+# during a deploy, and it is never reloaded: the Caddy 2.6.2 on geriatrix panics on a reload.
+# This Caddy is separate from any other on the machine: its own config, its own admin socket,
+# no TLS.
 # Installed by scripts/deploy/video-feedback.sh. See docs/DEPLOY.md.
 
 [Unit]
@@ -14,7 +15,6 @@ Type=simple
 User=tdobson
 Environment=XDG_DATA_HOME=/srv/video-feedback/proxy/data XDG_CONFIG_HOME=/srv/video-feedback/proxy/config
 ExecStart=/usr/bin/caddy run --environ=false --config /srv/video-feedback/proxy/Caddyfile --adapter caddyfile
-ExecReload=/usr/bin/caddy reload --config /srv/video-feedback/proxy/Caddyfile --adapter caddyfile --address unix//srv/video-feedback/proxy/admin.sock
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=10

@@ -7,10 +7,13 @@
 #   1. The release starts on the idle slot (video-feedback@3001 or @3002) beside the live one.
 #   2. It is checked on its own port. If it is not healthy it is stopped: the live site was
 #      never touched.
-#   3. The proxy on port 3000 (video-feedback-proxy, a Caddy of its own; the Cloudflare tunnel
-#      points at it) is switched to the new slot with a graceful reload: no request is dropped.
-#   4. The public site is checked. If that fails the proxy is switched straight back.
-#   5. The old slot is stopped. The new one then takes over comment processing (only one server
+#   3. The old slot is stopped. The proxy on port 3000 (video-feedback-proxy, a Caddy of its own;
+#      the Cloudflare tunnel points at it) always lists both slots and sends traffic to the one
+#      that is up, retrying a request the stopping slot cannot take, so nothing is dropped. Its
+#      config never changes and it is never reloaded (this Caddy 2.6.2 panics on a reload).
+#   4. The public site is checked. If that fails the old slot is started again and the new one
+#      stopped.
+#   5. The new slot takes over comment processing once the old one has stopped (only one server
 #      processes at a time: lib/pipeline/leader.ts).
 #
 # Usage, from the repo root:
@@ -27,7 +30,7 @@
 #   releases/<stamp>/   one standalone build each; the newest three are kept
 #   current             symlink to the live release (what the host's CLI tools run)
 #   slot-3001, slot-3002  symlinks to the release each app slot runs
-#   proxy/              Caddyfile, upstream.caddy (the live slot), Caddy's admin socket and data
+#   proxy/              the proxy's Caddyfile, admin socket and data
 #   data/               DATA_DIR: inbox, videos, sessions, comments (never touched here)
 #   env                 secrets and settings (mode 600, never touched here except TALKIE_CHROMIUM_PATH)
 #   ms-playwright/      Chromium for Talkie stills
@@ -45,9 +48,13 @@ say() { printf '\n== %s\n' "$*"; }
 mode="${1:-}"
 units=(video-feedback@.service video-feedback-proxy.service)
 
-# The slot the proxy sends traffic to, or nothing before the first blue/green deploy.
+# The slot that is running, or nothing before the first blue/green deploy. If both are (a deploy
+# was cut short), the one `current` points at.
 live_slot() {
-  ssh "$HOST" "sed -n 's/^reverse_proxy 127.0.0.1:\([0-9]*\).*/\1/p' $BASE/proxy/upstream.caddy 2>/dev/null" || true
+  ssh "$HOST" "a=; for p in 3001 3002; do systemctl is-active --quiet video-feedback@\$p && a=\"\$a \$p\"; done
+    set -- \$a
+    if [ \$# = 2 ]; then for p in 3001 3002; do [ \"\$(readlink $BASE/slot-\$p)\" = \"\$(readlink $BASE/current)\" ] && echo \$p && break; done
+    else echo \$a; fi" || true
 }
 other_slot() { [[ "$1" == 3001 ]] && echo 3002 || echo 3001; }
 
@@ -64,21 +71,6 @@ healthy() {
   return 1
 }
 
-# The proxy's upstream block for a slot. flush_interval -1 streams video as it is read.
-# trusted_proxies: the Cloudflare tunnel (cloudflared, on this machine) is the only client, so
-# the X-Forwarded-* it sets (https, the real client) are kept, not replaced by our own.
-upstream_block() {
-  printf 'reverse_proxy 127.0.0.1:%s {\n\tflush_interval -1\n\ttrusted_proxies private_ranges\n}\n' "$1"
-}
-
-# Points the proxy at a slot and reloads it gracefully.
-point_proxy() {
-  upstream_block "$1" | ssh "$HOST" "cat > $BASE/proxy/upstream.caddy.new"
-  ssh "$HOST" "set -e
-    mv $BASE/proxy/upstream.caddy.new $BASE/proxy/upstream.caddy
-    sudo systemctl reload video-feedback-proxy"
-}
-
 # 0 when the public site answers / with 200 and /admin with Access's 302.
 public_ok() {
   local code admin
@@ -92,23 +84,23 @@ public_ok() {
   return 1
 }
 
-# Moves traffic from slot $1 to slot $2 (already started), checks it, and stops $1. If the
-# public check fails, traffic goes straight back to $1, which is still running.
-switch_to() {
+# Hands traffic from slot $1 to slot $2, which is running and healthy: stop $1, and the proxy
+# sends everything to $2 (a request $1 cannot take is retried there). Then the public check.
+# If that fails, $1 (still on disk) is started again and $2 stopped.
+hand_over() {
   local from=$1 to=$2
-  say "switch the proxy from $from to $to"
-  point_proxy "$to"
+  say "stop the old slot $from: the proxy sends everything to $to"
+  ssh "$HOST" "sudo systemctl stop video-feedback@$from"
   if ! public_ok; then
-    say "public check FAILED: back to $from"
-    point_proxy "$from"
+    say "public check FAILED: back to slot $from"
+    ssh "$HOST" "sudo systemctl start video-feedback@$from"
+    healthy "$from" || true
     ssh "$HOST" "journalctl -u video-feedback@$to -n 30 --no-pager || true; sudo systemctl stop video-feedback@$to"
     exit 1
   fi
-  say "stop the old slot $from"
   ssh "$HOST" "set -e
     sudo systemctl enable --quiet video-feedback@$to
     sudo systemctl disable --quiet video-feedback@$from
-    sudo systemctl stop video-feedback@$from
     ln -sfn \$(readlink $BASE/slot-$to) $BASE/current.new && mv -T $BASE/current.new $BASE/current"
 }
 
@@ -119,7 +111,7 @@ if [[ "$mode" == "--rollback" ]]; then
   say "roll back: start slot $back ($(ssh "$HOST" "readlink $BASE/slot-$back"))"
   ssh "$HOST" "sudo systemctl start video-feedback@$back"
   healthy "$back" || { ssh "$HOST" "sudo systemctl stop video-feedback@$back"; echo "slot $back is not healthy: nothing changed" >&2; exit 1; }
-  switch_to "$live" "$back"
+  hand_over "$live" "$back"
   echo "rolled back to slot $back"
   exit 0
 fi
@@ -212,7 +204,13 @@ ssh "$HOST" "set -e
     fi
   done
   [ \$changed = 1 ] && sudo systemctl daemon-reload || true
-  cmp -s $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile || cp $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile"
+  if ! cmp -s $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile; then
+    cp $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile
+    # A new proxy config means a restart (never a reload: this Caddy panics on one): a gap of
+    # about a second, only when the Caddyfile itself changes.
+    systemctl is-active --quiet video-feedback-proxy && sudo systemctl restart video-feedback-proxy || true
+  fi
+  rm -f $BASE/proxy/upstream.caddy"
 
 live="$(live_slot)"
 if [[ -z "$live" ]]; then
@@ -223,9 +221,7 @@ if [[ -z "$live" ]]; then
   ssh "$HOST" "ln -sfn $BASE/releases/$stamp $BASE/slot-3001 && sudo systemctl start video-feedback@3001"
   healthy 3001 || { ssh "$HOST" "journalctl -u video-feedback@3001 -n 30 --no-pager; sudo systemctl stop video-feedback@3001"; echo "slot 3001 is not healthy: nothing changed" >&2; exit 1; }
   say "hand port 3000 to the proxy"
-  upstream_block 3001 | ssh "$HOST" "cat > $BASE/proxy/upstream.caddy.new"
   ssh "$HOST" "set -e
-    mv $BASE/proxy/upstream.caddy.new $BASE/proxy/upstream.caddy
     sudo systemctl disable --quiet video-feedback 2>/dev/null || true
     sudo systemctl kill --signal=SIGKILL video-feedback 2>/dev/null || true
     sudo systemctl stop video-feedback 2>/dev/null || true
@@ -234,7 +230,7 @@ if [[ -z "$live" ]]; then
     ln -sfn $BASE/releases/$stamp $BASE/current.new && mv -T $BASE/current.new $BASE/current"
   if ! public_ok; then
     say "public check FAILED after the first switch: back to the old service"
-    ssh "$HOST" "sudo systemctl stop video-feedback-proxy video-feedback@3001; sudo systemctl disable --quiet video-feedback-proxy video-feedback@3001; rm -f $BASE/proxy/upstream.caddy
+    ssh "$HOST" "sudo systemctl stop video-feedback-proxy video-feedback@3001; sudo systemctl disable --quiet video-feedback-proxy video-feedback@3001
       ln -sfn '$prev' $BASE/current.new && mv -T $BASE/current.new $BASE/current
       sudo systemctl enable --quiet --now video-feedback"
     exit 1
@@ -248,7 +244,7 @@ else
     ssh "$HOST" "journalctl -u video-feedback@$next -n 30 --no-pager || true; sudo systemctl stop video-feedback@$next"
     exit 1
   fi
-  switch_to "$live" "$next"
+  hand_over "$live" "$next"
 fi
 
 say "tidy: keep the newest three releases, and any a slot still points at"

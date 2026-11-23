@@ -1,4 +1,9 @@
 # The video-feedback front proxy. See video-feedback-proxy.service.
+#
+# Both app slots are always listed. Traffic goes to the first healthy one; a slot that refuses a
+# connection (stopped, or starting) is skipped and the request retried on the other. So a deploy
+# never changes this file and never reloads Caddy (the Caddy 2.6.2 on geriatrix panics on a
+# reload): it starts the new slot, checks it, and stops the old one, and Caddy follows.
 {
 	admin unix//srv/video-feedback/proxy/admin.sock
 	auto_https off
@@ -6,7 +11,21 @@
 
 http://:3000 {
 	bind 127.0.0.1
-	# Which slot is live: the `reverse_proxy 127.0.0.1:<port> { ... }` block, written by the deploy
-	# (upstream_block in scripts/deploy/video-feedback.sh).
-	import /srv/video-feedback/proxy/upstream.caddy
+	reverse_proxy 127.0.0.1:3001 127.0.0.1:3002 {
+		lb_policy first
+		# A request that cannot reach a slot is retried on the other for up to 10 s.
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		# A slot that failed is left alone for 5 s; the health check brings it back sooner.
+		fail_duration 5s
+		health_uri /
+		health_interval 1s
+		health_timeout 3s
+		health_status 2xx
+		# Stream video as it is read.
+		flush_interval -1
+		# The Cloudflare tunnel (cloudflared, on this machine) is the only client: keep the
+		# X-Forwarded-* it sets (https, the real client), rather than writing our own.
+		trusted_proxies private_ranges
+	}
 }
