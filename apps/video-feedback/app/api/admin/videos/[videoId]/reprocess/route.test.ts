@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resetConfigForTests } from '@/lib/config';
+import { waitForLock } from '@/lib/pipeline/leader';
 import { getQueue } from '@/lib/pipeline/queue';
 import { readStatus, updateStatus } from '@/lib/pipeline/status';
 import { steps } from '@/lib/pipeline/steps';
@@ -18,6 +19,8 @@ beforeEach(async () => {
   process.env.ADMIN_AUTH = 'off';
   process.env.TRANSCRIBER = 'fake';
   resetConfigForTests();
+  // As the server does at start: this process runs the pipeline.
+  await waitForLock();
 });
 
 afterEach(async () => {

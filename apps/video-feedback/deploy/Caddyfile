@@ -1,0 +1,12 @@
+# The video-feedback front proxy. See video-feedback-proxy.service.
+{
+	admin unix//srv/video-feedback/proxy/admin.sock
+	auto_https off
+}
+
+http://:3000 {
+	bind 127.0.0.1
+	# Which slot is live: the `reverse_proxy 127.0.0.1:<port> { ... }` block, written by the deploy
+	# (upstream_block in scripts/deploy/video-feedback.sh).
+	import /srv/video-feedback/proxy/upstream.caddy
+}

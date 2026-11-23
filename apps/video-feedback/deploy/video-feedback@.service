@@ -1,0 +1,34 @@
+# One slot of the app: video-feedback@3001 and video-feedback@3002. A deploy starts the new
+# release on the idle slot, checks it, points the proxy (video-feedback-proxy, on port 3000,
+# where the Cloudflare tunnel sends traffic) at it, and only then stops the old slot. So the
+# site never goes down. Installed by scripts/deploy/video-feedback.sh. See docs/DEPLOY.md.
+#
+# /srv/video-feedback/slot-<port> points at the release the slot runs: a standalone build that
+# mirrors the repo from its root, so the server lives in apps/video-feedback inside it.
+
+[Unit]
+Description=Video feedback (Next.js), slot %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tdobson
+WorkingDirectory=/srv/video-feedback/slot-%i/apps/video-feedback
+# Secrets and site settings, including TALKIE_CHROMIUM_PATH (the headless Chromium for Talkie
+# stills, set by the deploy script). Values in this file win over the Environment= line below,
+# so do not set NODE_ENV, HOSTNAME or PORT in it.
+EnvironmentFile=/srv/video-feedback/env
+Environment=NODE_ENV=production HOSTNAME=127.0.0.1 PORT=%i
+ExecStart=/usr/local/bin/node server.js
+Restart=on-failure
+RestartSec=5
+# Next.js exits 143 after a clean SIGTERM (128 + 15). That is a normal stop, not a failure.
+SuccessExitStatus=143
+# A slot is only stopped once traffic has moved off it; it need not wait long for stragglers.
+TimeoutStopSec=20
+Nice=0
+# ffmpeg, sharp and Chromium work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
+
+[Install]
+WantedBy=multi-user.target

@@ -2,22 +2,32 @@
 # Deploy apps/video-feedback to geriatrix (https://video-feedback.tdobson.net).
 #
 # Builds here (geriatrix is too slow and too full to build), swaps in a sharp that runs on its old
-# CPU, copies a new release next to the old ones, points /srv/video-feedback/current at it,
-# restarts the service and smoke tests it. If the smoke test fails it switches back.
+# CPU and copies a new release next to the old ones. Then, with no downtime (blue/green):
+#
+#   1. The release starts on the idle slot (video-feedback@3001 or @3002) beside the live one.
+#   2. It is checked on its own port. If it is not healthy it is stopped: the live site was
+#      never touched.
+#   3. The proxy on port 3000 (video-feedback-proxy, a Caddy of its own; the Cloudflare tunnel
+#      points at it) is switched to the new slot with a graceful reload: no request is dropped.
+#   4. The public site is checked. If that fails the proxy is switched straight back.
+#   5. The old slot is stopped. The new one then takes over comment processing (only one server
+#      processes at a time: lib/pipeline/leader.ts).
 #
 # Usage, from the repo root:
 #   scripts/deploy/video-feedback.sh              build, then deploy
 #   scripts/deploy/video-feedback.sh --no-build   deploy the build that is already there
-#   VF_DEPLOY_WAIT=0 scripts/deploy/...           restart without waiting for the queue
+#   scripts/deploy/video-feedback.sh --rollback   go back to the release the other slot holds
+#   VF_DEPLOY_WAIT=0 scripts/deploy/...           do not wait for the processing queue
 #
-# Before the restart it waits (up to VF_DEPLOY_WAIT seconds, 900 by default) until no comment is
-# being processed and no clip is waiting, so a deploy does not cut a transcript or a clip off
-# half way. Since 2026-11-23 the server also leaves such work pending for the next run rather
-# than failing it, so the wait is belt and braces.
+# Before the switch it waits (up to VF_DEPLOY_WAIT seconds, 900 by default) until no comment is
+# being processed and no clip is waiting. A stopped server leaves such work pending anyway, and
+# the new one carries on with it, so the wait only avoids redoing a step.
 #
 # Host layout (/srv/video-feedback is a symlink to /srv/data/video-feedback; the root disk is full):
 #   releases/<stamp>/   one standalone build each; the newest three are kept
-#   current             symlink to the live release
+#   current             symlink to the live release (what the host's CLI tools run)
+#   slot-3001, slot-3002  symlinks to the release each app slot runs
+#   proxy/              Caddyfile, upstream.caddy (the live slot), Caddy's admin socket and data
 #   data/               DATA_DIR: inbox, videos, sessions, comments (never touched here)
 #   env                 secrets and settings (mode 600, never touched here except TALKIE_CHROMIUM_PATH)
 #   ms-playwright/      Chromium for Talkie stills
@@ -32,7 +42,89 @@ app="$root/apps/video-feedback"
 low() { nice -n19 ionice -c2 -n7 "$@"; }
 say() { printf '\n== %s\n' "$*"; }
 
-if [[ "${1:-}" != "--no-build" ]]; then
+mode="${1:-}"
+units=(video-feedback@.service video-feedback-proxy.service)
+
+# The slot the proxy sends traffic to, or nothing before the first blue/green deploy.
+live_slot() {
+  ssh "$HOST" "sed -n 's/^reverse_proxy 127.0.0.1:\([0-9]*\).*/\1/p' $BASE/proxy/upstream.caddy 2>/dev/null" || true
+}
+other_slot() { [[ "$1" == 3001 ]] && echo 3002 || echo 3001; }
+
+# 0 once the app on this port answers / with 200 and the admin API with 401 (no Access token:
+# the guard works), within 60 s.
+healthy() {
+  local port=$1 got
+  for _ in $(seq 1 30); do
+    got="$(ssh "$HOST" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$port/; echo -n ' '; curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$port/api/admin/videos" || true)"
+    [[ "$got" == "200 401" ]] && { echo "slot $port: / 200, admin API 401"; return 0; }
+    sleep 2
+  done
+  echo "slot $port answered: $got (expect 200 401)"
+  return 1
+}
+
+# The proxy's upstream block for a slot. flush_interval -1 streams video as it is read.
+# trusted_proxies: the Cloudflare tunnel (cloudflared, on this machine) is the only client, so
+# the X-Forwarded-* it sets (https, the real client) are kept, not replaced by our own.
+upstream_block() {
+  printf 'reverse_proxy 127.0.0.1:%s {\n\tflush_interval -1\n\ttrusted_proxies private_ranges\n}\n' "$1"
+}
+
+# Points the proxy at a slot and reloads it gracefully.
+point_proxy() {
+  upstream_block "$1" | ssh "$HOST" "cat > $BASE/proxy/upstream.caddy.new"
+  ssh "$HOST" "set -e
+    mv $BASE/proxy/upstream.caddy.new $BASE/proxy/upstream.caddy
+    sudo systemctl reload video-feedback-proxy"
+}
+
+# 0 when the public site answers / with 200 and /admin with Access's 302.
+public_ok() {
+  local code admin
+  for _ in $(seq 1 10); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")"
+    admin="$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC_URL/admin")"
+    echo "public / -> $code, /admin without a login -> $admin (expect 200 and 302)"
+    [[ "$code" == 200 && "$admin" == 302 ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# Moves traffic from slot $1 to slot $2 (already started), checks it, and stops $1. If the
+# public check fails, traffic goes straight back to $1, which is still running.
+switch_to() {
+  local from=$1 to=$2
+  say "switch the proxy from $from to $to"
+  point_proxy "$to"
+  if ! public_ok; then
+    say "public check FAILED: back to $from"
+    point_proxy "$from"
+    ssh "$HOST" "journalctl -u video-feedback@$to -n 30 --no-pager || true; sudo systemctl stop video-feedback@$to"
+    exit 1
+  fi
+  say "stop the old slot $from"
+  ssh "$HOST" "set -e
+    sudo systemctl enable --quiet video-feedback@$to
+    sudo systemctl disable --quiet video-feedback@$from
+    sudo systemctl stop video-feedback@$from
+    ln -sfn \$(readlink $BASE/slot-$to) $BASE/current.new && mv -T $BASE/current.new $BASE/current"
+}
+
+if [[ "$mode" == "--rollback" ]]; then
+  live="$(live_slot)"
+  [[ -n "$live" ]] || { echo "no blue/green proxy yet: nothing to roll back to" >&2; exit 1; }
+  back="$(other_slot "$live")"
+  say "roll back: start slot $back ($(ssh "$HOST" "readlink $BASE/slot-$back"))"
+  ssh "$HOST" "sudo systemctl start video-feedback@$back"
+  healthy "$back" || { ssh "$HOST" "sudo systemctl stop video-feedback@$back"; echo "slot $back is not healthy: nothing changed" >&2; exit 1; }
+  switch_to "$live" "$back"
+  echo "rolled back to slot $back"
+  exit 0
+fi
+
+if [[ "$mode" != "--no-build" ]]; then
   say "build"
   (cd "$root" && yarn vf build)
 fi
@@ -45,7 +137,7 @@ low rsync -a --exclude playwright-report --exclude test-results --exclude e2e \
   "$app/.next/standalone/" "$stage/"
 low rsync -a "$app/.next/static/" "$stage/apps/video-feedback/.next/static/"
 low rsync -a "$app/public/" "$stage/apps/video-feedback/public/"
-cp "$app/deploy/video-feedback.service" "$stage/video-feedback.service"
+for f in video-feedback@.service video-feedback-proxy.service Caddyfile; do cp "$app/deploy/$f" "$stage/$f"; done
 
 say "sharp for the old CPU"
 "$root/scripts/deploy/sharp-old-cpu.sh"
@@ -93,14 +185,16 @@ busy() {
           else if (s.state === \"done\" && s.steps && s.steps.stills === \"done\" && s.steps.clip === \"pending\") n++;
         } catch {}
       }
-      console.log(n);' || echo 0" | awk '{ s += $1 } END { print s + 0 }'
+      console.log(n);' || echo unknown" \
+    | awk '/^[0-9]+$/ { s += $1; seen = 1; next } { bad = 1 } END { print (bad || !seen) ? "unknown" : s }'
 }
 waited=0
 while :; do
   n="$(busy)"
   [[ "$n" == 0 ]] && { echo "queue empty"; break; }
+  # A failed check counts as busy: never go ahead on a guess.
   if (( waited >= wait_s )); then
-    echo "still $n comments or clips in the queue after ${waited}s: restarting anyway (they resume after)"
+    echo "still $n comments or clips in the queue after ${waited}s: going ahead (they carry on after)"
     break
   fi
   echo "$n comments or clips still processing, waiting (${waited}s of ${wait_s}s)"
@@ -108,43 +202,56 @@ while :; do
   waited=$(( waited + 15 ))
 done
 
-say "switch"
+say "install the units and the proxy config"
 ssh "$HOST" "set -e
-  sudo cp /etc/systemd/system/video-feedback.service $BASE/video-feedback.service.prev 2>/dev/null || true
-  ln -sfn $BASE/releases/$stamp $BASE/current.new && mv -T $BASE/current.new $BASE/current
-  if ! cmp -s $BASE/current/video-feedback.service /etc/systemd/system/video-feedback.service; then
-    sudo cp $BASE/current/video-feedback.service /etc/systemd/system/video-feedback.service
-    sudo systemctl daemon-reload
-  fi
-  sudo systemctl restart video-feedback"
-
-say "smoke test"
-ok=1
-for _ in $(seq 1 30); do
-  code="$(ssh "$HOST" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/" || true)"
-  [[ "$code" == 200 ]] && { ok=0; break; }
-  sleep 2
-done
-if [[ $ok -eq 0 ]]; then
-  code="$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")"
-  admin="$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC_URL/admin")"
-  echo "public / -> $code, /admin without a login -> $admin (expect 200 and 302)"
-  [[ "$code" == 200 && "$admin" == 302 ]] || ok=1
-fi
-
-if [[ $ok -ne 0 ]]; then
-  say "smoke test FAILED, switching back to $prev"
-  ssh "$HOST" "journalctl -u video-feedback -n 30 --no-pager || true"
-  ssh "$HOST" "set -e
-    if [ -n '$prev' ]; then ln -sfn '$prev' $BASE/current.new && mv -T $BASE/current.new $BASE/current; fi
-    if [ -f $BASE/video-feedback.service.prev ]; then
-      sudo cp $BASE/video-feedback.service.prev /etc/systemd/system/video-feedback.service
-      sudo systemctl daemon-reload
+  mkdir -p $BASE/proxy/data $BASE/proxy/config
+  changed=0
+  for u in ${units[*]}; do
+    if ! cmp -s $BASE/releases/$stamp/\$u /etc/systemd/system/\$u; then
+      sudo cp $BASE/releases/$stamp/\$u /etc/systemd/system/\$u; changed=1
     fi
-    sudo systemctl restart video-feedback"
-  exit 1
+  done
+  [ \$changed = 1 ] && sudo systemctl daemon-reload || true
+  cmp -s $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile || cp $BASE/releases/$stamp/Caddyfile $BASE/proxy/Caddyfile"
+
+live="$(live_slot)"
+if [[ -z "$live" ]]; then
+  # First blue/green deploy: the old single service owns port 3000. Bring the new release up on
+  # 3001 first, then hand port 3000 from the old service to the proxy: a gap of a second or two,
+  # once.
+  say "first blue/green deploy: start slot 3001"
+  ssh "$HOST" "ln -sfn $BASE/releases/$stamp $BASE/slot-3001 && sudo systemctl start video-feedback@3001"
+  healthy 3001 || { ssh "$HOST" "journalctl -u video-feedback@3001 -n 30 --no-pager; sudo systemctl stop video-feedback@3001"; echo "slot 3001 is not healthy: nothing changed" >&2; exit 1; }
+  say "hand port 3000 to the proxy"
+  upstream_block 3001 | ssh "$HOST" "cat > $BASE/proxy/upstream.caddy.new"
+  ssh "$HOST" "set -e
+    mv $BASE/proxy/upstream.caddy.new $BASE/proxy/upstream.caddy
+    sudo systemctl disable --quiet video-feedback 2>/dev/null || true
+    sudo systemctl kill --signal=SIGKILL video-feedback 2>/dev/null || true
+    sudo systemctl stop video-feedback 2>/dev/null || true
+    sudo systemctl enable --quiet --now video-feedback-proxy
+    sudo systemctl enable --quiet video-feedback@3001
+    ln -sfn $BASE/releases/$stamp $BASE/current.new && mv -T $BASE/current.new $BASE/current"
+  if ! public_ok; then
+    say "public check FAILED after the first switch: back to the old service"
+    ssh "$HOST" "sudo systemctl stop video-feedback-proxy video-feedback@3001; sudo systemctl disable --quiet video-feedback-proxy video-feedback@3001; rm -f $BASE/proxy/upstream.caddy
+      ln -sfn '$prev' $BASE/current.new && mv -T $BASE/current.new $BASE/current
+      sudo systemctl enable --quiet --now video-feedback"
+    exit 1
+  fi
+else
+  next="$(other_slot "$live")"
+  say "start the new release on slot $next (live is $live)"
+  ssh "$HOST" "ln -sfn $BASE/releases/$stamp $BASE/slot-$next && sudo systemctl restart video-feedback@$next"
+  if ! healthy "$next"; then
+    say "slot $next is not healthy: stopping it. The live site was not touched."
+    ssh "$HOST" "journalctl -u video-feedback@$next -n 30 --no-pager || true; sudo systemctl stop video-feedback@$next"
+    exit 1
+  fi
+  switch_to "$live" "$next"
 fi
 
-say "tidy: keep the newest three releases"
-ssh "$HOST" "cd $BASE/releases && ls -1 | sort | head -n -3 | xargs -r rm -rf"
-echo "deployed $stamp to $HOST ($PUBLIC_URL)"
+say "tidy: keep the newest three releases, and any a slot still points at"
+ssh "$HOST" "cd $BASE/releases && keep=\"\$(for l in $BASE/slot-3001 $BASE/slot-3002 $BASE/current; do basename \$(readlink \$l) 2>/dev/null; done)\"
+  ls -1 | sort | head -n -3 | grep -v -x -F \"\$keep\" | xargs -r rm -rf"
+echo "deployed $stamp to $HOST ($PUBLIC_URL), slot $(live_slot)"

@@ -6,13 +6,16 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   // Imported here, not at the top, so the Edge build of this file never pulls in node:fs.
   const { startPipeline } = await import('@/lib/pipeline/queue');
-  try {
-    const { resumed, clips } = await startPipeline();
-    if (resumed + clips > 0) {
-      console.log(`[pipeline] resuming ${resumed} comments and ${clips} clips`);
-    }
-  } catch (err) {
-    // The server must still start: new comments are queued as they complete.
-    console.error('[pipeline] startup scan failed:', err);
-  }
+  // Not awaited: the server serves at once. The pipeline may first wait for another server on
+  // the same data (the old release, during a deploy) to stop.
+  void startPipeline()
+    .then(({ resumed, clips }) => {
+      if (resumed + clips > 0) {
+        console.log(`[pipeline] resuming ${resumed} comments and ${clips} clips`);
+      }
+    })
+    .catch((err: unknown) => {
+      // The server must still serve: completed comments wait on disk as queued.
+      console.error('[pipeline] startup failed:', err);
+    });
 }

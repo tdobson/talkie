@@ -14,13 +14,32 @@ From the repo root on your own machine (not on geriatrix):
 ```bash
 scripts/deploy/video-feedback.sh              # build, then deploy
 scripts/deploy/video-feedback.sh --no-build   # deploy the build that is already there
+scripts/deploy/video-feedback.sh --rollback   # back to the release the other slot holds
 ```
 
 It runs `yarn vf build` here, swaps in a sharp that runs on geriatrix's CPU
 (`scripts/deploy/sharp-old-cpu.sh`), makes sure the headless Chromium for Talkie stills is on the
-host and named by `TALKIE_CHROMIUM_PATH` in the env file, uploads a new release, points
-`current` at it, installs the unit file if it changed, restarts, and smoke tests the public site.
-If the smoke test fails it switches back to the previous release. It keeps the newest three.
+host and named by `TALKIE_CHROMIUM_PATH` in the env file, and uploads a new release. Then it
+switches with no downtime (blue/green):
+
+1. It waits (up to `VF_DEPLOY_WAIT` seconds, 900 by default) for the processing queue to empty.
+2. The new release starts on the idle app slot, `video-feedback@3001` or `@3002`, beside the
+   live one, and is checked on its own port. Not healthy: it is stopped, and the live site was
+   never touched.
+3. The front proxy, `video-feedback-proxy` (a Caddy of its own on 127.0.0.1:3000, where the
+   Cloudflare tunnel points), is pointed at the new slot with a graceful reload. No request is
+   dropped.
+4. The public site is checked. If that fails the proxy goes straight back to the old slot, which
+   is still running.
+5. The old slot is stopped. The new one then takes over comment processing: only one server
+   processes at a time (`pipeline.lock` in the data directory, `lib/pipeline/leader.ts`), and work
+   a stopped server was in the middle of is left pending and carried on, never failed.
+
+It keeps the newest three releases, and any a slot still points at, so `--rollback` (start the
+other slot again, check it, switch the proxy back) is a few seconds with no downtime either.
+
+The first deploy with this script hands port 3000 from the old single `video-feedback` service to
+the proxy: a gap of a second or two, once.
 
 Needs: ssh to `geriatrix` with passwordless sudo, and docker on your machine the first time (to
 build sharp; the result is cached in `~/.cache/video-feedback/sharp-old-cpu`). Set `VF_HOST` to
@@ -35,7 +54,9 @@ which needs Wasm SIMD. Headless Chromium and the dotLottie WASM do run on it (ch
 ```
 /srv/video-feedback -> /srv/data/video-feedback   (the root disk is full, so it all lives on /srv/data)
   releases/<stamp>/    one standalone build each; the server is releases/<stamp>/apps/video-feedback/server.js
-  current              symlink to the live release; the unit runs current/apps/video-feedback/server.js
+  current              symlink to the live release (what the CLI tools on the host run)
+  slot-3001, slot-3002 symlinks to the release each app slot runs (video-feedback@<port>)
+  proxy/               Caddyfile, upstream.caddy (which slot is live), Caddy's admin socket and data
   data/                DATA_DIR: inbox, videos, sessions, comments
   env                  settings and secrets, mode 600
   ms-playwright/       chromium_headless_shell-<rev>, for Talkie stills
@@ -124,14 +145,19 @@ transcript, with the stills and clips steps marked failed.
 
 ## 4. The service
 
-`apps/video-feedback/deploy/video-feedback.service`, installed by the deploy script.
+Three units from `apps/video-feedback/deploy/`, installed by the deploy script: the app slots
+`video-feedback@.service` (one of `video-feedback@3001` and `@3002` runs at a time, apart from
+the moment of a deploy), and the front proxy `video-feedback-proxy.service` with its `Caddyfile`.
+There is another Caddy on geriatrix for other sites; this one has its own config and admin socket
+and touches nothing else.
 
 ```bash
-systemctl status video-feedback
-journalctl -u video-feedback -n 50
+cat /srv/video-feedback/proxy/upstream.caddy                                      # the live slot
+systemctl status video-feedback-proxy 'video-feedback@*'
+journalctl -u video-feedback@3001 -u video-feedback@3002 -n 50
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/                  # 200
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/admin/videos  # 401
-ss -ltnp | grep 3000                                                              # 127.0.0.1 only
+ss -ltnp | grep -E ':300[012]'                                                    # 127.0.0.1 only
 ```
 
 The 401 is right: the request carries no Access JWT. ffmpeg, Chromium and the still and clip
@@ -223,15 +249,17 @@ On geriatrix use the admin pages or the API (`POST /api/admin/videos/<id>/reproc
 
 ## 7. Updating and rolling back
 
-Updating is the deploy script again. It is safe for data: processing is driven by `status.json`
-files and picks up where it stopped, and a reviewer's browser retries chunks that failed to
-upload. Avoid deploying while someone is mid-review.
+Updating is the deploy script again, with no downtime (see "Deploying: one command"). It is
+safe for data: processing is driven by `status.json` files and picks up where it stopped, and a
+reviewer mid-review carries on (their requests go to whichever slot is live).
 
-Rolling back by hand, to the release before:
+Rolling back to the release before: `scripts/deploy/video-feedback.sh --rollback`. By hand:
 
 ```bash
-ssh geriatrix 'cd /srv/video-feedback && ls releases/'
-ssh geriatrix 'cd /srv/video-feedback && ln -sfn $PWD/releases/<stamp> current.new && mv -T current.new current && sudo systemctl restart video-feedback'
+ssh geriatrix 'cat /srv/video-feedback/proxy/upstream.caddy; ls -l /srv/video-feedback/slot-*'
+# start the other slot, check it, point the proxy at it, stop the live one:
+ssh geriatrix 'sudo systemctl start video-feedback@3002 && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/'
+ssh geriatrix 'printf "reverse_proxy 127.0.0.1:3002 {\n\tflush_interval -1\n}\n" > /srv/video-feedback/proxy/upstream.caddy && sudo systemctl reload video-feedback-proxy && sudo systemctl stop video-feedback@3001'
 ```
 
 ## 8. Backups
@@ -273,7 +301,7 @@ with `df -h /srv/video-feedback/data`. Old source versions are the big files.
 
 On the host:
 
-- [ ] `systemctl is-active video-feedback` says `active`, and the journal has no errors.
+- [ ] `systemctl is-active video-feedback-proxy video-feedback@<live slot>` says `active` twice, and the journal has no errors.
 - [ ] `ss -ltnp | grep 3000` shows `127.0.0.1:3000` only.
 
 From a browser on a computer that is not signed in to Access (a private window):

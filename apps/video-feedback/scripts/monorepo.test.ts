@@ -42,19 +42,23 @@ describe('monorepo layout', () => {
     expect(text(join(root, 'jest.config.cjs'))).toContain('<rootDir>/apps/');
   });
 
-  it('deploy unit runs from apps/video-feedback', () => {
-    expect(text(join(app, 'deploy', 'video-feedback.service'))).toMatch(
-      /^WorkingDirectory=.*\/apps\/video-feedback$/m
-    );
-  });
-
-  it('deploy unit starts the standalone server of the current release', () => {
-    const unit = text(join(app, 'deploy', 'video-feedback.service'));
+  it('deploy slots run the standalone server of their release, from apps/video-feedback', () => {
+    const unit = text(join(app, 'deploy', 'video-feedback@.service'));
     expect(unit).toMatch(
-      /^WorkingDirectory=\/srv\/video-feedback\/current\/apps\/video-feedback$/m
+      /^WorkingDirectory=\/srv\/video-feedback\/slot-%i\/apps\/video-feedback$/m
     );
     expect(unit).toMatch(/^ExecStart=\S+ server\.js$/m);
+    expect(unit).toMatch(/^Environment=.*PORT=%i/m);
     expect(unit).toContain('TALKIE_CHROMIUM_PATH');
+  });
+
+  it('the front proxy listens where the tunnel points and reads the live slot from a file', () => {
+    const caddy = text(join(app, 'deploy', 'Caddyfile'));
+    expect(caddy).toContain('http://:3000');
+    expect(caddy).toContain('bind 127.0.0.1');
+    expect(caddy).toContain('import /srv/video-feedback/proxy/upstream.caddy');
+    // Its own admin socket: there is another Caddy on the host, on the default admin port.
+    expect(caddy).toContain('admin unix//srv/video-feedback/proxy/admin.sock');
   });
 
   // The docs describe the one-command deploy and Chromium for Talkie stills.

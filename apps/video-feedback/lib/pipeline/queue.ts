@@ -1,9 +1,13 @@
+import { readFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { config } from '@/lib/config';
 import { limits } from '@/lib/limits';
 import { finaliseStaleComments } from '@/lib/review/service';
 import { listComments, listSessions, listVideos } from '@/lib/storage/repo';
 import type { CommentRef, CommentStatus } from '@/lib/types';
 import { setCommentCompleteHandler } from './enqueue';
 import { processComment, resumeStep } from './process';
+import { holdsLock, LOCK_NAME, waitForLock } from './leader';
 import { isShuttingDown, watchForShutdown } from './shutdown';
 import { readStatus } from './status';
 
@@ -142,6 +146,9 @@ async function runJob(job: Job): Promise<void> {
     sessionId: job.sessionId,
     commentId: job.commentId,
   };
+  // A server still waiting for the pipeline lock processes nothing: the job stays on disk
+  // (queued, or a pending clip) and its startup scan takes it once it has the lock.
+  if (!holdsLock()) return;
   const status = await readStatus(ref);
   if (status === null) return;
 
@@ -198,12 +205,32 @@ export function stopStaleSweep(): void {
   delete holder[SWEEP_KEY];
 }
 
+/** Gives the pipeline lock back as the process exits, so the next server need not wait. */
+function releaseLockOnExit(): void {
+  const holder = globalThis as { [RELEASE_KEY]?: boolean };
+  if (holder[RELEASE_KEY]) return;
+  holder[RELEASE_KEY] = true;
+  const path = join(config().dataDir, LOCK_NAME);
+  process.once('exit', () => {
+    try {
+      const held = JSON.parse(readFileSync(path, 'utf8')) as { pid?: number };
+      if (held.pid === process.pid) unlinkSync(path);
+    } catch {
+      // Already gone: nothing to give back.
+    }
+  });
+}
+const RELEASE_KEY = Symbol.for('video-feedback.releasePipelineLock');
+
 /**
  * Server start: completed uploads go straight to the queue from now on, whatever was left
  * unfinished by the previous run is picked up again, and uploads that went quiet without a
  * complete call are finished, now and every few minutes.
  */
 export async function startPipeline(): Promise<{ resumed: number; clips: number }> {
+  // One pipeline per data directory: during a deploy the old server may still be running.
+  await waitForLock();
+  releaseLockOnExit();
   const queue = getQueue();
   watchForShutdown();
   setCommentCompleteHandler((ref) => queue.enqueue(ref));
