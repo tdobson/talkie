@@ -56,15 +56,53 @@ re-recordings, and import a new cut as the next version of the same video.
 ## What you need
 
 - ssh to `geriatrix` (to copy the film into the inbox).
-- The admin service token: `~/.config/video-feedback/service-token.env` on tragicomix, which sets
-  `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`. It is a secret: source it, never print it,
-  never copy it into a repo, a log or a message.
+- The admin service token (below). Every `/api/admin/...` call needs it.
 
-```bash
-set -a; . ~/.config/video-feedback/service-token.env; set +a
-H=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-VF=https://video-feedback.tdobson.net
-```
+### Get the admin token
+
+The token is two values, `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`, kept in
+`~/.config/video-feedback/service-token.env` (mode 600). Cloudflare Access checks them before a
+request reaches the app. Without them every admin call answers `302` (a redirect to a login page).
+
+**Are you allowed it?** Yes if you are an agent working for Tim on one of his machines and can
+`ssh tragicomix`: that access is the authorisation. Otherwise, no: ask Tim (see the last point).
+
+- **On tragicomix** it is already there. Load it:
+
+  ```bash
+  set -a; . ~/.config/video-feedback/service-token.env; set +a
+  H=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+  VF=https://video-feedback.tdobson.net
+  ```
+
+- **On asterix, xebit-dev1, xebit-dev3** (or another machine of Tim's that can ssh to tragicomix),
+  copy it across once. Nothing is printed on the way:
+
+  ```bash
+  umask 077; mkdir -p ~/.config/video-feedback
+  ssh tragicomix 'cat ~/.config/video-feedback/service-token.env' > ~/.config/video-feedback/service-token.env
+  ```
+
+  Then load it as above. Or skip the copy and run the API calls (or the watcher) on tragicomix
+  over ssh.
+
+- **Check it works:**
+
+  ```bash
+  curl -sS -o /dev/null -w '%{http_code}\n' "${H[@]}" $VF/api/admin/videos   # 200 is good, 302 is refused
+  ```
+
+- **Not on Tim's machines** (another person, or an agent of theirs): ask Tim. He can make a
+  separate service token in Cloudflare Zero Trust (Access, Service credentials) and add it to the
+  "video-feedback admin" application's policy, so it can be revoked on its own without breaking
+  anyone else's. A person can instead log in to `/admin` in a browser with their email (a one-time
+  code) once Tim adds them to the policy, as Edward has been.
+
+It is a secret, so:
+- Source it; never print it, `cat` it to a terminal or a log, or put it in a URL.
+- Never commit it (the repo is public), paste it into a message or an issue, or hand it to a
+  subagent in its prompt. A subagent on the same machine can source the file itself.
+- If it may have leaked, tell Tim at once so he can replace it.
 
 ## Put a film up
 

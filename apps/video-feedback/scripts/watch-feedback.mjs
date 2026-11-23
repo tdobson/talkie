@@ -95,7 +95,10 @@ export async function poll({ base, videoId, version, headers, state, imagesDir, 
   });
   if (res.status === 304) return state;
   if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
-    throw new WatchError(`The server refused the credentials (HTTP ${res.status}).`, 2);
+    throw new WatchError(
+      `The server refused the credentials (HTTP ${res.status}). Load the admin token: see "Get the admin token" in docs/review-platform-for-agents.md.`,
+      2
+    );
   }
   if (res.status === 404) throw new WatchError(`No video "${videoId}" (or no such version).`, 3);
   if (res.status !== 200) throw new Error(`export.json answered HTTP ${res.status}`);

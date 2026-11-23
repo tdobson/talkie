@@ -75,10 +75,11 @@ Full detail, from a shell, with no browser: [review-platform-for-agents.md](revi
      positions as 0..1 fractions). Match each comment's `pausedAtVideoTime` to a step.
 5. **Delete:** not in the API. Ask Tim.
 
-Admin API calls need the Cloudflare Access service token from
-`~/.config/video-feedback/service-token.env` on tragicomix. Source it; never print it or copy it
-anywhere. People log in to `/admin` with a one-time PIN sent to their email (Tim and Edward are
-allowed).
+Admin API calls need the Cloudflare Access service token in
+`~/.config/video-feedback/service-token.env`. It lives on tragicomix; an agent on another of Tim's
+machines may copy it across, and anyone else asks Tim. How, and the rules for keeping it secret:
+"Get the admin token" in [review-platform-for-agents.md](review-platform-for-agents.md#get-the-admin-token).
+People log in to `/admin` with a one-time PIN sent to their email (Tim and Edward are allowed).
 
 ## 4. Make a Talkie film
 
