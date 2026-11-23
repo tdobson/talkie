@@ -118,6 +118,12 @@ export function renderReadme(model: ExportModel): string {
     lines.push(
       `The \`previous/\` folder holds the feedback given on earlier versions of this video (${list}), each with its own \`feedback.md\` and \`media/\` folder. Use it to check whether earlier feedback was addressed in this version. Image and audio paths for those comments are relative to their own \`previous/v<n>/\` folder. They also appear under \`previous\` in \`feedback.json\`.`
     );
+    for (const o of model.olderAfterImport ?? []) {
+      lines.push(
+        '',
+        `${o.count === 1 ? '1 comment' : `${o.count} comments`} on v${o.version} came after v${video.version} was imported, so ${o.reviewers.length === 1 ? 'that reviewer was' : 'those reviewers were'} watching the older cut. Read them as feedback on v${o.version}, not on this version. \`olderAfterImport\` in \`feedback.json\` has the counts.`
+      );
+    }
   } else if (all) {
     lines.push(
       'This export covers every version, so there is no `previous/` folder. `feedback.md` has one section per version, which lets you check whether earlier feedback was addressed later.'

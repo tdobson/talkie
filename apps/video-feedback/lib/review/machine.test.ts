@@ -39,6 +39,24 @@ describe('review machine', () => {
     expect(checked.screen).toBe('micCheck');
   });
 
+  it('a reviewer back after a newer version gets a new session, with their name kept', () => {
+    const s = reducer(initialState, {
+      type: 'loadedNewerVersion',
+      name: 'Sarah',
+      previousVersion: 1,
+    });
+    expect(s).toMatchObject({
+      screen: 'micExplain',
+      name: 'Sarah',
+      sessionId: null,
+      version: null,
+      resumed: true,
+      newerThan: 1,
+    });
+    // Ignored once past the welcome screen.
+    expect(reducer(s, { type: 'loadedNewerVersion', name: 'X', previousVersion: 1 })).toBe(s);
+  });
+
   it('a phone shows the mobile screen and stays there', () => {
     const s = reducer(initialState, { type: 'detectedMobile' });
     expect(s.screen).toBe('mobile');

@@ -85,6 +85,11 @@ export interface ExportModel {
   sessions: SessionRecord[];
   comments: ExportComment[];
   previous: { version: number; comments: ExportComment[] }[];
+  /**
+   * Comments left on an earlier version after this one was imported: the reviewer was
+   * watching the old cut. Only there when there are some, and only for a one-version export.
+   */
+  olderAfterImport?: { version: number; count: number; reviewers: string[] }[];
   /** Only there when a Talkie version is part of the export. The main version comes first. */
   films?: ExportFilm[];
 }
@@ -425,6 +430,19 @@ export async function buildExportModel(
   const probe = probes.get(target === 'all' ? video.latestVersion : target) ?? null;
   const previous = [...earlier.entries()].sort(([a], [b]) => a - b);
 
+  const importedAt =
+    target === 'all' ? null : video.versions.find((v) => v.version === target)?.importedAt;
+  const importedMs = importedAt ? Date.parse(importedAt) : Number.NaN;
+  const olderAfterImport = Number.isNaN(importedMs)
+    ? []
+    : previous
+        .map(([version, list]) => {
+          const late = list.filter((l) => Date.parse(l.comment.startedAt) > importedMs);
+          const reviewers = [...new Set(late.map((l) => l.comment.reviewerName))].sort();
+          return { version, count: late.length, reviewers };
+        })
+        .filter((o) => o.count > 0);
+
   // The film files sit next to the feedback they belong to: `media/` for the version being
   // exported and `previous/v<n>/media/` for an earlier one with feedback. With every version
   // in one export, the newest film takes `media/` and the others `media/v<n>/`.
@@ -456,6 +474,7 @@ export async function buildExportModel(
     sessions,
     comments: comments(main),
     previous: previous.map(([version, list]) => ({ version, comments: comments(list) })),
+    ...(olderAfterImport.length > 0 ? { olderAfterImport } : {}),
     ...(exportFilms.length > 0 ? { films: exportFilms } : {}),
   };
 }

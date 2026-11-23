@@ -21,7 +21,10 @@ export type ReviewUploader = PlayerUploader & Pick<Uploader, 'resumePending' | '
 export interface ReviewAppProps {
   token: string;
   title: string;
-  /** Version a new session will be given. A resumed session keeps the one it started on. */
+  /**
+   * Version a new session will be given. A stored session on this version is resumed; one on an
+   * older version is left alone and the reviewer gets a new session on this one.
+   */
   latestVersion: number;
   /** Seconds per frame of the video, for frame stepping. */
   frameDuration: number;
@@ -114,7 +117,15 @@ export function ReviewApp({
       void up.resumePending().catch(() => {});
       void session.resume().then((found) => {
         if (cancelled) return;
-        if (found) {
+        if (found && found.version < latestVersion) {
+          // A newer version has been imported since: never carry on reviewing the old cut
+          // without knowing it.
+          dispatch({
+            type: 'loadedNewerVersion',
+            name: found.reviewerName,
+            previousVersion: found.version,
+          });
+        } else if (found) {
           dispatch({
             type: 'loadedResumable',
             sessionId: found.sessionId,
@@ -129,7 +140,7 @@ export function ReviewApp({
       cancelled = true;
       up.dispose();
     };
-  }, [token, session]);
+  }, [token, session, latestVersion]);
 
   // Microphone
 
@@ -213,7 +224,8 @@ export function ReviewApp({
         type: 'sessionStarted',
         sessionId: created.sessionId,
         version: created.version ?? latestVersion,
-        practice,
+        // A returning reviewer has done the practice already.
+        practice: practice && !state.resumed,
       });
     } catch {
       // Could not reach the server: the button comes back so the reviewer can try again.
@@ -242,6 +254,7 @@ export function ReviewApp({
         <Fade key="welcome">
           <Welcome
             title={title}
+            version={latestVersion}
             posterUrl={posterUrls?.[latestVersion]}
             onSubmit={(name) => dispatch({ type: 'submitName', name })}
           />
@@ -251,6 +264,8 @@ export function ReviewApp({
       return (
         <Fade key="micExplain">
           <MicExplain
+            version={state.version ?? latestVersion}
+            newerThan={state.newerThan}
             waiting={asking}
             onContinue={() => {
               dispatch({ type: 'micExplained' });

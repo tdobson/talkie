@@ -3,7 +3,14 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import yauzl from 'yauzl';
 import { commentDir } from '@/lib/storage/paths';
-import { SEED, seedExport, seedRef, setSeedStatus, VIDEO_ID } from '@/test/fixtures/export-seed';
+import {
+  SEED,
+  seedExport,
+  seedLateOnOldVersion,
+  seedRef,
+  setSeedStatus,
+  VIDEO_ID,
+} from '@/test/fixtures/export-seed';
 import { withTmpData } from '@/test/helpers/tmpData';
 import { renderFeedbackMd } from './markdown';
 import {
@@ -165,6 +172,24 @@ describe('buildExportModel', () => {
     expect(model.previous).toHaveLength(1);
     expect(model.previous[0].version).toBe(1);
     expect(model.previous[0].comments.map((c) => c.commentId)).toEqual([SEED.previous]);
+  });
+
+  it('has no stale-version note when every old comment came before the new version', () => {
+    expect(model.olderAfterImport).toBeUndefined();
+    expect(renderFeedbackMd(model)).not.toContain('Note:');
+  });
+
+  it('flags comments left on an older version after the newer one was imported', async () => {
+    await seedLateOnOldVersion();
+    const late = await build();
+    expect(late.olderAfterImport).toEqual([{ version: 1, count: 1, reviewers: ['Sarah'] }]);
+    expect(late.comments.map((c) => c.commentId)).not.toContain(SEED.lateOnV1);
+    expect(renderFeedbackMd(late)).toContain(
+      '> **Note:** 1 comment was left on version 1 after version 2 was imported (Sarah). They were watching the older cut.'
+    );
+    // Exporting that older version itself, or every version, needs no note.
+    expect((await build({ version: 1 })).olderAfterImport).toBeUndefined();
+    expect((await build({ version: 'all' })).olderAfterImport).toBeUndefined();
   });
 
   it('exports one version or all of them', async () => {

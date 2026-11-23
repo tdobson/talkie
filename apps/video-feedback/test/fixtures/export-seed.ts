@@ -38,6 +38,8 @@ export const SEED = {
   devScrolled: '30000000-0000-4000-8000-000000000002',
   /** Dev, paused at 0:25.0, transcription failed. */
   devFailed: '30000000-0000-4000-8000-000000000003',
+  /** Sarah on v1 again, after v2 was imported: her browser resumed the old session. */
+  lateOnV1: '10000000-0000-4000-8000-000000000002',
 } as const;
 
 export const SEED_PROBE: ProbeInfo = {
@@ -180,6 +182,21 @@ export async function setSeedStatus(ref: CommentRef, patch: StatusPatch): Promis
     ...current,
     ...patch,
     steps: { ...current.steps, ...patch.steps },
+  });
+}
+
+/** Sarah comments on version 1 the day after version 2 was imported, on her old session. */
+export async function seedLateOnOldVersion(): Promise<void> {
+  await writeComment({
+    sessionId: SEED.sarahV1,
+    commentId: SEED.lateOnV1,
+    version: 1,
+    vt: 5,
+    startedAt: '2026-11-21T10:01:00.000Z',
+    state: 'done',
+    updatedAt: '2026-11-21T10:02:00.000Z',
+    transcript: transcriptOf('The fixes are not in yet.'),
+    moments: [pause(5)],
   });
 }
 

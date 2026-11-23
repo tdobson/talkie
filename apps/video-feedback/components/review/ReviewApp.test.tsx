@@ -126,10 +126,10 @@ describe('ReviewApp', () => {
     expect(localStorage.getItem(KEY)).toBe(SID);
   });
 
-  it('resumes a stored session: no name screen, but still the mic check, on its own version', async () => {
+  it('resumes a stored session on the latest version: no name screen, but still the mic check', async () => {
     localStorage.setItem(KEY, SID);
     const user = userEvent.setup();
-    renderApp();
+    renderApp({ latestVersion: 1 });
     await user.click(await screen.findByTestId(T.micContinue));
     expect(screen.queryByTestId(T.welcome)).toBeNull();
     await user.click(await screen.findByTestId(T.startWatching));
@@ -137,6 +137,45 @@ describe('ReviewApp', () => {
     // They had the practice run the first time.
     expect(screen.queryByTestId(T.coachMark)).toBeNull();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('starts a new session on the latest version when the stored one is on an older cut', async () => {
+    // The stored session is on version 1 and version 2 has been imported since.
+    localStorage.setItem(KEY, 'old-sid');
+    fetchMock.mockImplementationOnce(async (url: string) => {
+      expect(url).toBe('/api/r/tok/sessions/old-sid');
+      return json({ sessionId: 'old-sid', version: 1, reviewerName: 'Sarah', done: false });
+    });
+    const user = userEvent.setup();
+    renderApp({ latestVersion: 2 });
+
+    expect(await screen.findByTestId(T.newerVersion)).toHaveTextContent(
+      "There's a new version of this film since you last looked. You're now reviewing version 2. Your comments on version 1 are kept."
+    );
+    expect(screen.queryByTestId(T.welcome)).toBeNull();
+    await user.click(screen.getByTestId(T.micContinue));
+    await user.click(await screen.findByTestId(T.startWatching));
+
+    expect(await screen.findByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(post?.[1].body)).toEqual({
+      reviewerName: 'Sarah',
+      userAgent: navigator.userAgent,
+    });
+    expect(localStorage.getItem(KEY)).toBe(SID);
+    // They had the practice run the first time.
+    expect(screen.queryByTestId(T.coachMark)).toBeNull();
+  });
+
+  it('says which version is up once there is more than one', async () => {
+    renderApp({ latestVersion: 3 });
+    expect(await screen.findByTestId(T.versionLabel)).toHaveTextContent('Version 3');
+  });
+
+  it('shows no version number while there is only one', async () => {
+    renderApp({ latestVersion: 1 });
+    await screen.findByTestId(T.welcome);
+    expect(screen.queryByTestId(T.versionLabel)).toBeNull();
   });
 
   it('shows the poster of the latest version on the welcome screen', async () => {

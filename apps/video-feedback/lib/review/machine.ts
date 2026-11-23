@@ -30,12 +30,19 @@ export interface ReviewState {
   zoom: ZoomState | null;
   micLost: boolean;
   resumed: boolean;
+  /**
+   * The version this browser's earlier session was on, when a newer one has been imported
+   * since. The reviewer gets a new session on the latest version and is told why.
+   */
+  newerThan: number | null;
   practice: Practice;
 }
 
 export type ReviewAction =
   | { type: 'detectedMobile' }
   | { type: 'loadedResumable'; sessionId: string; version: number; name: string }
+  /** This browser reviewed an older version: start a new session on the latest one. */
+  | { type: 'loadedNewerVersion'; name: string; previousVersion: number }
   | { type: 'submitName'; name: string }
   | { type: 'micExplained' }
   | { type: 'micGranted' }
@@ -79,6 +86,7 @@ export const initialState: ReviewState = {
   zoom: null,
   micLost: false,
   resumed: false,
+  newerThan: null,
   practice: null,
 };
 
@@ -101,6 +109,20 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
         version: a.version,
         name: a.name,
         resumed: true,
+      };
+
+    // Same reviewer, new cut: keep the name, skip the practice they have already done, but
+    // leave the session unset so starting makes a new one on the latest version.
+    case 'loadedNewerVersion':
+      if (s.screen !== 'welcome') return s;
+      return {
+        ...s,
+        screen: 'micExplain',
+        sessionId: null,
+        version: null,
+        name: a.name,
+        resumed: true,
+        newerThan: a.previousVersion,
       };
 
     case 'submitName': {

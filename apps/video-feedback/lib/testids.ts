@@ -5,6 +5,8 @@ export const T = {
   nameInput: 'name-input',
   startButton: 'start-button',
   micExplain: 'mic-explain',
+  versionLabel: 'version-label',
+  newerVersion: 'newer-version',
   micContinue: 'mic-continue',
   micCheck: 'mic-check',
   micMeter: 'mic-meter',

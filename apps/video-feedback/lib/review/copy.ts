@@ -10,6 +10,10 @@ export const copy = {
     namePlaceholder: 'e.g. Sarah',
     start: 'Start',
   },
+  /** Shown once a video has more than one version, so a reviewer knows which cut this is. */
+  version: (n: number) => `Version ${n}`,
+  newerVersion: (latest: number, previous: number) =>
+    `There's a new version of this film since you last looked. You're now reviewing version ${latest}. Your comments on version ${previous} are kept.`,
   micExplain: {
     title: 'We need your microphone',
     body: 'Your browser is about to ask if this page can use your microphone. Please click Allow: it only records while the video is paused.',

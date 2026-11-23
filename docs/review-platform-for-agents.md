@@ -126,6 +126,11 @@ What is in `feedback.json` (`ExportModel` in `apps/video-feedback/lib/export/mod
     each moment has `talkie: { sceneId, sceneIndex, sceneTime, sceneFrame, chapter, caption }`.
   - `kind`: `moment` (paused on a frame) or `general` (said at the end screen).
 - `previous`: comments on earlier versions, for context.
+- `olderAfterImport`: only there when someone commented on an earlier version after this one
+  was imported, which means they were watching the old cut. Read those comments (in
+  `previous`) as feedback on the version they name. Since 2026-11-23 a reviewer who comes back
+  after a new version is imported gets a new session on the latest version and is told so, so
+  this should only show for comments made before that change.
 
 To act on Talkie feedback: `sceneId` is the scene file (`scenes/<sceneId>.ts`), `sceneTime` is
 seconds into that scene, and `caption` is the narration line on screen, which finds the line in

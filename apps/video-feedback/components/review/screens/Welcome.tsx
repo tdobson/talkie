@@ -12,12 +12,14 @@ const MAX_NAME_LENGTH = 80;
 
 interface WelcomeProps {
   title: string;
+  /** The version a new session gets. Shown when there is more than one. */
+  version?: number;
   /** Poster of the film about to be reviewed. Only a Talkie version has one. */
   posterUrl?: string;
   onSubmit: (name: string) => void;
 }
 
-export function Welcome({ title, posterUrl, onSubmit }: WelcomeProps) {
+export function Welcome({ title, version = 1, posterUrl, onSubmit }: WelcomeProps) {
   const [name, setName] = useState('');
   const trimmed = name.trim();
 
@@ -28,6 +30,11 @@ export function Welcome({ title, posterUrl, onSubmit }: WelcomeProps) {
 
   return (
     <ScreenCard testId={T.welcome} heading={copy.pageTitle(title)}>
+      {version > 1 && (
+        <Text c="gray.7" size="sm" data-testid={T.versionLabel}>
+          {copy.version(version)}
+        </Text>
+      )}
       {/* Decorative: the heading names the film. A plain img, as the poster is a private file. */}
       {posterUrl !== undefined && <img src={posterUrl} alt="" className={classes.poster} />}
       <Text className={classes.lead} fw={600}>

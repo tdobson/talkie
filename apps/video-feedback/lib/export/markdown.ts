@@ -225,6 +225,15 @@ export function renderFeedbackMd(model: ExportModel): string {
     '',
   ];
 
+  for (const o of model.olderAfterImport ?? []) {
+    const who = o.reviewers.map(mdText).join(', ');
+    const n = o.count === 1 ? '1 comment was' : `${o.count} comments were`;
+    lines.push(
+      `> **Note:** ${n} left on version ${o.version} after version ${video.version} was imported (${who}). They were watching the older cut. Those comments are in \`previous/v${o.version}/\` and under \`previous\` in \`feedback.json\`, not here.`,
+      ''
+    );
+  }
+
   if (all) {
     const versions = unique(comments.map((c) => String(c.version)))
       .map(Number)
