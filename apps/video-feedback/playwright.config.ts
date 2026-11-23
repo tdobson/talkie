@@ -1,6 +1,10 @@
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+
+// Lowest CPU and IO priority, however this run was started. See scripts/lower-priority.cjs.
+createRequire(import.meta.url)('../../scripts/lower-priority.cjs').lowerPriority();
 
 const PORT = 3123;
 export const E2E_BASE_URL = `http://127.0.0.1:${PORT}`;

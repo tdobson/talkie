@@ -12,7 +12,7 @@
     "build:render-page": "./scripts/lowprio.sh tsx lib/media/talkie-render-page/build.ts",
     "dev": "yarn predeps && ./scripts/lowprio.sh next dev",
     "build": "yarn predeps && ./scripts/lowprio.sh next build",
-    "start": "next start",
+    "start": "./scripts/lowprio.sh next start",
     "typecheck": "./scripts/lowprio.sh tsc --noEmit",
     "lint": "./scripts/lowprio.sh biome lint .",
     "lint:fix": "./scripts/lowprio.sh biome lint --write .",

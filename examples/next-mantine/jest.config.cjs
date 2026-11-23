@@ -1,4 +1,6 @@
 const nextJest = require('next/jest');
+// Lowest CPU and IO priority, however this run was started. See scripts/lower-priority.cjs.
+require('../../scripts/lower-priority.cjs').lowerPriority();
 
 const createJestConfig = nextJest({
   dir: './',

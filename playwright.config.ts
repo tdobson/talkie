@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
 import { defineConfig, devices } from '@playwright/test';
+
+// Lowest CPU and IO priority, however this run was started. See scripts/lower-priority.cjs.
+createRequire(import.meta.url)('./scripts/lower-priority.cjs').lowerPriority();
 
 export default defineConfig({
   testDir: 'e2e',

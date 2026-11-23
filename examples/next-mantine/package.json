@@ -4,7 +4,7 @@
   "license": "AGPL-3.0-or-later",
   "private": true,
   "scripts": {
-    "copy-film": "node scripts/copy-film.mjs",
+    "copy-film": "../../scripts/low node scripts/copy-film.mjs",
     "predev": "yarn copy-film",
     "prebuild": "yarn copy-film",
     "dev": "yarn predev && ../../scripts/low next dev",
