@@ -1,8 +1,6 @@
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import { SILENCE_MIN_SPEECH_S, SILENCE_NOISE_DB } from '@/lib/constants';
 import { limits } from '@/lib/limits';
 import { run, runOk } from './run';
@@ -181,21 +179,19 @@ export async function detectSpeech(
   return { hasSpeech: speechSeconds >= SILENCE_MIN_SPEECH_S, speechSeconds };
 }
 
-/** Joins upload chunks byte for byte, in the order given. */
+/**
+ * Joins upload chunks byte for byte, in the order given. Each chunk is a small file read whole
+ * and appended through one file handle: piping each into one shared stream added listeners to
+ * it per chunk, hundreds for a long comment.
+ */
 export async function concatChunks(chunkPaths: string[], dst: string): Promise<void> {
   await viaTmp(dst, async (tmp) => {
-    const outStream = createWriteStream(tmp);
+    const out = await open(tmp, 'w');
     try {
-      for (const chunk of chunkPaths)
-        await pipeline(createReadStream(chunk), outStream, { end: false });
-    } catch (e) {
-      outStream.destroy();
-      throw e;
+      for (const chunk of chunkPaths) await out.write(await readFile(chunk));
+    } finally {
+      await out.close();
     }
-    await new Promise<void>((resolve, reject) => {
-      outStream.on('error', reject);
-      outStream.end(resolve);
-    });
   });
 }
 

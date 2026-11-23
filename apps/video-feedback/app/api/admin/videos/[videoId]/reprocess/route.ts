@@ -1,7 +1,8 @@
 import { withAdmin } from '@/lib/auth/guard';
-import { getQueue } from '@/lib/pipeline/queue';
+import { isWorkingOn, readPipelineStatus } from '@/lib/pipeline/pipeline-status';
 import { prepareReprocess, type ReprocessOptions } from '@/lib/pipeline/reprocess';
 import { isStepName } from '@/lib/pipeline/steps/types';
+import { kickWorker } from '@/lib/pipeline/worker-host';
 import { isUuid } from '@/lib/storage/ids';
 import { ID_RE } from '@/lib/storage/paths';
 import { getVideo } from '@/lib/storage/repo';
@@ -52,11 +53,14 @@ export const POST = withAdmin(
     const opts = await parseBody(req);
     if (opts === null) return fail(400, 'invalid request');
 
-    const queue = getQueue();
-    // A comment the queue holds a job for is left alone: its files are in use. That
+    // A comment the worker is working on right now is left alone: its files are in use. That
     // includes the clip pass, which would otherwise write `done` over the re-queued status.
-    const jobs = await prepareReprocess(videoId, opts, (ref) => queue.isBusy(ref));
-    for (const job of jobs) queue.enqueue(job.ref);
+    const working = await readPipelineStatus();
+    const jobs = await prepareReprocess(videoId, opts, (ref) =>
+      isWorkingOn(working, ref.commentId)
+    );
+    // They are `queued` on disk now; the worker picks them up, at once when told.
+    kickWorker();
     return Response.json(
       { ok: true, queued: jobs.length, commentIds: jobs.map((job) => job.ref.commentId) },
       { headers: noStore }

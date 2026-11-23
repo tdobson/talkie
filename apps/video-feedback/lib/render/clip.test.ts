@@ -119,6 +119,25 @@ describe('clip', () => {
     expect(existsSync(`${out}.tmp`)).toBe(false);
   }, 60_000);
 
+  it('stops at its time limit even when a frame never comes back', async () => {
+    const saved = limits.clipTimeoutMs;
+    limits.clipTimeoutMs = 1500;
+    const out = join(dir, 'hung.mp4');
+    const started = Date.now();
+    try {
+      const probe = await probeFile(fx('h264.mp4'));
+      // A frame source that hangs: the old check between frames never ran again.
+      const hung = { frame: () => new Promise<Buffer>(() => {}), close: async () => {} };
+      await expect(
+        renderClip({ source: hung, audio: fx('speech-like.webm'), meta, events, probe, out })
+      ).rejects.toThrow(/time limit/);
+    } finally {
+      limits.clipTimeoutMs = saved;
+    }
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(existsSync(`${out}.tmp`)).toBe(false);
+  }, 60_000);
+
   it('never renders more than the longest comment allowed', async () => {
     const saved = limits.commentDurationMs;
     limits.commentDurationMs = 1000;

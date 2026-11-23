@@ -9,7 +9,7 @@ import { setCommentCompleteHandler } from './enqueue';
 import { processComment, resumeStep } from './process';
 import { holdsLock, LOCK_NAME, waitForLock } from './leader';
 import { isShuttingDown, watchForShutdown } from './shutdown';
-import { readStatus } from './status';
+import { readStatus, updateStatus } from './status';
 
 /** A queued job. `clip: true` marks the low-priority pass that only renders the clip. */
 type Job = CommentRef & { clip?: boolean };
@@ -31,6 +31,7 @@ export class ProcessingQueue {
   private readonly priority: (ref: CommentRef) => number;
   private readonly pending: Job[] = [];
   private current: Job | null = null;
+  private currentSince = 0;
   private draining = false;
   private waiters: (() => void)[] = [];
 
@@ -67,6 +68,16 @@ export class ProcessingQueue {
     );
   }
 
+  /** The job running now and when it started (ms since the epoch), or null. */
+  running(): { job: CommentRef; since: number } | null {
+    return this.current ? { job: { ...this.current }, since: this.currentSince } : null;
+  }
+
+  /** Jobs waiting (not counting the one running). */
+  get waiting(): number {
+    return this.pending.length;
+  }
+
   /** Jobs waiting or running. */
   get size(): number {
     return this.pending.length + (this.current ? 1 : 0);
@@ -96,6 +107,7 @@ export class ProcessingQueue {
         break;
       }
       this.current = job;
+      this.currentSince = Date.now();
       try {
         await this.process(job);
       } catch (err) {
@@ -153,7 +165,17 @@ async function runJob(job: Job): Promise<void> {
   if (status === null) return;
 
   if (job.clip) {
-    if (wantsClip(status)) await processComment(ref, { fromStep: 'clip', includeClip: true });
+    if (!wantsClip(status)) return;
+    // A clip that keeps failing (or keeps taking the process down) is given up, not retried
+    // at every start for ever. Reprocess resets the count.
+    const attempts = status.clipAttempts ?? 0;
+    if (attempts >= MAX_CLIP_ATTEMPTS) {
+      await updateStatus(ref, { steps: { clip: 'failed' } });
+      console.log(`[pipeline] ${ref.commentId} clip: given up after ${attempts} attempts`);
+      return;
+    }
+    await updateStatus(ref, { clipAttempts: attempts + 1 });
+    await processComment(ref, { fromStep: 'clip', includeClip: true });
     return;
   }
   // Anything else has been dealt with already, or is still being uploaded.
@@ -163,14 +185,52 @@ async function runJob(job: Job): Promise<void> {
   if (after && wantsClip(after)) getQueue().enqueue({ ...ref, clip: true } as CommentRef);
 }
 
-// Next.js can load this module more than once (the instrumentation hook and the route
-// handlers are bundled separately), so the one queue is kept on globalThis.
-const QUEUE_KEY = Symbol.for('video-feedback.processingQueue');
-type QueueHolder = { [QUEUE_KEY]?: ProcessingQueue };
+/** A clip render is started at most this many times. */
+export const MAX_CLIP_ATTEMPTS = 2;
 
-export function getQueue(): ProcessingQueue {
+/**
+ * Two lanes, each one job at a time: comments (audio, transcript, moments, stills) and clips.
+ * A clip can take minutes; in its own lane it never holds up a comment behind it.
+ */
+export class Lanes {
+  readonly comments = new ProcessingQueue({ process: runJob });
+  readonly clips = new ProcessingQueue({ process: runJob });
+
+  private lane(ref: CommentRef): ProcessingQueue {
+    return (ref as Job).clip ? this.clips : this.comments;
+  }
+
+  enqueue(ref: CommentRef): void {
+    this.lane(ref).enqueue(ref);
+  }
+
+  has(ref: CommentRef): boolean {
+    return this.lane(ref).has(ref);
+  }
+
+  /** True while any job for the comment, its clip pass included, is waiting or running. */
+  isBusy(ref: CommentRef): boolean {
+    return this.comments.isBusy(ref) || this.clips.isBusy(ref);
+  }
+
+  get size(): number {
+    return this.comments.size + this.clips.size;
+  }
+
+  async idle(): Promise<void> {
+    await Promise.all([this.comments.idle(), this.clips.idle()]);
+    // A comment job can queue its clip as it finishes.
+    if (this.size > 0) await this.idle();
+  }
+}
+
+// Kept on globalThis: Next.js (and tests) can load this module more than once.
+const QUEUE_KEY = Symbol.for('video-feedback.processingQueue');
+type QueueHolder = { [QUEUE_KEY]?: Lanes };
+
+export function getQueue(): Lanes {
   const holder = globalThis as QueueHolder;
-  holder[QUEUE_KEY] ??= new ProcessingQueue({ process: runJob });
+  holder[QUEUE_KEY] ??= new Lanes();
   return holder[QUEUE_KEY];
 }
 
@@ -223,19 +283,27 @@ function releaseLockOnExit(): void {
 const RELEASE_KEY = Symbol.for('video-feedback.releasePipelineLock');
 
 /**
+ * What any process that runs the pipeline does first: wait for the pipeline lock (one per data
+ * directory: during a deploy the old server's worker may still be running), give it back on
+ * exit, note SIGTERM, and finish uploads that went quiet, now and every few minutes.
+ */
+export async function startPipelineChores(): Promise<void> {
+  await waitForLock();
+  releaseLockOnExit();
+  watchForShutdown();
+  await sweepStale();
+  startStaleSweep();
+}
+
+/**
  * Server start: completed uploads go straight to the queue from now on, whatever was left
  * unfinished by the previous run is picked up again, and uploads that went quiet without a
  * complete call are finished, now and every few minutes.
  */
 export async function startPipeline(): Promise<{ resumed: number; clips: number }> {
-  // One pipeline per data directory: during a deploy the old server may still be running.
-  await waitForLock();
-  releaseLockOnExit();
+  await startPipelineChores();
   const queue = getQueue();
-  watchForShutdown();
   setCommentCompleteHandler((ref) => queue.enqueue(ref));
-  await sweepStale();
-  startStaleSweep();
   const unfinished = await scanForUnfinished();
   for (const ref of unfinished) queue.enqueue(ref);
   const clips = await scanForPendingClips();

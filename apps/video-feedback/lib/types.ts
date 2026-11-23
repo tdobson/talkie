@@ -142,6 +142,8 @@ export interface CommentStatus {
   error: string | null;
   attempts: number;
   updatedAt: string;
+  /** Times the clip render has been started. It is given up after a few, never retried for ever. */
+  clipAttempts?: number;
 }
 
 export interface TranscriptWord {

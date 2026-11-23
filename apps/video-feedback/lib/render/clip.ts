@@ -205,27 +205,42 @@ export async function renderClip(opts: {
   // ffmpeg may exit before reading every frame (EPIPE); its exit code tells the story.
   stdin.on('error', () => {});
 
+  // A hard stop at the deadline: it fires even if a frame never comes back (a hung decode), so
+  // the render can never hold the queue past its limit.
+  const tooLong = () =>
+    new Error(
+      `The clip passed its time limit of ${Math.round(limits.clipTimeoutMs / 1000)}s and was stopped.`
+    );
+  let hardStop: ReturnType<typeof setTimeout> | undefined;
+  const stopped = new Promise<never>((_, reject) => {
+    hardStop = setTimeout(
+      () => {
+        if (!exited) child.kill('SIGKILL');
+        reject(tooLong());
+      },
+      Math.max(0, deadline - Date.now())
+    );
+  });
+  stopped.catch(() => {}); // raced below; this only stops an unhandled-rejection report
+  const inTime = <V>(p: Promise<V>): Promise<V> => Promise.race([p, stopped]);
+
   try {
     let lastKey = '';
     let lastFrame: Buffer | null = null;
     const overTime = () => {
-      if (Date.now() > deadline) {
-        throw new Error(
-          `The clip passed its time limit of ${Math.round(limits.clipTimeoutMs / 1000)}s and was stopped.`
-        );
-      }
+      if (Date.now() > deadline) throw tooLong();
     };
     for (let i = 0; i < totalFrames && !exited; i++) {
       overTime();
       const state = stateAt(events, (i * 1000) / CLIP_FPS, startVt, probe.duration, w, h);
       const key = JSON.stringify(state);
       if (key !== lastKey || !lastFrame) {
-        lastFrame = await compose(state);
+        lastFrame = await inTime(compose(state));
         lastKey = key;
       }
       if (exited) break;
       if (!stdin.write(lastFrame)) {
-        await Promise.race([once(stdin, 'drain').catch(() => {}), closed.catch(() => {})]);
+        await inTime(Promise.race([once(stdin, 'drain').catch(() => {}), closed.catch(() => {})]));
       }
     }
     stdin.end();
@@ -235,11 +250,7 @@ export async function renderClip(opts: {
       timer = setTimeout(() => resolve('expired'), Math.max(0, deadline - Date.now()));
     });
     const code = await Promise.race([closed, expired]).finally(() => clearTimeout(timer));
-    if (code === 'expired') {
-      throw new Error(
-        `The clip passed its time limit of ${Math.round(limits.clipTimeoutMs / 1000)}s and was stopped.`
-      );
-    }
+    if (code === 'expired') throw tooLong();
     if (code !== 0) {
       const stderr = Buffer.concat(err).toString('utf8');
       throw new Error(`ffmpeg failed (exit ${code}): ${stderrTail(stderr)}`);
@@ -252,5 +263,7 @@ export async function renderClip(opts: {
     }
     await rm(tmp, { force: true });
     throw e;
+  } finally {
+    clearTimeout(hardStop);
   }
 }

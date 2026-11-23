@@ -56,6 +56,7 @@ export const T = {
   adminVideoRow: 'admin-video-row',
   adminCopyLink: 'admin-copy-link',
   adminOpenLink: 'admin-open-link',
+  adminProcessing: 'admin-processing',
   adminDownload: 'admin-download',
   adminClipsToggle: 'admin-clips-toggle',
   adminReprocess: 'admin-reprocess',

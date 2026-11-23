@@ -104,6 +104,8 @@ export async function prepareReprocess(
         state: 'queued',
         steps,
         error: earlierFailure ? status.error : null,
+        // Asked again by hand: the clip gets its full number of tries again.
+        clipAttempts: 0,
       });
       jobs.push({ ref, fromStep });
     }

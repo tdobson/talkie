@@ -53,7 +53,12 @@ const nextConfig = {
   // The Talkie render page (built by `yarn build:render-page`) is read from disk at run time, so
   // file tracing cannot see it. This copies it into the standalone output at the same path.
   outputFileTracingIncludes: {
-    '/*': ['./lib/media/talkie-render-page/dist/**/*', playwrightBrowsersJson],
+    '/*': [
+      './lib/media/talkie-render-page/dist/**/*',
+      // The processing worker, a process of its own (lib/pipeline/worker-host.ts).
+      './lib/pipeline/worker-dist/**/*',
+      playwrightBrowsersJson,
+    ],
   },
   experimental: {
     // Build workers are capped so background builds cannot hog the machine.

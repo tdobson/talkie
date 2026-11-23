@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { resetConfigForTests } from '@/lib/config';
 import { waitForLock } from '@/lib/pipeline/leader';
 import { getQueue } from '@/lib/pipeline/queue';
+import { pickUpWork, publishStatus } from '@/lib/pipeline/worker';
 import { readStatus, updateStatus } from '@/lib/pipeline/status';
 import { steps } from '@/lib/pipeline/steps';
 import { seedComment } from '@/lib/pipeline/testutil';
@@ -67,6 +68,8 @@ it('re-queues a failed comment and the queue works through it', async () => {
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ ok: true, queued: 1, commentIds: [ref.commentId] });
 
+  // The worker finds it on disk and works through it.
+  await pickUpWork();
   await getQueue().idle();
   expect(ran).toEqual(['transcribe', 'moments', 'stills', 'clip']);
   expect(await readStatus(ref)).toMatchObject({
@@ -135,6 +138,8 @@ it('leaves a comment alone while its clip is rendering', async () => {
   await writeFile(join(dir, 'transcript.json'), '{}');
   getQueue().enqueue({ ...ref, clip: true } as CommentRef);
   await clipStarted;
+  // What the worker tells the server it is working on.
+  await publishStatus();
 
   const res = await call(video.videoId, { commentId: ref.commentId });
   expect(res.status).toBe(200);

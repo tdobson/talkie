@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "predeps": "yarn workspace talkie exec yarn workspaces foreach -Rpt --from video-feedback --exclude video-feedback run build && yarn build:render-page",
+    "predeps": "yarn workspace talkie exec yarn workspaces foreach -Rpt --from video-feedback --exclude video-feedback run build && yarn build:render-page && yarn build:worker",
     "build:render-page": "./scripts/lowprio.sh tsx lib/media/talkie-render-page/build.ts",
     "dev": "yarn predeps && ./scripts/lowprio.sh next dev",
     "build": "yarn predeps && ./scripts/lowprio.sh next build",
@@ -28,7 +28,8 @@
     "check": "yarn format:check && yarn lint && yarn typecheck && yarn test",
     "import": "./scripts/lowprio.sh tsx scripts/cli/import.ts",
     "export": "./scripts/lowprio.sh tsx scripts/cli/export.ts",
-    "reprocess": "./scripts/lowprio.sh tsx scripts/cli/reprocess.ts"
+    "reprocess": "./scripts/lowprio.sh tsx scripts/cli/reprocess.ts",
+    "build:worker": "./scripts/lowprio.sh tsx lib/pipeline/worker-build.ts"
   },
   "dependencies": {
     "@mantine/core": "9.8.0",

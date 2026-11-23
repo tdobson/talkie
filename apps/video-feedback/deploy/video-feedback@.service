@@ -27,8 +27,21 @@ RestartSec=5
 SuccessExitStatus=143
 # A slot is only stopped once traffic has moved off it; it need not wait long for stragglers.
 TimeoutStopSec=20
-Nice=0
-# ffmpeg, sharp and Chromium work is lowered per process by lib/media/run.ts (ionice -c2 -n7 nice -n19)
+# The claude broker is the most important service on geriatrix: this app must never take CPU,
+# disk or memory from it. The server itself runs a little below normal priority; all comment
+# processing runs in a worker process at nice 19 and IO best effort 7 (lib/pipeline/worker-host.ts),
+# as do ffmpeg and Chromium (lib/media/run.ts).
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+CPUWeight=50
+IOWeight=50
+# Everything in the slot (server, worker, ffmpeg, Chromium) shares this. Past MemoryHigh the
+# kernel reclaims from us first; at MemoryMax it kills inside this slot only, the worker first
+# (oom_score_adj 1000), never anything else on the machine.
+MemoryHigh=1600M
+MemoryMax=2G
+OOMScoreAdjust=300
 
 [Install]
 WantedBy=multi-user.target

@@ -39,8 +39,10 @@ export const limits = {
   /**
    * Longest comment that is processed. Longer recordings are cut to this length when the audio
    * is assembled, which keeps transcription under Groq's upload limit and bounds every render.
+   * The review page ends a comment at 5 minutes (COMMENT_MAX_MS); this allows a little over,
+   * for a page that was open before that limit existed.
    */
-  commentDurationMs: 20 * MINUTE,
+  commentDurationMs: 6 * MINUTE,
 
   /**
    * Largest file sent to Groq in one request. Their limit is 25MB; a 16 kHz WAV reaches that
@@ -59,7 +61,8 @@ export const limits = {
   frameTimeoutMs: 2 * MINUTE,
   audioTimeoutMs: 10 * MINUTE,
   remuxTimeoutMs: 30 * MINUTE,
-  clipTimeoutMs: 45 * MINUTE,
+  /** A whole clip render, frames and encoding. A 6 minute clip takes a few minutes. */
+  clipTimeoutMs: 20 * MINUTE,
 
   /** Most bytes kept from a child's stdout (a PNG frame is a few megabytes). */
   maxStdoutBytes: 64 * MB,
