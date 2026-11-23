@@ -16,12 +16,17 @@ interface WelcomeProps {
   version?: number;
   /** Poster of the film about to be reviewed. Only a Talkie version has one. */
   posterUrl?: string;
+  /** The name this browser remembers. With one, Start needs no typing; "Not you?" changes it. */
+  knownName?: string;
   onSubmit: (name: string) => void;
 }
 
-export function Welcome({ title, version = 1, posterUrl, onSubmit }: WelcomeProps) {
+export function Welcome({ title, version = 1, posterUrl, knownName = '', onSubmit }: WelcomeProps) {
   const [name, setName] = useState('');
-  const trimmed = name.trim();
+  const [changing, setChanging] = useState(false);
+  const known = knownName.trim();
+  const ask = known === '' || changing;
+  const trimmed = ask ? name.trim() : known;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -44,16 +49,33 @@ export function Welcome({ title, version = 1, posterUrl, onSubmit }: WelcomeProp
       <Text className={classes.lead}>{copy.welcome.para2}</Text>
       <form onSubmit={submit}>
         <Stack gap="md" mt="xs">
-          <TextInput
-            label={copy.welcome.nameLabel}
-            placeholder={copy.welcome.namePlaceholder}
-            size="md"
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-            maxLength={MAX_NAME_LENGTH}
-            autoComplete="name"
-            data-testid={T.nameInput}
-          />
+          {!ask && (
+            <Text className={classes.lead} fw={600} data-testid={T.welcomeBack}>
+              {copy.welcome.welcomeBack(known)}{' '}
+              <Button
+                variant="subtle"
+                size="compact-md"
+                onClick={() => setChanging(true)}
+                data-testid={T.notMe}
+              >
+                {copy.welcome.notYou(known)}
+              </Button>
+            </Text>
+          )}
+          {ask && (
+            <TextInput
+              label={copy.welcome.nameLabel}
+              placeholder={copy.welcome.namePlaceholder}
+              size="md"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              maxLength={MAX_NAME_LENGTH}
+              autoComplete="name"
+              data-testid={T.nameInput}
+              // Opened by "Not you?": the reviewer is about to type.
+              autoFocus={changing}
+            />
+          )}
           <Button type="submit" size="md" disabled={trimmed === ''} data-testid={T.startButton}>
             {copy.welcome.start}
           </Button>

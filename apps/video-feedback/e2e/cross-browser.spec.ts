@@ -7,7 +7,11 @@ test('welcome renders and the video plays and pauses', async ({ page, browserNam
   await expect(page.getByTestId(T.welcome)).toBeVisible();
   await page.getByTestId(T.nameInput).fill(`Cross ${browserName}`);
   await page.getByTestId(T.startButton).click();
-  await expect(page.getByTestId(T.micExplain)).toBeVisible();
+  // On past the welcome: the microphone explanation, or (where the browser already allows the
+  // microphone, as Chromium does here) straight to the hello check.
+  await expect(
+    page.getByTestId(T.micExplain).or(page.getByTestId(T.micCheck)).first()
+  ).toBeVisible();
 
   // No microphone needed: load the review video on its own, on the review page itself (same
   // origin), and check it plays and pauses. The video route needs the version. Like the real

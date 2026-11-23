@@ -4,6 +4,7 @@ import { Transition } from '@mantine/core';
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Uploader, type UploaderOptions } from '@/lib/capture/uploader';
 import { initialState, reducer } from '@/lib/review/machine';
+import { readProfile, saveProfile } from '@/lib/review/profile';
 import type { MediaKind } from '@/lib/types';
 import { useSession } from './hooks/useSession';
 import { Player, type PlayerUploader } from './player/Player';
@@ -12,6 +13,7 @@ import { MicCheck } from './screens/MicCheck';
 import { MicDenied } from './screens/MicDenied';
 import { MicExplain } from './screens/MicExplain';
 import { MobileBlock } from './screens/MobileBlock';
+import { Starting } from './screens/Starting';
 import { Thanks } from './screens/Thanks';
 import { Welcome } from './screens/Welcome';
 
@@ -50,6 +52,19 @@ function isTouchOnly(): boolean {
     window.matchMedia('(pointer: coarse)').matches &&
     !window.matchMedia('(any-pointer: fine)').matches
   );
+}
+
+/**
+ * True when the browser already lets this site use the microphone, so there is nothing to
+ * explain before asking. Where the browser cannot say, the explanation is shown.
+ */
+async function micAlreadyAllowed(): Promise<boolean> {
+  try {
+    const status = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
+    return status?.state === 'granted';
+  } catch {
+    return false;
+  }
 }
 
 function stopTracks(stream: MediaStream | null): void {
@@ -92,6 +107,8 @@ export function ReviewApp({
   const [startFailed, setStartFailed] = useState(false);
   const [reconnectFailed, setReconnectFailed] = useState(false);
   const [noDevice, setNoDevice] = useState(false);
+  /** The browser already allows the microphone: no explanation, it is just switched on. */
+  const [micAllowed, setMicAllowed] = useState(false);
   const session = useSession(token);
 
   const createUploaderRef = useRef(createUploader);
@@ -115,7 +132,10 @@ export function ReviewApp({
       setReady(true);
     } else {
       void up.resumePending().catch(() => {});
-      void session.resume().then((found) => {
+      // What this browser remembers from any earlier review: the name, and the checks done.
+      dispatch({ type: 'loadedProfile', ...readProfile() });
+      void Promise.all([session.resume(), micAlreadyAllowed()]).then(([found, allowed]) => {
+        setMicAllowed(allowed);
         if (cancelled) return;
         if (found && found.version < latestVersion) {
           // A newer version has been imported since: never carry on reviewing the old cut
@@ -142,6 +162,14 @@ export function ReviewApp({
     };
   }, [token, session, latestVersion]);
 
+  // Remember the checks this browser has passed, for every film from now on.
+  useEffect(() => {
+    if (state.micChecked) saveProfile({ micChecked: true });
+  }, [state.micChecked]);
+  useEffect(() => {
+    if (state.practised) saveProfile({ practised: true });
+  }, [state.practised]);
+
   // Microphone
 
   const requestMic = useCallback(async (): Promise<void> => {
@@ -166,6 +194,8 @@ export function ReviewApp({
       // but what they need to do about it differs.
       const name = (err as { name?: string } | null)?.name;
       setNoDevice(name === 'NotFoundError' || name === 'OverconstrainedError');
+      // Asked again from here on, with the explanation first.
+      setMicAllowed(false);
       dispatch({ type: 'micDenied' });
     }
   };
@@ -220,12 +250,13 @@ export function ReviewApp({
     setStartFailed(false);
     try {
       const created = await session.start(state.name);
+      saveProfile({ name: state.name });
       dispatch({
         type: 'sessionStarted',
         sessionId: created.sessionId,
         version: created.version ?? latestVersion,
-        // A returning reviewer has done the practice already.
-        practice: practice && !state.resumed,
+        // Once per browser: a reviewer who has done the practice, on any film, has seen it.
+        practice: practice && !state.practised,
       });
     } catch {
       // Could not reach the server: the button comes back so the reviewer can try again.
@@ -239,6 +270,22 @@ export function ReviewApp({
     if (state.sessionId !== null) await session.finish(state.sessionId);
     dispatch({ type: 'done' });
   };
+
+  // A browser that already allows the microphone: switch it on without the explanation. Unless
+  // there is a newer version to tell them about: that notice is on the explanation screen.
+  const quietMic = micAllowed && state.newerThan === null;
+  const skipMicExplain = state.screen === 'micExplain' && quietMic;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the screen comes up; askForMic is new each render.
+  useEffect(() => {
+    if (skipMicExplain) void askForMic();
+  }, [skipMicExplain]);
+
+  // A browser that has said hello before: no microphone check, straight on to the film.
+  const skipMicCheck = state.screen === 'micCheck' && state.micChecked;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the screen comes up; startWatching is new each render.
+  useEffect(() => {
+    if (skipMicCheck) void startWatching(true);
+  }, [skipMicCheck]);
 
   if (!ready || uploader === null) return <div className={classes.page} />;
 
@@ -256,11 +303,19 @@ export function ReviewApp({
             title={title}
             version={latestVersion}
             posterUrl={posterUrls?.[latestVersion]}
+            knownName={state.name}
             onSubmit={(name) => dispatch({ type: 'submitName', name })}
           />
         </Fade>
       );
     case 'micExplain':
+      if (quietMic) {
+        return (
+          <Fade key="starting">
+            <Starting onRetry={() => void askForMic()} />
+          </Fade>
+        );
+      }
       return (
         <Fade key="micExplain">
           <MicExplain
@@ -287,13 +342,27 @@ export function ReviewApp({
         </Fade>
       );
     case 'micCheck':
+      if (state.micChecked) {
+        return (
+          <Fade key="starting">
+            <Starting
+              failed={startFailed}
+              starting={starting}
+              onRetry={() => void startWatching(true)}
+            />
+          </Fade>
+        );
+      }
       return (
         <Fade key="micCheck">
           <MicCheck
             stream={stream}
             starting={starting}
             startFailed={startFailed}
-            onHeard={() => dispatch({ type: 'micHeard' })}
+            onHeard={() => {
+              saveProfile({ micChecked: true });
+              dispatch({ type: 'micHeard' });
+            }}
             onStart={(practice) => void startWatching(practice)}
           />
         </Fade>

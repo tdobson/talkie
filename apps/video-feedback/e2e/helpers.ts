@@ -112,9 +112,8 @@ export async function waitForState(
 }
 
 /**
- * Name, mic explain, mic check and the practice run: leaves the reviewer watching the film,
- * playing from the start. A resumed session has no practice run: pass `practice: false`, and
- * the player is left paused, as it opens.
+ * Name, the microphone, hello and the practice run: leaves the reviewer watching the film,
+ * playing from the start. This is a first visit in a fresh browser context.
  */
 export async function startReview(
   page: Page,
@@ -128,30 +127,67 @@ export async function startReview(
 }
 
 /**
- * The mic check has no button: it moves on by itself once it hears the fake microphone. Then
- * the practice run, unless `practice` is false (a resumed session).
+ * Past the microphone explanation, if it is shown at all: a browser that already allows the
+ * microphone goes straight on.
  */
-export async function passMicCheck(
+export async function continueMic(
   page: Page,
-  { practice = true, talk = true }: { practice?: boolean; talk?: boolean } = {}
+  /** Runs on the explanation screen, when there is one, before Continue. */
+  onExplain?: () => Promise<void>
 ): Promise<void> {
-  await page.getByTestId(T.micContinue).click();
-  await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId(T.player)).toBeVisible({ timeout: 10_000 });
-  if (practice) await doPractice(page, { talk });
-  else await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
+  const button = page.getByTestId(T.micContinue);
+  const past = page
+    .getByTestId(T.micCheck)
+    .or(page.getByTestId(T.starting))
+    .or(page.getByTestId(T.player))
+    .or(page.getByTestId(T.micDenied));
+  await expect(button.or(past).first()).toBeVisible({ timeout: 15_000 });
+  if (await button.isVisible()) {
+    await onExplain?.();
+    await button.click();
+  }
 }
 
 /**
- * The practice run: the film starts by itself with a coach mark on Pause. Pausing listens;
- * with `talk` the fake microphone talks until "Got that" and the film starts again by itself.
- * Without it (a silent microphone) the reviewer presses play to carry on. Either way nothing
- * is saved, and the film ends up playing from the start.
+ * The microphone, then the hello check (no button: it moves on by itself once it hears the fake
+ * microphone), then the practice run. A browser that has done them before skips hello and the
+ * practice: pass `practice: false` (and `hello` follows it unless given). The player is then
+ * left paused, as it opens.
+ */
+export async function passMicCheck(
+  page: Page,
+  {
+    practice = true,
+    talk = true,
+    hello = practice,
+  }: { practice?: boolean; talk?: boolean; hello?: boolean } = {}
+): Promise<void> {
+  await continueMic(page);
+  if (hello) await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
+  else await expect(page.getByTestId(T.micCheck)).toHaveCount(0);
+  await expect(page.getByTestId(T.player)).toBeVisible({ timeout: 10_000 });
+  if (practice) await doPractice(page, { talk });
+  else {
+    await expect(page.getByTestId(T.practiceIntro)).toHaveCount(0);
+    await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
+  }
+}
+
+/**
+ * The practice run: a card says it is practice and how feedback works; Start practice plays the
+ * film under the practice banner with a coach mark on Pause. Pausing listens; with `talk` the
+ * fake microphone talks, "Got that" shows as soon as it is heard, and the film starts again
+ * from the beginning for real. Without it (a silent microphone) the reviewer presses play to
+ * carry on. Either way nothing is saved, and the film ends up playing from the start.
  */
 export async function doPractice(page: Page, { talk = true }: { talk?: boolean } = {}) {
   const playPause = page.getByTestId(T.playPause);
-  await expect(page.getByTestId(T.coachMark)).toBeVisible();
+  await expect(page.getByTestId(T.practiceIntro)).toBeVisible();
+  await expect(page.getByTestId(T.practiceBanner)).toBeVisible();
+  await expect(page.getByTestId(T.practiceStart)).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId(T.practiceStart).click();
   await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 20_000 });
+  await expect(page.getByTestId(T.coachMark)).toBeVisible();
   await page.keyboard.press('Space');
   await expect(page.getByTestId(T.practiceListening)).toBeVisible();
   if (talk) {
@@ -162,6 +198,7 @@ export async function doPractice(page: Page, { talk = true }: { talk?: boolean }
   await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 10_000 });
   await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
   await expect(page.getByTestId(T.practiceListening)).toHaveCount(0);
+  await expect(page.getByTestId(T.practiceBanner)).toHaveCount(0);
 }
 
 /**

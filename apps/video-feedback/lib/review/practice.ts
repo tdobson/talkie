@@ -6,7 +6,7 @@ export interface PracticeListenerOptions {
   threshold: number;
   /** Speech, in total, needed before a quiet spell can end it. */
   speechMs: number;
-  /** Quiet after that speech that ends it. */
+  /** Quiet after that speech that ends it. 0 ends it as soon as there has been enough speech. */
   silenceMs: number;
 }
 
@@ -33,7 +33,9 @@ export class PracticeListener {
     if (level >= this.o.threshold) {
       this.speech += step;
       this.quietSince = null;
-      return false;
+      // No quiet spell asked for: enough speech is enough.
+      this.done = this.o.silenceMs === 0 && this.speech >= this.o.speechMs;
+      return this.done;
     }
     if (this.speech < this.o.speechMs) return false;
     this.quietSince ??= now;

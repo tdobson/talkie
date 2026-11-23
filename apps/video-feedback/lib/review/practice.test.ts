@@ -31,6 +31,14 @@ describe('PracticeListener', () => {
     expect(l.update(0, 1600)).toBe(true);
   });
 
+  it('with no quiet spell asked for, is done as soon as there has been enough speech', () => {
+    const l = new PracticeListener({ threshold: 0.1, speechMs: 600, silenceMs: 0 });
+    expect(feed(l, 0.3, 0, 300)).toBe(false);
+    expect(feed(l, 0, 300, 1000)).toBe(false); // a gap between words is not the end
+    expect(feed(l, 0.3, 1300, 300)).toBe(false); // about 550ms of speech in all
+    expect(feed(l, 0.3, 1600, 100)).toBe(true);
+  });
+
   it('stays done', () => {
     const l = new PracticeListener({ threshold: 0.1, speechMs: 100, silenceMs: 100 });
     feed(l, 0.3, 0, 200);

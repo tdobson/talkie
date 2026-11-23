@@ -48,4 +48,24 @@ describe('Welcome', () => {
     render(<Welcome title="Launch film" onSubmit={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Feedback: Launch film' })).toHaveFocus();
   });
+
+  it('greets a browser that has reviewed before by name, with no name to type', async () => {
+    const onSubmit = vi.fn();
+    render(<Welcome title="Launch film" knownName="Tim" onSubmit={onSubmit} />);
+    expect(screen.getByTestId(T.welcomeBack)).toHaveTextContent('Welcome back, Tim.');
+    expect(screen.queryByTestId(T.nameInput)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId(T.startButton));
+    expect(onSubmit).toHaveBeenLastCalledWith('Tim');
+  });
+
+  it('lets someone else in the same browser give their own name', async () => {
+    const onSubmit = vi.fn();
+    render(<Welcome title="Launch film" knownName="Tim" onSubmit={onSubmit} />);
+    await userEvent.click(screen.getByTestId(T.notMe));
+    expect(screen.queryByTestId(T.welcomeBack)).not.toBeInTheDocument();
+    expect(screen.getByTestId(T.startButton)).toBeDisabled();
+    await userEvent.type(screen.getByTestId(T.nameInput), 'Sam');
+    await userEvent.click(screen.getByTestId(T.startButton));
+    expect(onSubmit).toHaveBeenLastCalledWith('Sam');
+  });
 });

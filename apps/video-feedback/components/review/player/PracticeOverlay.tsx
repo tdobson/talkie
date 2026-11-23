@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@mantine/core';
 import { useEffect, useRef } from 'react';
 import { MIC_SPEECH_THRESHOLD, PRACTICE_SILENCE_MS, PRACTICE_SPEECH_MS } from '@/lib/constants';
 import { copy } from '@/lib/review/copy';
@@ -63,6 +64,45 @@ export function PracticeOverlay({
     >
       <ListeningStatus stream={stream} label={copy.practice.listening} />
       <div className={classes.help}>{copy.practice.listeningHelp}</div>
+    </div>
+  );
+}
+
+/**
+ * Before the practice: what giving feedback is, and that this first go is only practice. Start
+ * practice (or play, or the space bar) plays the film under the coach mark on Pause.
+ */
+export function PracticeIntro({ ready, onStart }: { ready: boolean; onStart: () => void }) {
+  return (
+    <div className={classes.practiceIntro} data-no-capture="true" data-testid={T.practiceIntro}>
+      <div className={classes.practiceIntroCard} role="dialog" aria-labelledby="practice-title">
+        <div id="practice-title" className={classes.practiceIntroTitle}>
+          {copy.practice.introTitle}
+        </div>
+        <div>{copy.practice.intro1}</div>
+        <div>{copy.practice.intro2}</div>
+        <Button
+          size="md"
+          disabled={!ready}
+          // The card sits on the picture, where a click would otherwise count as a pause.
+          onClick={(e) => {
+            e.stopPropagation();
+            onStart();
+          }}
+          data-testid={T.practiceStart}
+        >
+          {copy.practice.start}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown for the whole practice, so nobody mistakes it for the real review. */
+export function PracticeBanner() {
+  return (
+    <div className={classes.practiceBanner} role="note" data-testid={T.practiceBanner}>
+      {copy.practice.banner}
     </div>
   );
 }

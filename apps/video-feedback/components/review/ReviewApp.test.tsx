@@ -1,4 +1,5 @@
 import { copy } from '@/lib/review/copy';
+import { PROFILE_KEY, readProfile } from '@/lib/review/profile';
 import { T } from '@/lib/testids';
 import { fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
 import { fireEvent, render, screen, userEvent, waitFor } from '@/test/helpers/render';
@@ -113,8 +114,11 @@ describe('ReviewApp', () => {
     });
     expect(localStorage.getItem(KEY)).toBe(SID);
     expect(screen.getByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
-    // A new reviewer starts on the practice run.
-    expect(screen.getByTestId(T.coachMark)).toBeInTheDocument();
+    // A new reviewer starts on the practice card, under the practice banner.
+    expect(screen.getByTestId(T.practiceIntro)).toBeInTheDocument();
+    expect(screen.getByTestId(T.practiceBanner)).toBeInTheDocument();
+    // This browser now knows their name, for every film.
+    expect(readProfile().name).toBe('Sarah');
 
     await user.click(screen.getByTestId(T.doneButton));
     expect(await screen.findByTestId(T.thanks)).toHaveTextContent('Thanks, Sarah.');
@@ -126,15 +130,16 @@ describe('ReviewApp', () => {
     expect(localStorage.getItem(KEY)).toBe(SID);
   });
 
-  it('resumes a stored session on the latest version: no name screen, but still the mic check', async () => {
+  it('resumes a stored session on the latest version: no name screen and no hello', async () => {
     localStorage.setItem(KEY, SID);
     const user = userEvent.setup();
     renderApp({ latestVersion: 1 });
     await user.click(await screen.findByTestId(T.micContinue));
     expect(screen.queryByTestId(T.welcome)).toBeNull();
-    await user.click(await screen.findByTestId(T.startWatching));
     expect(await screen.findByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=1');
+    expect(screen.queryByTestId(T.startWatching)).toBeNull();
     // They had the practice run the first time.
+    expect(screen.queryByTestId(T.practiceIntro)).toBeNull();
     expect(screen.queryByTestId(T.coachMark)).toBeNull();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
@@ -154,7 +159,6 @@ describe('ReviewApp', () => {
     );
     expect(screen.queryByTestId(T.welcome)).toBeNull();
     await user.click(screen.getByTestId(T.micContinue));
-    await user.click(await screen.findByTestId(T.startWatching));
 
     expect(await screen.findByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -165,6 +169,77 @@ describe('ReviewApp', () => {
     expect(localStorage.getItem(KEY)).toBe(SID);
     // They had the practice run the first time.
     expect(screen.queryByTestId(T.coachMark)).toBeNull();
+  });
+
+  it('a browser that has reviewed before, on a new link: no name to type, no hello, no practice', async () => {
+    localStorage.setItem(
+      PROFILE_KEY,
+      JSON.stringify({ name: 'Tim', micChecked: true, practised: true })
+    );
+    const user = userEvent.setup();
+    renderApp();
+    expect(await screen.findByTestId(T.welcomeBack)).toHaveTextContent('Welcome back, Tim.');
+    expect(screen.queryByTestId(T.nameInput)).toBeNull();
+    await user.click(screen.getByTestId(T.startButton));
+    // The browser has not said it allows the microphone, so it is explained first.
+    await user.click(await screen.findByTestId(T.micContinue));
+    expect(await screen.findByTestId(T.video)).toBeInTheDocument();
+    expect(screen.queryByTestId(T.startWatching)).toBeNull();
+    expect(screen.queryByTestId(T.practiceIntro)).toBeNull();
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(post?.[1].body).reviewerName).toBe('Tim');
+  });
+
+  it('does not explain the microphone when the browser already allows it', async () => {
+    localStorage.setItem(
+      PROFILE_KEY,
+      JSON.stringify({ name: 'Tim', micChecked: true, practised: true })
+    );
+    const query = vi.fn(async () => ({ state: 'granted' }));
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query } });
+    try {
+      const user = userEvent.setup();
+      renderApp();
+      await user.click(await screen.findByTestId(T.startButton));
+      expect(await screen.findByTestId(T.video)).toBeInTheDocument();
+      expect(query).toHaveBeenCalledWith({ name: 'microphone' });
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId(T.micExplain)).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, 'permissions', { configurable: true, value: undefined });
+    }
+  });
+
+  it('still shows the new-version notice when the browser already allows the microphone', async () => {
+    localStorage.setItem(KEY, 'old-sid');
+    fetchMock.mockImplementationOnce(async () =>
+      json({ sessionId: 'old-sid', version: 1, reviewerName: 'Sarah', done: false })
+    );
+    const query = vi.fn(async () => ({ state: 'granted' }));
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query } });
+    try {
+      renderApp({ latestVersion: 2 });
+      expect(await screen.findByTestId(T.newerVersion)).toBeInTheDocument();
+      expect(getUserMedia).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'permissions', { configurable: true, value: undefined });
+    }
+  });
+
+  it('a first-time browser that already allows the microphone still says hello once', async () => {
+    const query = vi.fn(async () => ({ state: 'granted' }));
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query } });
+    try {
+      const user = userEvent.setup();
+      renderApp();
+      await user.type(await screen.findByTestId(T.nameInput), 'Sarah');
+      await user.click(screen.getByTestId(T.startButton));
+      // Straight to the hello check: nothing to explain.
+      expect(await screen.findByTestId(T.startWatching)).toBeInTheDocument();
+      expect(screen.queryByTestId(T.micContinue)).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, 'permissions', { configurable: true, value: undefined });
+    }
   });
 
   it('says which version is up once there is more than one', async () => {

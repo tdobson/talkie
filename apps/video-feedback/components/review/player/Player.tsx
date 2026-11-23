@@ -43,7 +43,7 @@ import { GeneralComment } from '../screens/GeneralComment';
 import { Controls } from './Controls';
 import { CommentStopped, ListeningOverlay, VideoError, VideoLoading } from './ListeningOverlay';
 import { MicLost } from './MicLost';
-import { PracticeOverlay } from './PracticeOverlay';
+import { PracticeBanner, PracticeIntro, PracticeOverlay } from './PracticeOverlay';
 import classes from './player.module.css';
 import { type SaveState, SaveStatus, TroubleBanner } from './SaveStatus';
 import { VideoStage } from './VideoStage';
@@ -222,8 +222,6 @@ export function Player({
   micLostRef.current = state.micLost;
   const practiceRef = useRef(state.practice);
   practiceRef.current = state.practice;
-  // The practice run starts the film by itself, once.
-  const autoStartedRef = useRef(false);
 
   // Layout
 
@@ -668,11 +666,6 @@ export function Player({
     if (!adapter) return;
     setDuration(Number.isFinite(adapter.duration) ? adapter.duration : 0);
     measure();
-    // The practice run: the film starts by itself from the beginning.
-    if (practiceRef.current === 'coach' && !autoStartedRef.current) {
-      autoStartedRef.current = true;
-      play();
-    }
   };
 
   const onTimeUpdate = () => {
@@ -904,6 +897,10 @@ export function Player({
             ) : (
               <ListeningOverlay stream={stream} />
             ))}
+          {state.practice === 'intro' && state.screen === 'player' && (
+            <PracticeIntro ready={duration > 0} onStart={() => play()} />
+          )}
+          {state.practice !== null && state.screen === 'player' && <PracticeBanner />}
           {practising && (
             <PracticeOverlay
               stream={stream}

@@ -1,5 +1,9 @@
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+// Lowest CPU and IO priority, however this run was started. See scripts/lower-priority.cjs.
+createRequire(import.meta.url)('../../scripts/lower-priority.cjs').lowerPriority();
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 // Talkie packages are used from source, as in the root Jest config, so tests need no build.
@@ -10,7 +14,12 @@ const alias = [
 ];
 
 // Tests that need a browser-like environment. Everything else runs in plain node.
-const jsdomTests = ['**/*.test.tsx', 'lib/capture/**/*.test.ts', 'lib/review/machine.test.ts'];
+const jsdomTests = [
+  '**/*.test.tsx',
+  'lib/capture/**/*.test.ts',
+  'lib/review/machine.test.ts',
+  'lib/review/profile.test.ts',
+];
 const ignored = ['**/node_modules/**', '.next/**', 'e2e/**', '.claude/**'];
 // Tests that start a real headless Chromium are named *.chromium.test.ts. They are opt-in
 // (TEST_CHROMIUM=1, which `yarn test:chromium` sets) and never part of `yarn check`.
@@ -45,6 +54,7 @@ export default defineConfig({
             ...ignored,
             'lib/capture/**/*.test.ts',
             'lib/review/machine.test.ts',
+            'lib/review/profile.test.ts',
             ...(withChromium ? [] : [chromiumTests]),
           ],
         },

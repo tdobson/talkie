@@ -203,8 +203,8 @@ describe('review machine', () => {
       practice: true,
     });
 
-    it('a new session starts on the practice run, an old one does not', () => {
-      expect(coach).toMatchObject({ screen: 'player', practice: 'coach', playing: false });
+    it('a new session starts on the practice card, an old one does not', () => {
+      expect(coach).toMatchObject({ screen: 'player', practice: 'intro', playing: false });
       const plain = reducer(micCheck, { type: 'sessionStarted', sessionId: 'sid', version: 1 });
       expect(plain.practice).toBeNull();
     });
@@ -216,10 +216,12 @@ describe('review machine', () => {
       expect(s).toMatchObject({ playing: false, practice: 'listening', commentId: null });
     });
 
-    it('heard, then back to the start for real', () => {
+    it('heard, then back to the start for real; the browser has now practised', () => {
       let s = reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' });
+      expect(s.practised).toBe(false);
       s = reducer(s, { type: 'practiceHeard' });
       expect(s.practice).toBe('gotThat');
+      expect(s.practised).toBe(true);
       s = reducer(s, { type: 'play' });
       expect(s).toMatchObject({ playing: true, practice: null, commentId: null });
     });
@@ -247,6 +249,49 @@ describe('review machine', () => {
       const playing = reducer(coach, { type: 'play' });
       expect(reducer(playing, { type: 'ended' }).practice).toBeNull();
       expect(reducer(playing, { type: 'done' }).practice).toBeNull();
+    });
+  });
+
+  describe('what the browser remembers', () => {
+    it('a known name and the checks it passed are loaded on the welcome screen', () => {
+      const s = reducer(initialState, {
+        type: 'loadedProfile',
+        name: 'Tim',
+        micChecked: true,
+        practised: true,
+      });
+      expect(s).toMatchObject({
+        screen: 'welcome',
+        name: 'Tim',
+        micChecked: true,
+        practised: true,
+      });
+      // Too late once the review is under way.
+      const player = { ...initialState, screen: 'player' as const };
+      expect(
+        reducer(player, { type: 'loadedProfile', name: 'X', micChecked: true, practised: true })
+      ).toBe(player);
+    });
+
+    it('a session this browser started here counts as both checks done', () => {
+      const resumed = reducer(initialState, {
+        type: 'loadedResumable',
+        sessionId: 'sid',
+        version: 1,
+        name: 'Sarah',
+      });
+      expect(resumed).toMatchObject({ micChecked: true, practised: true });
+      const newer = reducer(initialState, {
+        type: 'loadedNewerVersion',
+        name: 'Sarah',
+        previousVersion: 1,
+      });
+      expect(newer).toMatchObject({ micChecked: true, practised: true });
+    });
+
+    it('saying hello now does not skip the hello screen it is on', () => {
+      const s = { ...initialState, screen: 'micCheck' as const };
+      expect(reducer(s, { type: 'micHeard' })).toBe(s);
     });
   });
 });

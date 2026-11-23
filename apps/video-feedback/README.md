@@ -49,12 +49,18 @@ Or drop the file into `DATA_DIR/inbox/` (rsync, scp) and import it at `/admin/in
 
 ### 2. Send the review link
 
-Each video has one link, `/r/<token>`, shown by `yarn import` and by Copy review link on `/admin`.
-Anyone with the link can review; there is no account. It always plays the latest version.
+Each video has one link, `/r/<token>`, shown by `yarn import` and by Copy link on `/admin` (Open,
+next to it, opens it in a new tab so you can review it yourself). Anyone with the link can
+review; there is no account. It always plays the latest version.
 
-The reviewer types a name, passes a short mic check, and watches. To comment they pause and
-talk, pointing at the frame with the mouse while they do. Pressing play ends the comment. It
-needs a computer: phones and tablets get a page asking the reviewer to switch.
+The first time, a reviewer types a name, allows the microphone, says hello, and does a short
+practice: a card explains that you pause and talk to give feedback, the film plays under a
+"Practice run" banner, they pause and say anything, and the real review starts from the
+beginning. The browser remembers all of that (localStorage `vf:reviewer`), so on any film after
+that they only see "Welcome back" and go straight to it. The microphone is only explained when
+the browser has not already allowed it. To comment they pause and talk, pointing at the frame
+with the mouse while they do. Pressing play ends the comment. It needs a computer: phones and
+tablets get a page asking the reviewer to switch.
 
 ### 3. Collect the feedback
 
@@ -96,9 +102,10 @@ Both are refused when `NODE_ENV=production`.
 
 ## Deployment
 
-Runs as one Node process under systemd behind a Cloudflare Tunnel, with Cloudflare Access on
-`/admin` and `/api/admin`. See `../../docs/DEPLOY.md`, `deploy/video-feedback.service` and
-`deploy/cloudflared.md`.
+Runs as a Node process under systemd behind a Cloudflare Tunnel, with Cloudflare Access on
+`/admin` and `/api/admin`. Deploys are blue/green: two app slots behind a small Caddy proxy, so
+the site never goes down. See `../../docs/DEPLOY.md`, `deploy/video-feedback@.service`,
+`deploy/video-feedback-proxy.service`, `deploy/Caddyfile` and `deploy/cloudflared.md`.
 
 ## Commands
 

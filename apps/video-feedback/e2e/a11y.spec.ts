@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { state, T } from './helpers';
+import { continueMic, state, T } from './helpers';
 
 /**
  * Screens fade in. Axe blends colours through opacity, so a check mid-fade reports contrast
@@ -35,15 +35,16 @@ test('reviewer screens have no serious axe violations', async ({ page }) => {
 
   await page.getByTestId(T.nameInput).fill('Axel Axe');
   await page.getByTestId(T.startButton).click();
-  await expect(page.getByTestId(T.micExplain)).toBeVisible();
-  await settled(page, T.micExplain);
-  expect(await seriousViolations(page), 'mic explain').toEqual([]);
-
-  await page.getByTestId(T.micContinue).click();
+  // A browser that already allows the microphone skips its explanation.
+  await continueMic(page, async () => {
+    await settled(page, T.micExplain);
+    expect(await seriousViolations(page), 'mic explain').toEqual([]);
+  });
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(T.player)).toBeVisible();
-  // The practice run's coach mark is up: it is checked with the player.
-  await expect(page.getByTestId(T.coachMark)).toBeVisible();
+  // The practice card and banner are up: they are checked with the player.
+  await expect(page.getByTestId(T.practiceIntro)).toBeVisible();
+  await expect(page.getByTestId(T.practiceStart)).toBeEnabled({ timeout: 20_000 });
   await settled(page, T.player);
   expect(await seriousViolations(page), 'player').toEqual([]);
 

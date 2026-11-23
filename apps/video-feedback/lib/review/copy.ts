@@ -9,6 +9,9 @@ export const copy = {
     nameLabel: 'Your name',
     namePlaceholder: 'e.g. Sarah',
     start: 'Start',
+    /** A browser that has reviewed before: no name to type. */
+    welcomeBack: (name: string) => `Welcome back, ${name}.`,
+    notYou: (name: string) => `Not ${name}?`,
   },
   /** Shown once a video has more than one version, so a reviewer knows which cut this is. */
   version: (n: number) => `Version ${n}`,
@@ -69,13 +72,20 @@ export const copy = {
     forward: (seconds: number) => `Forward ${seconds} seconds`,
   },
   practice: {
-    coachKeys: 'Press pause, or the space bar, whenever you want to say something.',
-    coachTouch: 'Tap pause whenever you want to say something.',
-    coachPlay: 'Press play to start.',
+    banner: 'Practice run: nothing you say here is saved.',
+    introTitle: 'First, a quick practice',
+    intro1:
+      'When you want to say something about the film, pause it and talk. Point at the picture with your mouse as you go.',
+    intro2:
+      "Let's try it once. Press Start practice, then pause whenever you like and say anything. Nothing in the practice is saved, and after it the film starts again from the beginning for real.",
+    start: 'Start practice',
+    coachKeys: 'Now press pause, or the space bar.',
+    coachTouch: 'Now tap pause.',
+    coachPlay: 'Press play to start the practice.',
     listening: 'Listening',
-    listeningHelp: 'Say anything and point at the picture. This one is just practice.',
+    listeningHelp: 'Now say something, anything. This one is just practice.',
     gotThat: 'Got that',
-    gotThatHelp: "That's all there is to it. Starting from the beginning.",
+    gotThatHelp: "That's all there is to it. Now for real: starting from the beginning.",
   },
   end: {
     title: "That's the end of the video.",

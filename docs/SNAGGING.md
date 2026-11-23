@@ -75,6 +75,12 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 
 ## Done
 
+- 2026-11-23: onboarding once per browser. The name, the hello check and the practice are
+  remembered in localStorage (`vf:reviewer`) for every film; the microphone is only explained
+  when the browser has not allowed it. The practice is now plainly practice: a card explains
+  pausing to give feedback, a "Practice run" banner stays up, and it moves on as soon as the
+  reviewer speaks. Also: a deploy no longer fails the comment it interrupts (it is left pending
+  for the next run), and the deploy waits for the processing queue first.
 - 2026-11-23: admin has an Open button beside Copy link (new tab, to review it yourself). Agents can
   watch a review as it happens: `scripts/watch-feedback.mjs` prints each comment once it is
   processed, with its stills saved, and `GET .../media/<commentId>/<name>` serves one still on its

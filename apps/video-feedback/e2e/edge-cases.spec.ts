@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { devices, expect, test } from '@playwright/test';
 import { cliImport, parseImport, uniqueCopy } from './global-setup';
 import {
+  continueMic,
   doPractice,
   giveComment,
   readSessionComments,
@@ -33,7 +34,7 @@ test('denied microphone shows recovery steps @nomic', async ({ page }) => {
   await page.goto(state().reviewUrl);
   await page.getByTestId(T.nameInput).fill('Dee Denied');
   await page.getByTestId(T.startButton).click();
-  await page.getByTestId(T.micContinue).click();
+  await continueMic(page);
   await expect(page.getByTestId(T.micDenied)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId(T.micRetry)).toBeVisible();
   await expect(page.getByTestId(T.player)).toHaveCount(0);
@@ -43,7 +44,7 @@ test('silent pause is stored but marked empty @silence', async ({ page }) => {
   await page.goto(state().reviewUrl);
   await page.getByTestId(T.nameInput).fill('Sid Silent');
   await page.getByTestId(T.startButton).click();
-  await page.getByTestId(T.micContinue).click();
+  await continueMic(page);
   // The fake mic says hello, so the check passes, and is silent from then on.
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(T.micMeter)).toHaveAttribute('data-lit', '0');

@@ -12,12 +12,12 @@ export type Screen =
   | 'thanks';
 
 /**
- * The practice run a new reviewer gets before the real review: the film plays from the start
- * with a coach mark on Pause (`coach`), a pause listens without recording anything
- * (`listening`), and once they have spoken it says so (`gotThat`) and the film starts again
- * from the beginning for real. Null outside the practice.
+ * The practice run a browser gets once, before its first real review. A card says how giving
+ * feedback works (`intro`). Play starts the film under a coach mark on Pause (`coach`). A pause
+ * listens without recording anything (`listening`), and as soon as they speak it says so
+ * (`gotThat`) and the film starts again from the beginning for real. Null outside the practice.
  */
-export type Practice = 'coach' | 'listening' | 'gotThat' | null;
+export type Practice = 'intro' | 'coach' | 'listening' | 'gotThat' | null;
 
 export interface ReviewState {
   screen: Screen;
@@ -36,10 +36,19 @@ export interface ReviewState {
    */
   newerThan: number | null;
   practice: Practice;
+  /**
+   * This browser had passed the "say hello" check before this visit: it is not asked again.
+   * Passing it now does not change this (the screen shows its own "Got you" first).
+   */
+  micChecked: boolean;
+  /** This browser has done the practice before: it is not offered again. */
+  practised: boolean;
 }
 
 export type ReviewAction =
   | { type: 'detectedMobile' }
+  /** What this browser remembers from earlier reviews, of any film. */
+  | { type: 'loadedProfile'; name: string; micChecked: boolean; practised: boolean }
   | { type: 'loadedResumable'; sessionId: string; version: number; name: string }
   /** This browser reviewed an older version: start a new session on the latest one. */
   | { type: 'loadedNewerVersion'; name: string; previousVersion: number }
@@ -88,6 +97,8 @@ export const initialState: ReviewState = {
   resumed: false,
   newerThan: null,
   practice: null,
+  micChecked: false,
+  practised: false,
 };
 
 /**
@@ -100,10 +111,17 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
     case 'detectedMobile':
       return { ...initialState, screen: 'mobile' };
 
+    case 'loadedProfile':
+      if (s.screen !== 'welcome') return s;
+      return { ...s, name: a.name, micChecked: a.micChecked, practised: a.practised };
+
+    // A session this browser started on this link: it has been through the checks already.
     case 'loadedResumable':
       if (s.screen !== 'welcome') return s;
       return {
         ...s,
+        micChecked: true,
+        practised: true,
         screen: 'micExplain',
         sessionId: a.sessionId,
         version: a.version,
@@ -122,6 +140,8 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
         version: null,
         name: a.name,
         resumed: true,
+        micChecked: true,
+        practised: true,
         newerThan: a.previousVersion,
       };
 
@@ -162,14 +182,14 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
         playing: false,
         commentId: null,
         zoom: null,
-        practice: a.practice ? 'coach' : null,
+        practice: a.practice ? 'intro' : null,
       };
 
     case 'play': {
       if (s.screen !== 'player' && s.screen !== 'end') return s;
       if (s.screen === 'player' && s.playing) return s;
-      // Playing again after the practice pause is the real start.
-      const practice = s.practice === 'coach' ? 'coach' : null;
+      // Play on the practice card starts the practice; after the practice pause, the real thing.
+      const practice = s.practice === 'coach' || s.practice === 'intro' ? 'coach' : null;
       return { ...s, screen: 'player', playing: true, commentId: null, zoom: null, practice };
     }
 
@@ -183,7 +203,7 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
 
     case 'practiceHeard':
       if (s.screen !== 'player' || s.practice !== 'listening') return s;
-      return { ...s, practice: 'gotThat' };
+      return { ...s, practice: 'gotThat', practised: true };
 
     case 'ended':
       if (s.screen !== 'player') return s;

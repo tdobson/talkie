@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { ExportModel } from '@/lib/export/model';
-import { centrePixel, exportWhenReady, passMicCheck, stageBox, state, T } from './helpers';
+import {
+  centrePixel,
+  continueMic,
+  exportWhenReady,
+  passMicCheck,
+  stageBox,
+  state,
+  T,
+} from './helpers';
 
 const NAME = 'Talkie Tess';
 
@@ -96,7 +104,7 @@ test('a Talkie film that will not load shows the error panel and a Reload button
   await page.goto(film.reviewUrl);
   await page.getByTestId(T.nameInput).fill('Broken Bo');
   await page.getByTestId(T.startButton).click();
-  await page.getByTestId(T.micContinue).click();
+  await continueMic(page);
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(T.videoError)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(T.videoReload)).toBeVisible();

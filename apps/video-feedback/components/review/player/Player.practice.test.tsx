@@ -56,7 +56,7 @@ const practiceState: ReviewState = {
   name: 'Sarah',
   sessionId: 'sid',
   version: 2,
-  practice: 'coach',
+  practice: 'intro',
 };
 
 function Harness(props: {
@@ -91,6 +91,7 @@ function Harness(props: {
 const settle = () => act(() => vi.advanceTimersByTimeAsync(5));
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 const playPause = () => fireEvent.click(screen.getByTestId(T.playPause));
+const begin = () => fireEvent.click(screen.getByTestId(T.practiceStart));
 const isPlaying = () => screen.getByTestId(T.playPause).getAttribute('aria-label') === 'Pause';
 
 /** Mounts a player of either kind and returns how to read and move its playhead. */
@@ -159,15 +160,42 @@ afterEach(() => {
 });
 
 describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
-  it('starts the film by itself, with a coach mark on Pause', async () => {
+  it('says it is a practice and how feedback works before anything plays', async () => {
     await setup(kind);
-    expect(isPlaying()).toBe(true);
-    expect(screen.getByTestId(T.coachMark)).toHaveTextContent(copy.practice.coachKeys);
-    expect(screen.getByTestId(T.giveFeedback)).toBeEnabled();
+    expect(isPlaying()).toBe(false);
+    const intro = screen.getByTestId(T.practiceIntro);
+    expect(intro).toHaveTextContent(copy.practice.introTitle);
+    expect(intro).toHaveTextContent('pause it and talk');
+    expect(screen.getByTestId(T.practiceBanner)).toHaveTextContent(copy.practice.banner);
+    expect(screen.getByTestId(T.practiceStart)).toBeEnabled();
   });
 
-  it('a practice pause listens, says Got that, then plays again from the start; nothing is saved', async () => {
+  it('Start practice plays the film, with a coach mark on Pause and the banner still up', async () => {
+    const { getTime } = await setup(kind);
+    begin();
+    await settle();
+    expect(isPlaying()).toBe(true);
+    expect(getTime()).toBe(0);
+    expect(screen.queryByTestId(T.practiceIntro)).toBeNull();
+    expect(screen.getByTestId(T.coachMark)).toHaveTextContent(copy.practice.coachKeys);
+    expect(screen.getByTestId(T.practiceBanner)).toBeInTheDocument();
+    expect(screen.getByTestId(T.giveFeedback)).toBeEnabled();
+    // The click on the card did not count as a pause on the picture.
+    expect(screen.queryByTestId(T.practiceListening)).toBeNull();
+  });
+
+  it('play, instead of Start practice, starts the practice too', async () => {
+    await setup(kind);
+    playPause();
+    await settle();
+    expect(isPlaying()).toBe(true);
+    expect(screen.getByTestId('practice')).toHaveTextContent('coach');
+  });
+
+  it('a practice pause listens, says Got that as soon as they speak, then plays again from the start; nothing is saved', async () => {
     const { uploader, getTime, moveTo } = await setup(kind);
+    begin();
+    await settle();
     moveTo(1.5);
     playPause();
     expect(isPlaying()).toBe(false);
@@ -185,6 +213,7 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(getTime()).toBe(0);
     expect(screen.getByTestId('practice')).toHaveTextContent('none');
     expect(screen.queryByTestId(T.practiceGotThat)).toBeNull();
+    expect(screen.queryByTestId(T.practiceBanner)).toBeNull();
 
     // Never recorded, never uploaded.
     expect(FakeMediaRecorder.instances).toHaveLength(0);
@@ -199,6 +228,8 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
 
   it('Give feedback pauses just as Pause does', async () => {
     await setup(kind);
+    begin();
+    await settle();
     fireEvent.click(screen.getByTestId(T.giveFeedback));
     expect(screen.getByTestId(T.practiceListening)).toBeInTheDocument();
     expect(screen.getByTestId(T.giveFeedback)).toBeDisabled();
@@ -206,6 +237,8 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
 
   it('pressing play during the practice pause skips straight to the real start', async () => {
     const { getTime, moveTo } = await setup(kind);
+    begin();
+    await settle();
     moveTo(2);
     playPause();
     playPause();
@@ -217,16 +250,20 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
 
   it('silence never ends the practice pause on its own', async () => {
     await setup(kind);
+    begin();
+    await settle();
     playPause();
     await advance(30_000);
     expect(screen.getByTestId(T.practiceListening)).toBeInTheDocument();
   });
 });
 
-describe('practice run, refused autoplay', () => {
+describe('practice run, refused playback', () => {
   it('asks for play when the browser will not start it', async () => {
     media.play.mockRejectedValue(Object.assign(new Error('no'), { name: 'NotAllowedError' }));
     await setup('mp4');
+    begin();
+    await settle();
     expect(isPlaying()).toBe(false);
     expect(screen.getByTestId(T.coachMark)).toHaveTextContent(copy.practice.coachPlay);
   });
@@ -247,6 +284,7 @@ describe('the hint to pause', () => {
 
   it('is not shown during the practice run', async () => {
     await setup('mp4');
+    begin();
     await advance(FEEDBACK_HINT_AFTER_MS + 500);
     expect(screen.queryByTestId(T.feedbackHint)).toBeNull();
   });

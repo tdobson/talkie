@@ -29,15 +29,15 @@ export const MIC_SPEECH_HOLD_MS = 300;
 const FAST = process.env.NEXT_PUBLIC_E2E_FAST_TIMERS === '1';
 /** How long "Got you, loud and clear" shows before the film starts. */
 export const MIC_HEARD_SHOW_MS = 1000;
-/** Speech, in total, the practice pause waits for before it listens for a pause in it. */
-export const PRACTICE_SPEECH_MS = 1000;
 /**
- * Quiet after that speech that ends the practice comment. Shorter in the E2E build: the fake
- * microphone loops a phrase whose longest gaps are about 400ms.
+ * Speech, in total, the practice pause waits for. As soon as the reviewer has started talking it
+ * has done what the practice is for, so it moves on without waiting for them to stop.
  */
-export const PRACTICE_SILENCE_MS = FAST ? 250 : 600;
-/** How long "Got that" shows before the film goes back to the start. */
-export const PRACTICE_GOT_THAT_MS = 2000;
+export const PRACTICE_SPEECH_MS = 600;
+/** Quiet after that speech before it moves on: none. */
+export const PRACTICE_SILENCE_MS = 0;
+/** How long "Got that" shows before the film goes back to the start, for real. */
+export const PRACTICE_GOT_THAT_MS = 2500;
 /** Playing this long with no pause brings up the "Pause any time" hint. */
 export const FEEDBACK_HINT_AFTER_MS = FAST ? 2000 : 60_000;
 /** How long that hint stays up. */
