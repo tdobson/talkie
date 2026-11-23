@@ -33,6 +33,14 @@ const mic = vi.hoisted(() => {
 });
 vi.mock('../hooks/useMicLevel', () => ({ useMicLevel: () => useLevel() }));
 
+// The stopped and recording-again sounds: jsdom has no audio, so the test counts the calls.
+const cues = vi.hoisted(() => ({
+  playStopped: vi.fn(),
+  playResumed: vi.fn(),
+  unlockCues: vi.fn(),
+}));
+vi.mock('@/lib/review/cues', () => cues);
+
 function useLevel(): number {
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   useEffect(() => mic.subscribe(rerender), []);
@@ -131,6 +139,7 @@ async function setup(kind: MediaKind, initial: ReviewState = practiceState) {
 
 beforeEach(() => {
   mic.level = 0;
+  for (const f of Object.values(cues)) f.mockClear();
   // The default fakes include performance.now(), which times the comment.
   vi.useFakeTimers();
   FakeMediaRecorder.instances = [];
@@ -163,6 +172,8 @@ describe.each(['mp4', 'talkie'] as const)('a comment that runs on (%s)', (kind) 
     await settle();
     expect(uploader.complete).toHaveBeenCalledTimes(1);
     expect(FakeMediaRecorder.instances).toHaveLength(1);
+    expect(cues.playStopped).toHaveBeenCalledTimes(1);
+    expect(cues.playResumed).not.toHaveBeenCalled();
 
     // Talking again: a new comment, recording.
     act(() => mic.set(0.5));
@@ -170,6 +181,7 @@ describe.each(['mp4', 'talkie'] as const)('a comment that runs on (%s)', (kind) 
     expect(screen.getByTestId(T.listening)).toBeInTheDocument();
     expect(screen.queryByTestId(T.commentHeld)).toBeNull();
     expect(FakeMediaRecorder.instances).toHaveLength(2);
+    expect(cues.playResumed).toHaveBeenCalledTimes(1);
   });
 
   it('warns in the last minute and ends at the longest a comment may be, even mid-speech', async () => {
@@ -186,6 +198,7 @@ describe.each(['mp4', 'talkie'] as const)('a comment that runs on (%s)', (kind) 
     expect(screen.getByTestId(T.commentHeld)).toHaveTextContent(copy.player.heldCapTitle);
     await settle();
     expect(uploader.complete).toHaveBeenCalledTimes(1);
+    expect(cues.playStopped).toHaveBeenCalledTimes(1);
 
     // Still talking (the room, say): nothing records until they ask.
     await advance(10_000);
@@ -193,6 +206,7 @@ describe.each(['mp4', 'talkie'] as const)('a comment that runs on (%s)', (kind) 
     fireEvent.click(screen.getByTestId(T.sayMore));
     expect(screen.getByTestId(T.listening)).toBeInTheDocument();
     expect(FakeMediaRecorder.instances).toHaveLength(2);
+    expect(cues.playResumed).toHaveBeenCalledTimes(1);
   });
 
   it('play from there watches on, as usual', async () => {
@@ -207,5 +221,73 @@ describe.each(['mp4', 'talkie'] as const)('a comment that runs on (%s)', (kind) 
     expect(isPlaying()).toBe(true);
     expect(screen.queryByTestId(T.commentHeld)).toBeNull();
     expect(screen.getByTestId('held')).toHaveTextContent('none');
+  });
+});
+
+/** The tab going to the background, as the browser reports it: hidden, and the window blurred. */
+function leaveTab() {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  act(() => {
+    window.dispatchEvent(new Event('blur'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+function returnToTab() {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+}
+
+describe.each(['mp4', 'talkie'] as const)('the tab losing focus (%s)', (kind) => {
+  afterEach(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  });
+
+  it('stops the comment with the stopped sound, and coming back records again', async () => {
+    const { uploader } = await setup(kind);
+    playPause();
+    await advance(500);
+    playPause();
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+
+    leaveTab();
+    await settle();
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+    expect(screen.getByTestId(T.commentHeld)).toHaveTextContent(copy.player.heldFocusTitle);
+    expect(screen.getByTestId('held')).toHaveTextContent('focus');
+    expect(uploader.complete).toHaveBeenCalledTimes(1);
+    // Blur and hidden both fired: one stop, one sound.
+    expect(cues.playStopped).toHaveBeenCalledTimes(1);
+
+    returnToTab();
+    await settle();
+    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
+    expect(screen.queryByTestId(T.commentHeld)).toBeNull();
+    // Visible and focus both fired: one new comment, one sound.
+    expect(FakeMediaRecorder.instances).toHaveLength(2);
+    expect(cues.playResumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing while the film plays, or after a quiet spell ended the comment', async () => {
+    await setup(kind);
+    playPause(); // playing
+    leaveTab();
+    returnToTab();
+    await settle();
+    expect(isPlaying()).toBe(true);
+    expect(cues.playStopped).not.toHaveBeenCalled();
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+
+    playPause(); // pause: a comment, then quiet until it ends
+    await advance(COMMENT_SILENCE_END_MS + 500);
+    expect(screen.getByTestId('held')).toHaveTextContent('silence');
+    leaveTab();
+    returnToTab();
+    await settle();
+    // Coming back does not restart a comment that ended for another reason.
+    expect(screen.getByTestId('held')).toHaveTextContent('silence');
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
   });
 });

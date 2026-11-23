@@ -14,7 +14,8 @@ import {
 } from '@/lib/constants';
 import { containRect } from '@/lib/geometry';
 import { copy } from '@/lib/review/copy';
-import type { ReviewAction, ReviewState } from '@/lib/review/machine';
+import { playResumed, playStopped, unlockCues } from '@/lib/review/cues';
+import type { HeldReason, ReviewAction, ReviewState } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
 import type {
   CaptureEvent,
@@ -223,6 +224,32 @@ export function Player({
   micLostRef.current = state.micLost;
   const practiceRef = useRef(state.practice);
   practiceRef.current = state.practice;
+  // Why a paused comment stopped on its own, set at once so two focus events in a row (blur,
+  // then the tab hidden) act only once.
+  const heldRef = useRef(state.held);
+  heldRef.current = state.held;
+  // The tab losing and getting back focus: this render's handlers, read by one listener.
+  const focusRef = useRef({ lost: () => {}, back: () => {} });
+  useEffect(() => {
+    const onVisibility = () =>
+      document.visibilityState === 'hidden' ? focusRef.current.lost() : focusRef.current.back();
+    const onBlur = () => focusRef.current.lost();
+    const onFocus = () => focusRef.current.back();
+    // The sounds can only play once the page has been clicked or typed in.
+    const unlock = () => unlockCues();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('pointerdown', unlock, true);
+    document.addEventListener('keydown', unlock, true);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('pointerdown', unlock, true);
+      document.removeEventListener('keydown', unlock, true);
+    };
+  }, []);
 
   // Layout
 
@@ -854,19 +881,35 @@ export function Player({
     }
   };
 
-  // A comment that has gone quiet for long, or run as long as one may, ends on its own.
-  const endOnItsOwn = (reason: 'silence' | 'cap') => {
+  // A comment that has gone quiet for long, run as long as one may, or lost the tab's focus,
+  // ends on its own, with a falling "stopped" sound so the reviewer hears it without looking.
+  const endOnItsOwn = (reason: HeldReason) => {
+    if (!openRef.current) return;
+    playStopped();
     if (screenRef.current === 'general') {
       generalFinished();
       return;
     }
+    heldRef.current = reason;
     void closeComment().catch(() => {});
     dispatch({ type: 'commentEnded', reason });
   };
-  // Still paused after that: a new comment, on the frame they are on.
+  // Still paused after that: a new comment, on the frame they are on, with a rising sound.
   const sayMore = () => {
-    if (playingRef.current || screenRef.current !== 'player') return;
+    if (playingRef.current || screenRef.current !== 'player' || heldRef.current === null) return;
+    heldRef.current = null;
+    playResumed();
     dispatch({ type: 'commentResumed', commentId: openComment('moment') });
+  };
+  focusRef.current = {
+    lost: () => {
+      const screen = screenRef.current;
+      const moment = screen === 'player' && !playingRef.current && practiceRef.current === null;
+      if (moment || screen === 'general') endOnItsOwn('focus');
+    },
+    back: () => {
+      if (heldRef.current === 'focus') sayMore();
+    },
   };
   const recording =
     state.commentId !== null &&

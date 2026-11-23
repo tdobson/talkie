@@ -67,6 +67,8 @@ export const copy = {
     heldCapTitle: 'Saved, not recording',
     heldCapHelp:
       'That comment reached the longest one can be, and it is saved. Press play to watch on, or Say more to add another here.',
+    heldFocusTitle: 'Stopped: this tab lost focus',
+    heldFocusHelp: 'Come back to this tab to carry on talking, or press play.',
     sayMore: 'Say more',
     stopped: 'This comment is full, so we have stopped recording it.',
     stoppedHelp: 'Press play, then pause again to carry on.',
