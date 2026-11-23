@@ -294,4 +294,36 @@ describe('review machine', () => {
       expect(reducer(s, { type: 'micHeard' })).toBe(s);
     });
   });
+
+  describe('a comment that ends on its own', () => {
+    const listening: ReviewState = {
+      ...initialState,
+      screen: 'player',
+      sessionId: 'sid',
+      version: 1,
+      playing: false,
+      commentId: 'c1',
+    };
+
+    it('ends the comment but stays paused, and remembers why', () => {
+      const s = reducer(listening, { type: 'commentEnded', reason: 'silence' });
+      expect(s).toMatchObject({ playing: false, commentId: null, held: 'silence' });
+      expect(reducer(listening, { type: 'commentEnded', reason: 'cap' }).held).toBe('cap');
+    });
+
+    it('a new comment can start from there, and play carries on as usual', () => {
+      const held = reducer(listening, { type: 'commentEnded', reason: 'silence' });
+      expect(reducer(held, { type: 'commentResumed', commentId: 'c2' })).toMatchObject({
+        commentId: 'c2',
+        held: null,
+      });
+      expect(reducer(held, { type: 'play' })).toMatchObject({ playing: true, held: null });
+    });
+
+    it('does nothing when no comment is recording', () => {
+      const playing = { ...listening, playing: true, commentId: null };
+      expect(reducer(playing, { type: 'commentEnded', reason: 'silence' })).toBe(playing);
+      expect(reducer(listening, { type: 'commentResumed', commentId: 'c2' })).toBe(listening);
+    });
+  });
 });

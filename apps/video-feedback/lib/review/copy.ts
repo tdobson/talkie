@@ -60,6 +60,14 @@ export const copy = {
     videoError: "We couldn't load the video. Check your connection and reload.",
     reload: 'Reload',
     loading: 'Loading the video',
+    limitWarning: "Less than a minute left on this comment. Press play when you're done.",
+    heldSilenceTitle: 'Paused, not recording',
+    heldSilenceHelp:
+      "We stopped recording after a quiet spell, and saved what you said. Talk to add more, or press play when you're ready.",
+    heldCapTitle: 'Saved, not recording',
+    heldCapHelp:
+      'That comment reached the longest one can be, and it is saved. Press play to watch on, or Say more to add another here.',
+    sayMore: 'Say more',
     stopped: 'This comment is full, so we have stopped recording it.',
     stoppedHelp: 'Press play, then pause again to carry on.',
     fullscreen: 'Full screen',

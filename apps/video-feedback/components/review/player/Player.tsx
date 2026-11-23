@@ -43,6 +43,7 @@ import { GeneralComment } from '../screens/GeneralComment';
 import { Controls } from './Controls';
 import { CommentStopped, ListeningOverlay, VideoError, VideoLoading } from './ListeningOverlay';
 import { MicLost } from './MicLost';
+import { CommentHeld, CommentLimiter } from './CommentLimit';
 import { PracticeBanner, PracticeIntro, PracticeOverlay } from './PracticeOverlay';
 import classes from './player.module.css';
 import { type SaveState, SaveStatus, TroubleBanner } from './SaveStatus';
@@ -853,6 +854,25 @@ export function Player({
     }
   };
 
+  // A comment that has gone quiet for long, or run as long as one may, ends on its own.
+  const endOnItsOwn = (reason: 'silence' | 'cap') => {
+    if (screenRef.current === 'general') {
+      generalFinished();
+      return;
+    }
+    void closeComment().catch(() => {});
+    dispatch({ type: 'commentEnded', reason });
+  };
+  // Still paused after that: a new comment, on the frame they are on.
+  const sayMore = () => {
+    if (playingRef.current || screenRef.current !== 'player') return;
+    dispatch({ type: 'commentResumed', commentId: openComment('moment') });
+  };
+  const recording =
+    state.commentId !== null &&
+    ((state.screen === 'player' && !state.playing && state.practice === null) ||
+      state.screen === 'general');
+
   const listening = state.screen === 'player' && !state.playing && state.commentId !== null;
   // The server refused part of the open comment: it is no longer being recorded.
   const stopped = refusedCommentId !== null && state.commentId === refusedCommentId;
@@ -901,6 +921,12 @@ export function Player({
             <PracticeIntro ready={duration > 0} onStart={() => play()} />
           )}
           {state.practice !== null && state.screen === 'player' && <PracticeBanner />}
+          {recording && !stopped && (
+            <CommentLimiter key={state.commentId} stream={stream} onEnd={endOnItsOwn} />
+          )}
+          {state.held !== null && state.screen === 'player' && !state.playing && (
+            <CommentHeld reason={state.held} stream={stream} onSayMore={sayMore} />
+          )}
           {practising && (
             <PracticeOverlay
               stream={stream}

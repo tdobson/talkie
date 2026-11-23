@@ -58,6 +58,29 @@ test('silent pause is stored but marked empty @silence', async ({ page }) => {
   expect(done.files.some((f) => /^chunks?\//.test(f) || /^audio\./.test(f))).toBe(true);
 });
 
+test('a paused comment ends on its own after a quiet spell @silence', async ({ page }) => {
+  await page.goto(state().reviewUrl);
+  await page.getByTestId(T.nameInput).fill('Quentin Quiet');
+  await page.getByTestId(T.startButton).click();
+  await continueMic(page);
+  await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
+  await doPractice(page, { talk: false });
+  await page.keyboard.press('Space'); // pause: a comment, and then nothing is said
+  await expect(page.getByTestId(T.listening)).toBeVisible();
+  // 4 s of quiet in the E2E build (30 s for real): it stops recording, still paused.
+  await expect(page.getByTestId(T.commentHeld)).toContainText('Paused, not recording', {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId(T.listening)).toHaveCount(0);
+  await expect(page.getByTestId(T.playPause)).toHaveAttribute('aria-label', 'Play');
+  await expect.poll(async () => (await readSessionComments('Quentin Quiet')).length).toBe(1);
+  const [comment] = await readSessionComments('Quentin Quiet');
+  await waitForState(comment.ref, 'empty');
+  // Nothing more is recorded while it waits.
+  await page.waitForTimeout(3000);
+  expect(await readSessionComments('Quentin Quiet')).toHaveLength(1);
+});
+
 test('a new version mid-session keeps the session on its version', async ({ page, browser }) => {
   const created = parseImport(
     cliImport(uniqueCopy('h264.mp4', 'e2e-versions'), { title: 'E2E versions' })

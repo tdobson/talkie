@@ -38,6 +38,15 @@ export const PRACTICE_SPEECH_MS = 600;
 export const PRACTICE_SILENCE_MS = 0;
 /** How long "Got that" shows before the film goes back to the start, for real. */
 export const PRACTICE_GOT_THAT_MS = 2500;
+/**
+ * A paused comment ends on its own after this long with no speech, so a reviewer who walks away
+ * (or talks to someone else in the room) is not recorded for ever. Shorter in the E2E build.
+ */
+export const COMMENT_SILENCE_END_MS = FAST ? 4000 : 30_000;
+/** The longest one comment records, even while the reviewer keeps talking. */
+export const COMMENT_MAX_MS = FAST ? 15_000 : 300_000;
+/** How long before that limit the reviewer is told. */
+export const COMMENT_WARN_BEFORE_MS = FAST ? 5000 : 60_000;
 /** Playing this long with no pause brings up the "Pause any time" hint. */
 export const FEEDBACK_HINT_AFTER_MS = FAST ? 2000 : 60_000;
 /** How long that hint stays up. */

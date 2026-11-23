@@ -43,6 +43,12 @@ export interface ReviewState {
   micChecked: boolean;
   /** This browser has done the practice before: it is not offered again. */
   practised: boolean;
+  /**
+   * Paused, but no longer recording: the comment ended on its own, after a long quiet
+   * (`silence`: talking again starts a new one) or at the longest a comment may be (`cap`: only
+   * Say more or play carries on). Null otherwise.
+   */
+  held: 'silence' | 'cap' | null;
 }
 
 export type ReviewAction =
@@ -71,6 +77,10 @@ export type ReviewAction =
   | { type: 'generalFinished' }
   /** The open comment was closed and a new one started in its place (microphone reconnected). */
   | { type: 'commentRestarted'; commentId: string }
+  /** The open moment comment ended on its own: a long quiet, or the longest a comment may be. */
+  | { type: 'commentEnded'; reason: 'silence' | 'cap' }
+  /** Still paused after a comment ended on its own: a new comment starts here. */
+  | { type: 'commentResumed'; commentId: string }
   /**
    * The reviewer scrolled back from the end screen. Paused means listening, so the player
    * opens a moment comment on the frame they land on and passes its id.
@@ -99,6 +109,7 @@ export const initialState: ReviewState = {
   practice: null,
   micChecked: false,
   practised: false,
+  held: null,
 };
 
 /**
@@ -190,7 +201,15 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
       if (s.screen === 'player' && s.playing) return s;
       // Play on the practice card starts the practice; after the practice pause, the real thing.
       const practice = s.practice === 'coach' || s.practice === 'intro' ? 'coach' : null;
-      return { ...s, screen: 'player', playing: true, commentId: null, zoom: null, practice };
+      return {
+        ...s,
+        screen: 'player',
+        playing: true,
+        commentId: null,
+        zoom: null,
+        practice,
+        held: null,
+      };
     }
 
     case 'pause':
@@ -207,7 +226,15 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
 
     case 'ended':
       if (s.screen !== 'player') return s;
-      return { ...s, screen: 'end', playing: false, commentId: null, zoom: null, practice: null };
+      return {
+        ...s,
+        screen: 'end',
+        playing: false,
+        commentId: null,
+        zoom: null,
+        practice: null,
+        held: null,
+      };
 
     case 'scrollBack':
       if (s.screen !== 'end') return s;
@@ -217,11 +244,12 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
         playing: false,
         commentId: a.commentId ?? null,
         zoom: null,
+        held: null,
       };
 
     case 'playFailed':
       if (s.screen !== 'player' || !s.playing) return s;
-      return { ...s, playing: false, commentId: null, zoom: null };
+      return { ...s, playing: false, commentId: null, zoom: null, held: null };
 
     case 'shareMore':
       if (s.screen !== 'end') return s;
@@ -230,6 +258,14 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
     case 'generalFinished':
       if (s.screen !== 'general') return s;
       return { ...s, screen: 'end', commentId: null };
+
+    case 'commentEnded':
+      if (s.screen !== 'player' || s.playing || s.commentId === null) return s;
+      return { ...s, commentId: null, zoom: null, held: a.reason };
+
+    case 'commentResumed':
+      if (s.screen !== 'player' || s.playing || s.held === null) return s;
+      return { ...s, commentId: a.commentId, held: null };
 
     case 'commentRestarted':
       if (s.commentId === null || (s.screen !== 'player' && s.screen !== 'general')) return s;
@@ -261,6 +297,7 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
         commentId: null,
         zoom: null,
         practice: null,
+        held: null,
       };
 
     default:
