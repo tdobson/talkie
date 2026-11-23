@@ -210,7 +210,7 @@ function releaseLockOnExit(): void {
   const holder = globalThis as { [RELEASE_KEY]?: boolean };
   if (holder[RELEASE_KEY]) return;
   holder[RELEASE_KEY] = true;
-  const path = join(config().dataDir, LOCK_NAME);
+  const path = join(/* turbopackIgnore: true */ config().dataDir, LOCK_NAME);
   process.once('exit', () => {
     try {
       const held = JSON.parse(readFileSync(path, 'utf8')) as { pid?: number };

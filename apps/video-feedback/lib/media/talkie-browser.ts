@@ -90,7 +90,7 @@ export async function openTalkieBrowser(
   opts: OpenTalkieBrowserOptions = {}
 ): Promise<ChromiumTalkieBrowser> {
   const executable = opts.executablePath ?? chromiumPath();
-  if (!existsSync(executable)) throw new ChromiumMissingError();
+  if (!existsSync(/* turbopackIgnore: true */ executable)) throw new ChromiumMissingError();
   const pageDir = opts.pageDir ?? renderPageDir();
   const { signal } = opts;
   const openTimeoutMs = opts.openTimeoutMs ?? TALKIE_FRAME_TIMEOUT_MS;

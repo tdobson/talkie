@@ -27,7 +27,7 @@ type HeldHolder = { [HELD]?: boolean };
 export function holdsLock(): boolean {
   return (globalThis as HeldHolder)[HELD] === true;
 }
-const lockPath = () => join(config().dataDir, LOCK_NAME);
+const lockPath = () => join(/* turbopackIgnore: true */ config().dataDir, LOCK_NAME);
 
 /** When the process started, as Linux records it, or null where there is no /proc. */
 function startOf(pid: number): string | null {
