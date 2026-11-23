@@ -11,7 +11,24 @@ export const TARGET_LUFS = -16;
  * True-peak limiting at 4x the sample rate (from the GSE lessons): a limiter working on 48 kHz samples
  * misses the peaks between them. 0.63 is about -4 dBFS, which leaves room for what the lossy codecs add.
  */
-const LIMITER = 'aresample=192000,alimiter=limit=0.63:level=disabled,aresample=48000';
+const LIMIT = 0.63;
+const limiter = (limit: number) =>
+  `aresample=192000,alimiter=limit=${limit.toFixed(4)}:level=disabled,aresample=48000`;
+/** The most an encode may peak at, in dBTP. */
+export const MAX_TRUE_PEAK = -1;
+/** Most times an encode that overshoots is limited lower and encoded again. */
+const MAX_PEAK_RETRIES = 4;
+/** Aim this far under MAX_TRUE_PEAK when an encode is limited lower, in dB. */
+const PEAK_MARGIN_DB = 0.3;
+/**
+ * ffmpeg's native AAC encoder at 64k mono. Temporal noise shaping is off: with it on, the encoder
+ * put a burst of six samples swinging to +/-1.1 full scale (+3.6 dBTP) into the 64 min GSE
+ * narration at 1285.85 s, from PCM limited to -4 dBFS that encodes cleanly to Opus. Which frame
+ * bursts depends on the gain by hundredths of a dB; with TNS off the same PCM peaks at -2.3 dBTP and
+ * the loudness does not move.
+ */
+export const AAC_ARGS = ['-c:a', 'aac', '-b:a', '64k', '-aac_tns', '0', '-ac', '1'];
+const OPUS_ARGS = ['-c:a', 'libopus', '-b:a', '32k', '-ac', '1'];
 /** Keep ffmpeg from writing its version, dates or random stream ids, so the same input gives the same bytes. */
 const BITEXACT = ['-map_metadata', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact'];
 const QUIET = ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y'];
@@ -78,7 +95,7 @@ export async function masterNarration(
         '-i',
         joined,
         '-af',
-        `volume=${gain.toFixed(2)}dB,${LIMITER}`,
+        `volume=${gain.toFixed(2)}dB,${limiter(LIMIT)}`,
         ...BITEXACT,
         ...wav,
         mastered,
@@ -110,41 +127,60 @@ export async function masterNarration(
     await mkdir(dir, { recursive: true });
     const opus = join(dir, `narration.${opusContainer}`);
     const aac = join(dir, 'narration.m4a');
-    await runLow('ffmpeg', [
-      ...QUIET,
-      '-i',
-      mastered,
-      ...BITEXACT,
-      '-c:a',
-      'libopus',
-      '-b:a',
-      '32k',
-      '-ac',
-      '1',
-      '-f',
-      opusContainer,
-      opus,
-    ]);
-    await runLow('ffmpeg', [
-      ...QUIET,
-      '-i',
-      mastered,
-      ...BITEXACT,
-      '-c:a',
-      'aac',
-      '-b:a',
-      '64k',
-      '-ac',
-      '1',
-      '-movflags',
-      '+faststart',
-      '-f',
-      'ipod',
-      aac,
-    ]);
+    const encode = (from: string, to: string, codec: string[], format: string[]) =>
+      runLow('ffmpeg', [...QUIET, '-i', from, ...BITEXACT, ...codec, ...format, to]);
+    await encodeUnderPeak(mastered, opus, work, (from, to) =>
+      encode(from, to, OPUS_ARGS, ['-f', opusContainer])
+    );
+    await encodeUnderPeak(mastered, aac, work, (from, to) =>
+      encode(from, to, AAC_ARGS, ['-movflags', '+faststart', '-f', 'ipod'])
+    );
     return { opus, aac, seconds: samples.length / sampleRate, ...loudness };
   } finally {
     await rm(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Encode `mastered` to `out` and keep its true peak at or below -1 dBTP. A lossy codec adds
+ * quantisation noise, which can put new peaks above the limited PCM (more so on broadband sound).
+ * When the encode overshoots, limit the mastered PCM lower by the overshoot and encode again. Only
+ * the peaks move, so the loudness stays put, which a gain trim of the same size would not do.
+ * After MAX_PEAK_RETRIES the last encode is kept and the qa true peak gate reports it.
+ */
+async function encodeUnderPeak(
+  mastered: string,
+  out: string,
+  work: string,
+  encode: (from: string, to: string) => Promise<unknown>
+): Promise<void> {
+  await encode(mastered, out);
+  let limit = LIMIT;
+  const lower = join(work, 'lower.wav');
+  for (let retry = 0; retry < MAX_PEAK_RETRIES; retry++) {
+    const { truePeak } = await measureLoudness(out);
+    if (!(truePeak > MAX_TRUE_PEAK)) {
+      return;
+    }
+    limit *= 10 ** (-(truePeak - MAX_TRUE_PEAK + PEAK_MARGIN_DB) / 20);
+    await runLow('ffmpeg', [
+      ...QUIET,
+      '-i',
+      mastered,
+      '-af',
+      limiter(limit),
+      ...BITEXACT,
+      '-ar',
+      '48000',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      '-f',
+      'wav',
+      lower,
+    ]);
+    await encode(lower, out);
   }
 }
 
