@@ -42,18 +42,26 @@ try {
   await page.goto(reviewUrl);
   await page.fill(tid('name-input'), 'Smoke test');
   await page.click(tid('start-button'));
-  await page.click(tid('mic-continue'));
+  // The microphone is only explained when the browser has not already allowed it.
+  const first = await page.waitForSelector(`${tid('mic-continue')}, ${tid('mic-check')}`, {
+    timeout: 15_000,
+  });
+  if ((await first.getAttribute('data-testid')) === 'mic-continue') await first.click();
   // The mic check has no button: it moves on by itself once it hears the fake microphone.
   await page.waitForSelector(tid('mic-heard'), { timeout: 15_000 });
-  // The practice run: the film starts by itself. Pause, let the fake microphone talk until
-  // "Got that", and the film starts again from the beginning. Nothing of this is saved.
+  // The practice run: a card explains it, Start practice plays the film, pause, and as soon as
+  // the fake microphone talks it says "Got that" and the film starts again from the beginning.
+  // Nothing of this is saved.
   const playing = `${tid('play-pause')}[aria-label="Pause"]`;
+  await page.waitForSelector(`${tid('practice-start')}:not([disabled]):not([data-disabled])`, {
+    timeout: 30_000,
+  });
+  await page.click(tid('practice-start'));
   await page.waitForSelector(tid('coach-mark'), { timeout: 20_000 });
   await page.waitForSelector(playing, { timeout: 20_000 });
   await page.keyboard.press('Space');
   await page.waitForSelector(tid('practice-listening'), { timeout: 10_000 });
-  // In production "Got that" needs 600 ms of quiet, and the fake microphone loops with shorter
-  // gaps, so it may never come. Then press play, which skips the practice the same way.
+  // If the fake microphone is not heard, press play, which skips the practice the same way.
   const gotThat = await page
     .waitForSelector(tid('practice-got-that'), { timeout: 8_000 })
     .then(() => true)
