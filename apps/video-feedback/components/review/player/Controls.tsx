@@ -9,6 +9,8 @@ import {
   IconMinimize,
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
+  IconRewindBackward10,
+  IconRewindForward5,
   IconVolume,
   IconVolumeOff,
 } from '@tabler/icons-react';
@@ -21,6 +23,10 @@ import classes from './player.module.css';
  * text, a tooltip or an ARIA value.
  */
 export const SCROLL_STEPS = 10_000;
+
+/** How far the back and forward buttons jump, in seconds. */
+export const SKIP_BACK = 10;
+export const SKIP_FORWARD = 5;
 
 export interface ControlsProps {
   currentTime: number;
@@ -42,6 +48,8 @@ export interface ControlsProps {
   onPlayPause: () => void;
   /** New position in seconds. */
   onSeek: (time: number) => void;
+  /** Jump by this many seconds: negative is back. */
+  onSkip: (seconds: number) => void;
   onVolume: (volume: number) => void;
   onFullscreen: () => void;
   onDone: () => void;
@@ -68,6 +76,7 @@ export function Controls({
   onCaptions,
   onPlayPause,
   onSeek,
+  onSkip,
   onVolume,
   onFullscreen,
   onDone,
@@ -82,6 +91,17 @@ export function Controls({
   return (
     <div className={classes.controls}>
       <div className={classes.controlRow}>
+        <ActionIcon
+          size="lg"
+          variant="subtle"
+          color="gray.3"
+          aria-label={copy.player.back(SKIP_BACK)}
+          onClick={() => onSkip(-SKIP_BACK)}
+          disabled={!known}
+          data-testid={T.skipBack}
+        >
+          <IconRewindBackward10 size={24} />
+        </ActionIcon>
         <div className={classes.playPauseSlot}>
           <ActionIcon
             size="xl"
@@ -106,6 +126,17 @@ export function Controls({
             </div>
           )}
         </div>
+        <ActionIcon
+          size="lg"
+          variant="subtle"
+          color="gray.3"
+          aria-label={copy.player.forward(SKIP_FORWARD)}
+          onClick={() => onSkip(SKIP_FORWARD)}
+          disabled={!known}
+          data-testid={T.skipForward}
+        >
+          <IconRewindForward5 size={24} />
+        </ActionIcon>
         <Slider
           className={classes.scroll}
           min={0}

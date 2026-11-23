@@ -1,13 +1,12 @@
 import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { GET as getVideoRoute } from '@/app/api/r/[token]/video/route';
 import { filmDir, sourcePath, versionDir } from '@/lib/storage/paths';
 import { createVideo, saveVideo } from '@/lib/storage/repo';
 import type { VideoRecord } from '@/lib/types';
 import { TALKIE_MINI_DIR } from '@/test/helpers/talkieFixture';
 import { withTmpData } from '@/test/helpers/tmpData';
-import { GET } from './route';
+import { getFilmFile, getVideo } from './media-handlers';
 
 let cleanup: () => Promise<void>;
 let video: VideoRecord;
@@ -39,7 +38,7 @@ interface Opts {
   acceptEncoding?: string;
 }
 
-/** Calls the route the way Next does: the catch-all arrives as decoded path segments. */
+/** Calls the handler the way the route does: the catch-all arrives as decoded path segments. */
 function get(path: string | string[], opts: Opts = {}): Promise<Response> {
   const { version = '2', range, token = video.token, acceptEncoding } = opts;
   const segments = typeof path === 'string' ? path.split('/') : path;
@@ -48,7 +47,7 @@ function get(path: string | string[], opts: Opts = {}): Promise<Response> {
   if (range) headers.Range = range;
   if (acceptEncoding) headers['Accept-Encoding'] = acceptEncoding;
   const req = new Request(url, { headers });
-  return GET(req, { params: Promise.resolve({ token, version, path: segments }) });
+  return getFilmFile(req, token, version, segments);
 }
 
 const fixture = (path: string) => readFile(join(TALKIE_MINI_DIR, path));
@@ -60,6 +59,8 @@ it('serves talkie.json', async () => {
   expect(res.headers.get('Content-Type')).toBe('application/json');
   expect(res.headers.get('Cache-Control')).toBe('private, max-age=3600');
   expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  expect(res.headers.get('Content-Security-Policy')).toContain('sandbox');
+  expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
   expect((await body(res)).equals(await fixture('talkie.json'))).toBe(true);
 });
 
@@ -173,9 +174,10 @@ it('has the video route 404 for a talkie version', async () => {
   // Even with a source.mp4 sitting there, the recorded kind decides.
   await writeFile(sourcePath(video.videoId, 2), 'mp4 bytes');
   const call = (version: number) =>
-    getVideoRoute(new Request(`http://localhost/api/r/${video.token}/video?version=${version}`), {
-      params: Promise.resolve({ token: video.token }),
-    });
+    getVideo(
+      new Request(`http://localhost/api/r/${video.token}/video?version=${version}`),
+      video.token
+    );
   expect((await call(2)).status).toBe(404);
   expect((await call(1)).status).toBe(200);
 });

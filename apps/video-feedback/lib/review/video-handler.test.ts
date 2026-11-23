@@ -4,7 +4,7 @@ import { sourcePath } from '@/lib/storage/paths';
 import { createVideo, saveVideo } from '@/lib/storage/repo';
 import type { VideoRecord } from '@/lib/types';
 import { withTmpData } from '@/test/helpers/tmpData';
-import { GET } from './route';
+import { getVideo } from './media-handlers';
 
 const bytes = Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 251));
 
@@ -29,7 +29,7 @@ function get(query: string, range?: string, token = video.token): Promise<Respon
   const req = new Request(`http://localhost/api/r/${token}/video${query}`, {
     headers: range ? { Range: range } : {},
   });
-  return GET(req, { params: Promise.resolve({ token }) });
+  return getVideo(req, token);
 }
 
 async function body(res: Response): Promise<Buffer> {

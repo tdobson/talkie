@@ -54,6 +54,10 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 - A running clip render is not pre-empted by new comments.
 - Wording when the microphone disappears during the mic check.
 - Fold `lib/review/additions.ts` into the shared copy and test ids (planned in Talkie review Task 2.1).
+- The e2e test `silent pause is stored but marked empty @silence` fails most runs, with or without
+  recent changes (4 of 4 with `--repeat-each 4` on 2026-11-23): the mic check often misses the fake
+  microphone's one "hello" at the start of `e2e-hello-silence.wav`. Needs the hello repeated, or the
+  check started before the file plays.
 
 ## Talkie review in the feedback tool
 
@@ -71,6 +75,10 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 
 ## Done
 
+- 2026-11-23: back 10 s and forward 5 s buttons either side of play and pause (mp4 and Talkie),
+  logged as `seek` with `via: "button"`. And Safari can seek again: the video and film files now go
+  out with `Content-Length` (Pages Router routes, as Next drops the header from App Router routes).
+  Without it, at internet speed, Safari saw an endless stream and every seek went back to the start.
 - 2026-11-22: SVG gradients and clip paths are accepted (branch `feat/svg-gradients-clips`). Linear and
   radial gradients as fills and strokes become Lottie `gf` and `gs`; clip paths become layer masks, with
   precomps under fades. Unsupported forms (reflect and repeat, masks, filters, patterns, `<style>` sheets,

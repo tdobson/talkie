@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CaptureEvent, Transcript } from '@/lib/types';
+import type { CaptureEvent, SeekVia, Transcript } from '@/lib/types';
 import {
   detectDwells,
   pointerAt,
@@ -32,7 +32,7 @@ const click = (t: number, x: number, y: number): CaptureEvent => ({
   vt: 12.4,
   button: 0,
 });
-const seek = (t: number, from: number, to: number, via: 'scrollbar' | 'key'): CaptureEvent => ({
+const seek = (t: number, from: number, to: number, via: SeekVia): CaptureEvent => ({
   t,
   type: 'seek',
   from,
@@ -125,6 +125,19 @@ it('reads pointer, video time and zoom state at a given time', () => {
   expect(zoomAt(events, 8499)).toBeNull();
   expect(zoomAt(events, 9000)).toEqual({ scale: 2.5, originX: 0.48, originY: 0.81 });
   expect(zoomAt(events, 9500)).toBeNull();
+});
+
+it('calls a press of the back button a jump, and a run of presses one jump', () => {
+  const ev: CaptureEvent[] = [seek(1000, 30, 20, 'button'), seek(1300, 20, 10, 'button')];
+  const seeks = selectMoments({
+    ...base,
+    pausedAtVideoTime: 30,
+    events: ev,
+    transcript: null,
+  }).filter((x) => x.kinds.includes('seek'));
+  expect(seeks).toHaveLength(1);
+  expect(seeks[0].vt).toBe(10);
+  expect(seeks[0].reasons.some((r) => r.startsWith('jumped to'))).toBe(true);
 });
 
 it('collapses a scroll-bar drag into one seek moment at the frame it settled on', () => {

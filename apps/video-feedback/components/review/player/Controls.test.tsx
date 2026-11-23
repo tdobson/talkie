@@ -8,6 +8,7 @@ function makeHandlers() {
     volume: 1,
     onPlayPause: vi.fn(),
     onSeek: vi.fn(),
+    onSkip: vi.fn(),
     onVolume: vi.fn(),
     onFullscreen: vi.fn(),
     onDone: vi.fn(),
@@ -83,6 +84,21 @@ describe('Controls', () => {
     render(<Controls currentTime={0} duration={0} playing={false} {...handlers} />);
     const thumb = screen.getByTestId(T.scrollBar).querySelector('[role="slider"]') as HTMLElement;
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    expect(handlers.onSeek).not.toHaveBeenCalled();
+    expect(screen.getByTestId(T.skipBack)).toBeDisabled();
+    expect(screen.getByTestId(T.skipForward)).toBeDisabled();
+  });
+
+  it('jumps back 10 seconds and forward 5, named for what they do', async () => {
+    const handlers = makeHandlers();
+    render(<Controls currentTime={450} duration={900} playing {...handlers} />);
+    const back = screen.getByRole('button', { name: copy.player.back(10) });
+    const forward = screen.getByRole('button', { name: copy.player.forward(5) });
+    expect(back).toHaveAttribute('data-testid', T.skipBack);
+    expect(forward).toHaveAttribute('data-testid', T.skipForward);
+    await userEvent.click(back);
+    await userEvent.click(forward);
+    expect(handlers.onSkip.mock.calls).toEqual([[-10], [5]]);
     expect(handlers.onSeek).not.toHaveBeenCalled();
   });
 

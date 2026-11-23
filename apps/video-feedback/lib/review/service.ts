@@ -37,6 +37,7 @@ import type {
   MissingChunksResult,
   PlayerInfo,
   Rect,
+  SeekVia,
   SessionRecord,
   VideoRecord,
 } from '@/lib/types';
@@ -216,7 +217,7 @@ function parseMeta(
 
 /** A scene id comes from the film; anything longer than this is not one. */
 const MAX_SCENE_ID_LENGTH = 200;
-const SEEK_VIA: ReadonlySet<unknown> = new Set(['scrollbar', 'key']);
+const SEEK_VIA: ReadonlySet<unknown> = new Set(['scrollbar', 'key', 'button']);
 const ZOOM_STATES: ReadonlySet<unknown> = new Set(['start', 'end']);
 const VISIBILITY_STATES: ReadonlySet<unknown> = new Set(['hidden', 'visible', 'blur', 'focus']);
 
@@ -242,7 +243,7 @@ function parseEvent(e: unknown): CaptureEvent | null {
     case 'seek': {
       const { from, to, via } = e;
       if (!isFiniteNumber(from) || !isFiniteNumber(to) || !SEEK_VIA.has(via)) return null;
-      return { t, type: 'seek', from, to, via: via as 'scrollbar' | 'key' };
+      return { t, type: 'seek', from, to, via: via as SeekVia };
     }
     case 'zoom': {
       const { state, scale, originX, originY } = e;

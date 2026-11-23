@@ -64,3 +64,36 @@ test('arrow keys step frames only while paused and hold-to-zoom logs zoom events
   expect(done.events.some((e) => e.type === 'zoomPan')).toBe(true);
   expect(done.files.some((f) => /^render\/moment-\d{2}-zoom\.jpg$/.test(f))).toBe(true);
 });
+
+test('the back 10 and forward 5 buttons jump and are logged as seeks while paused', async ({
+  page,
+}) => {
+  await startReview(page, 'Sam Skip');
+  const video = page.getByTestId(T.video);
+  const time = () => video.evaluate((v: HTMLVideoElement) => v.currentTime);
+  const length = await video.evaluate((v: HTMLVideoElement) => v.duration);
+
+  // Playing: back from about a second lands on the start, and nothing is recorded.
+  await page.waitForTimeout(1000);
+  await page.getByTestId(T.skipBack).click();
+  await expect.poll(time).toBeLessThan(0.5);
+  await expect(page.getByTestId(T.listening)).toHaveCount(0);
+
+  // Paused: forward 5 (the film is 4 seconds, so to its end), then back 10 (to the start).
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId(T.listening)).toBeVisible();
+  await page.getByTestId(T.skipForward).click();
+  await expect.poll(time).toBeCloseTo(length, 1);
+  await page.getByTestId(T.skipBack).click();
+  await expect.poll(time).toBe(0);
+  await page.waitForTimeout(1500);
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId(T.savedToast)).toBeVisible({ timeout: 20_000 });
+
+  const comments = await readSessionComments('Sam Skip');
+  const first = comments.find((c) => c.meta.kind === 'moment');
+  if (!first) throw new Error('no moment comment');
+  const done = await waitForState(first.ref, 'done');
+  const seeks = done.events.filter((e) => e.type === 'seek');
+  expect(seeks.map((e) => (e.type === 'seek' ? e.via : null))).toEqual(['button', 'button']);
+});

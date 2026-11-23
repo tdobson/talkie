@@ -351,6 +351,31 @@ describe('Player', () => {
     expect(seeks[1]).toMatchObject({ via: 'key' });
   });
 
+  it('the back and forward buttons jump 10 and 5 seconds, logged as seeks only while paused', async () => {
+    const { events, video } = setup();
+    playPause();
+    video.currentTime = 8;
+    fireEvent.click(screen.getByTestId(T.skipBack));
+    expect(video.currentTime).toBe(0);
+    fireEvent.click(screen.getByTestId(T.skipForward));
+    expect(video.currentTime).toBe(5);
+    expect(screen.queryByTestId(T.listening)).toBeNull();
+
+    playPause();
+    await settle();
+    fireEvent.click(screen.getByTestId(T.skipForward));
+    expect(video.currentTime).toBe(10);
+    fireEvent.click(screen.getByTestId(T.skipBack));
+    expect(video.currentTime).toBe(0);
+    fireEvent.keyDown(document.body, { key: ' ', code: 'Space' });
+    await settle();
+    const seeks = events().filter((e) => e.type === 'seek');
+    expect(seeks).toEqual([
+      expect.objectContaining({ via: 'button', from: 5, to: 10 }),
+      expect.objectContaining({ via: 'button', from: 10, to: 0 }),
+    ]);
+  });
+
   it('never steps past the ends of the video', async () => {
     const { video } = setup();
     playPause();

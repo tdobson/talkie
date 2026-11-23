@@ -65,6 +65,8 @@ export const copy = {
       "Still can't reach a microphone. Check it's plugged in and allowed, then try again.",
     captionsOn: 'Captions on',
     captionsOff: 'Captions off',
+    back: (seconds: number) => `Back ${seconds} seconds`,
+    forward: (seconds: number) => `Forward ${seconds} seconds`,
   },
   practice: {
     coachKeys: 'Press pause, or the space bar, whenever you want to say something.',

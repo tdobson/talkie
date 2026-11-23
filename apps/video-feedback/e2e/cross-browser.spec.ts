@@ -43,3 +43,31 @@ test('welcome renders and the video plays and pauses', async ({ page, browserNam
   expect(played.paused).toBe(true);
   expect(played.time).toBeGreaterThan(0);
 });
+
+// Safari treats media sent without Content-Length, at internet speed, as a live stream: no
+// length and no seeking. Next drops the header from App Router routes, so the media routes are
+// Pages Router routes. This checks the real server still sends it.
+test('the review video and a film narration are sent with Content-Length', async ({ request }) => {
+  const { token, version, talkie } = state();
+  const video = await request.get(`/api/r/${token}/video?version=${version}`, {
+    headers: { Range: 'bytes=0-' },
+  });
+  expect(video.status()).toBe(206);
+  const total = Number(video.headers()['content-range']?.split('/')[1]);
+  expect(total).toBeGreaterThan(0);
+  expect(video.headers()['content-length']).toBe(String(total));
+  expect(video.headers()['x-frame-options']).toBe('DENY');
+
+  const whole = await request.head(`/api/r/${token}/video?version=${version}`);
+  expect(whole.headers()['content-length']).toBe(String(total));
+
+  const film = `/api/r/${talkie.token}/film/1`;
+  const meta = (await (await request.get(`${film}/talkie.json`)).json()) as {
+    audio: { src: string }[];
+  };
+  for (const { src } of meta.audio) {
+    const audio = await request.get(`${film}/${src}`, { headers: { Range: 'bytes=0-1' } });
+    expect(audio.status()).toBe(206);
+    expect(audio.headers()['content-length']).toBe('2');
+  }
+});

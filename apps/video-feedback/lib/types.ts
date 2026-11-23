@@ -95,6 +95,10 @@ export interface SceneWarningEvent extends Base {
   type: 'sceneWarning';
   sceneId: string;
 }
+
+/** What moved the playhead: the scroll bar, an arrow key, or the back and forward buttons. */
+export type SeekVia = 'scrollbar' | 'key' | 'button';
+
 export type CaptureEvent =
   | (Base & {
       type: 'pointer';
@@ -113,7 +117,7 @@ export type CaptureEvent =
       button: number;
       zoomed?: boolean;
     })
-  | (Base & { type: 'seek'; from: number; to: number; via: 'scrollbar' | 'key' })
+  | (Base & { type: 'seek'; from: number; to: number; via: SeekVia })
   | (Base & {
       type: 'zoom';
       state: 'start' | 'end';

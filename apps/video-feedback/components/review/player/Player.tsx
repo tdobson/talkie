@@ -23,6 +23,7 @@ import type {
   MediaKind,
   PlayerInfo,
   Rect,
+  SeekVia,
   ZoomState,
 } from '@/lib/types';
 import { useHoldToZoom } from '../hooks/useHoldToZoom';
@@ -545,7 +546,7 @@ export function Player({
   }, [pause, play]);
 
   const seekTo = useCallback(
-    (to: number, via: 'scrollbar' | 'key') => {
+    (to: number, via: SeekVia) => {
       const adapter = adapterRef.current;
       if (!adapter) return;
       const length = adapter.duration;
@@ -589,6 +590,15 @@ export function Player({
     (delta: number) => {
       const adapter = adapterRef.current;
       if (adapter) seekTo(adapter.currentTime + delta, 'key');
+    },
+    [seekTo]
+  );
+
+  /** The back and forward buttons: a jump of some seconds from wherever the film is now. */
+  const skip = useCallback(
+    (seconds: number) => {
+      const adapter = adapterRef.current;
+      if (adapter) seekTo(adapter.currentTime + seconds, 'button');
     },
     [seekTo]
   );
@@ -934,6 +944,7 @@ export function Player({
           onCaptions={() => setCaptionsOn((on) => !on)}
           onPlayPause={toggle}
           onSeek={(time) => seekTo(time, 'scrollbar')}
+          onSkip={skip}
           onVolume={changeVolume}
           onFullscreen={toggleFullscreen}
           onDone={done}

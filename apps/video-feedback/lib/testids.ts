@@ -24,6 +24,8 @@ export const T = {
   videoStage: 'video-stage', // the element pointer coords are relative to
   video: 'video',
   playPause: 'play-pause',
+  skipBack: 'skip-back',
+  skipForward: 'skip-forward',
   scrollBar: 'scroll-bar',
   volume: 'volume',
   fullscreen: 'fullscreen',

@@ -150,11 +150,13 @@ export function selectMoments(input: SelectInput): Moment[] {
   );
   seeks.forEach((s, i) => {
     const next = seeks[i + 1];
-    // A run of arrow-key steps, or the ticks of one scroll-bar drag, is one seek: only the
-    // frame the run settles on was looked at.
+    // A run of arrow-key steps, of presses of one skip button, or the ticks of one scroll-bar
+    // drag is one seek: only the frame the run settles on was looked at.
     const collapsed = next?.via === s.via && next.t - s.t <= KEY_STEP_COLLAPSE_MS;
-    if (!collapsed)
-      cands.push(at(s.t, 'seek', `scrolled to ${formatVideoTime(s.to)}`, undefined, s.to));
+    if (!collapsed) {
+      const how = s.via === 'button' ? 'jumped' : 'scrolled';
+      cands.push(at(s.t, 'seek', `${how} to ${formatVideoTime(s.to)}`, undefined, s.to));
+    }
   });
 
   let zoomStart: Candidate | null = null;
