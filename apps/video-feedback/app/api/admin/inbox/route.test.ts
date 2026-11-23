@@ -72,6 +72,11 @@ it('lists the inbox, imports a file, and lists the video with its review URL', a
   expect(imported.status).toBe(200);
   const result = (await imported.json()) as ImportResult;
   expect(result).toMatchObject({ ok: true, version: 1 });
+  // The answer says where to review it and how to watch for the feedback.
+  const after = result as ImportResult & { reviewUrl: string; next: string[]; docs: string };
+  expect(after.reviewUrl).toMatch(/^https:\/\/fb\.example\.com\/r\/[\w-]{43}$/);
+  expect(after.next.join(' ')).toContain(`watch-feedback.mjs ${result.ok ? result.videoId : ''}`);
+  expect(after.docs).toMatch(/review-platform-for-agents\.md#watch-feedback/);
 
   const videos = await getVideos(new Request('http://x/api/admin/videos'), {});
   expect(videos.status).toBe(200);

@@ -1,3 +1,4 @@
+import { afterImport } from '@/lib/admin/after-import';
 import { withAdmin } from '@/lib/auth/guard';
 import type { ImportRequest, ImportResult } from '@/lib/types';
 import { importFromInbox, listInbox } from '@/lib/videos/import';
@@ -21,5 +22,9 @@ export const POST = withAdmin<unknown>(async (req) => {
   }
   // importFromInbox validates the shape itself.
   const result = await importFromInbox(body as ImportRequest);
-  return Response.json(result, { status: result.ok ? 200 : 400, headers: noStore });
+  if (!result.ok) return Response.json(result, { status: 400, headers: noStore });
+  // The review link and a pointer to watching for feedback, so the agent that put the film up
+  // is prompted to listen for the replies.
+  const extra = await afterImport(result.videoId);
+  return Response.json({ ...result, ...extra }, { headers: noStore });
 });

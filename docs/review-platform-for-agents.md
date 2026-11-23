@@ -76,16 +76,29 @@ rsync -P --bwlimit=20000 dist/film.lottie geriatrix:/srv/video-feedback/data/inb
 curl -sS "${H[@]}" -H 'Content-Type: application/json' \
   -d '{"filename":"roof-v1.lottie","mode":"new","title":"Roof: how a batten gauge works"}' \
   $VF/api/admin/inbox
-# -> {"ok":true,"videoId":"roof-how-a-batten-gauge-works-x1y2","version":1}
+# -> {"ok":true,"videoId":"roof-how-a-batten-gauge-works-x1y2","version":1,
+#     "reviewUrl":"https://video-feedback.tdobson.net/r/...","next":[...],"docs":"..."}
 
 # ...or as the next version of a video that is already there (same review link):
 curl -sS "${H[@]}" -H 'Content-Type: application/json' \
   -d '{"filename":"roof-v2.lottie","mode":"version","videoId":"roof-how-a-batten-gauge-works-x1y2"}' \
   $VF/api/admin/inbox
 
-# 3. Get the review link.
+# 3. The review link is in the answer, as reviewUrl. To list them all again later:
 curl -sS "${H[@]}" $VF/api/admin/videos | jq -r '.[] | "\(.videoId)  \(.title)  \(.reviewUrl)"'
+
+# 4. Start a watcher now, in the background, so the feedback comes to you (see below).
+node apps/video-feedback/scripts/watch-feedback.mjs roof-how-a-batten-gauge-works-x1y2 \
+  --state ~/tmp/roof-watch.json --images ~/tmp/roof-stills >> ~/tmp/roof-feedback.jsonl &
 ```
+
+**Set up a watcher whenever you put something up.** You made the film, so you are the one who
+will want the feedback, and it can arrive any time: minutes later, or the next day, comment by
+comment while the reviewer is still watching. A watcher costs nothing while nobody is reviewing,
+and needs no model: it is a plain script that writes a line for each finished comment. Check its
+output when you come back to the work, or act on each line as it lands. Keep one per video; a new
+version of the same video is watched by the same watcher (`--version latest`). See "Watch
+feedback while the reviewer is still watching" below.
 
 A refused import answers `{"ok":false,"reason":"..."}` and leaves the file in the inbox. The reason
 says what is wrong (not H.264, not a Talkie film, a newer format version, too big).
