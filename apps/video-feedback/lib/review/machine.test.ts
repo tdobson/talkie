@@ -311,6 +311,15 @@ describe('review machine', () => {
       expect(reducer(listening, { type: 'commentEnded', reason: 'cap' }).held).toBe('cap');
     });
 
+    it('losing the tab focus ends it too, and coming back starts a new one', () => {
+      const held = reducer(listening, { type: 'commentEnded', reason: 'focus' });
+      expect(held).toMatchObject({ playing: false, commentId: null, held: 'focus' });
+      expect(reducer(held, { type: 'commentResumed', commentId: 'c2' })).toMatchObject({
+        commentId: 'c2',
+        held: null,
+      });
+    });
+
     it('a new comment can start from there, and play carries on as usual', () => {
       const held = reducer(listening, { type: 'commentEnded', reason: 'silence' });
       expect(reducer(held, { type: 'commentResumed', commentId: 'c2' })).toMatchObject({

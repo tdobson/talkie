@@ -6,7 +6,8 @@ import { defineConfig, devices } from '@playwright/test';
 // Lowest CPU and IO priority, however this run was started. See scripts/lower-priority.cjs.
 createRequire(import.meta.url)('../../scripts/lower-priority.cjs').lowerPriority();
 
-const PORT = 3123;
+// E2E_PORT lets a second checkout run its own test server beside this one.
+const PORT = Number(process.env.E2E_PORT ?? 3123);
 export const E2E_BASE_URL = `http://127.0.0.1:${PORT}`;
 // Shared by the global setup (which seeds it) and the server (which serves it).
 export const E2E_DATA_DIR = process.env.E2E_DATA_DIR ?? join(tmpdir(), 'video-feedback-e2e-data');

@@ -45,11 +45,15 @@ export interface ReviewState {
   practised: boolean;
   /**
    * Paused, but no longer recording: the comment ended on its own, after a long quiet
-   * (`silence`: talking again starts a new one) or at the longest a comment may be (`cap`: only
-   * Say more or play carries on). Null otherwise.
+   * (`silence`: talking again starts a new one), at the longest a comment may be (`cap`: only
+   * Say more or play carries on), or because the tab lost focus (`focus`: coming back to it
+   * starts a new one). Null otherwise.
    */
-  held: 'silence' | 'cap' | null;
+  held: HeldReason | null;
 }
+
+/** Why a paused comment stopped recording on its own. */
+export type HeldReason = 'silence' | 'cap' | 'focus';
 
 export type ReviewAction =
   | { type: 'detectedMobile' }
@@ -77,8 +81,11 @@ export type ReviewAction =
   | { type: 'generalFinished' }
   /** The open comment was closed and a new one started in its place (microphone reconnected). */
   | { type: 'commentRestarted'; commentId: string }
-  /** The open moment comment ended on its own: a long quiet, or the longest a comment may be. */
-  | { type: 'commentEnded'; reason: 'silence' | 'cap' }
+  /**
+   * The open moment comment ended on its own: a long quiet, the longest a comment may be, or
+   * the tab losing focus.
+   */
+  | { type: 'commentEnded'; reason: HeldReason }
   /** Still paused after a comment ended on its own: a new comment starts here. */
   | { type: 'commentResumed'; commentId: string }
   /**

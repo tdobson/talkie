@@ -12,6 +12,7 @@ import {
 } from '@/lib/constants';
 import { CommentLimit } from '@/lib/review/comment-limit';
 import { copy } from '@/lib/review/copy';
+import type { HeldReason } from '@/lib/review/machine';
 import { T } from '@/lib/testids';
 import { useMicLevel } from '../hooks/useMicLevel';
 import classes from './player.module.css';
@@ -73,14 +74,21 @@ export function CommentLimiter({
 /**
  * Paused, but not recording: the comment ended on its own. After a quiet spell, talking again
  * starts a new comment here; after the longest a comment may be, only Say more does (so a
- * conversation in the room does not keep recording). Play carries on watching either way.
+ * conversation in the room does not keep recording); after the tab lost focus, coming back to
+ * it (handled by the player) or Say more does. Play carries on watching either way.
  */
+const HELD_COPY: Record<HeldReason, { title: string; help: string }> = {
+  silence: { title: copy.player.heldSilenceTitle, help: copy.player.heldSilenceHelp },
+  cap: { title: copy.player.heldCapTitle, help: copy.player.heldCapHelp },
+  focus: { title: copy.player.heldFocusTitle, help: copy.player.heldFocusHelp },
+};
+
 export function CommentHeld({
   reason,
   stream,
   onSayMore,
 }: {
-  reason: 'silence' | 'cap';
+  reason: HeldReason;
   stream: MediaStream | null;
   onSayMore: () => void;
 }) {
@@ -102,12 +110,8 @@ export function CommentHeld({
       data-no-capture="true"
       data-testid={T.commentHeld}
     >
-      <div className={classes.listeningLabel}>
-        {reason === 'silence' ? copy.player.heldSilenceTitle : copy.player.heldCapTitle}
-      </div>
-      <div className={classes.help}>
-        {reason === 'silence' ? copy.player.heldSilenceHelp : copy.player.heldCapHelp}
-      </div>
+      <div className={classes.listeningLabel}>{HELD_COPY[reason].title}</div>
+      <div className={classes.help}>{HELD_COPY[reason].help}</div>
       <Button
         mt="xs"
         size="xs"
