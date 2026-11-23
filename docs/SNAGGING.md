@@ -75,6 +75,10 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 
 ## Done
 
+- 2026-11-23: admin has an Open button beside Copy link (new tab, to review it yourself). Agents can
+  watch a review as it happens: `scripts/watch-feedback.mjs` prints each comment once it is
+  processed, with its stills saved, and `GET .../media/<commentId>/<name>` serves one still on its
+  own. Documented in docs/review-platform-for-agents.md.
 - 2026-11-23: back 10 s and forward 5 s buttons either side of play and pause (mp4 and Talkie),
   logged as `seek` with `via: "button"`. And Safari can seek again: the video and film files now go
   out with `Content-Length` (Pages Router routes, as Next drops the header from App Router routes).

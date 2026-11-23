@@ -6,6 +6,7 @@ import { formatWhen, plural } from '@/lib/admin/format';
 import { T } from '@/lib/testids';
 import type { AdminVideoSummary } from '@/lib/types';
 import { CopyLinkButton } from './CopyLinkButton';
+import { OpenLinkButton } from './OpenLinkButton';
 
 interface Totals {
   sessions: number;
@@ -92,6 +93,7 @@ export function VideoTable({
                       {video.reviewUrl}
                     </Text>
                     <CopyLinkButton url={video.reviewUrl} />
+                    <OpenLinkButton url={video.reviewUrl} />
                   </Group>
                 </Table.Td>
               </Table.Tr>

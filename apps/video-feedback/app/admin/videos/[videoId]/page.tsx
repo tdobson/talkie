@@ -1,6 +1,7 @@
 import { Code, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { notFound } from 'next/navigation';
 import { CopyLinkButton } from '@/components/admin/CopyLinkButton';
+import { OpenLinkButton } from '@/components/admin/OpenLinkButton';
 import { NavAnchor } from '@/components/admin/NavAnchor';
 import { VersionCard } from '@/components/admin/VersionCard';
 import { summariseSessions } from '@/lib/admin/sessions';
@@ -33,6 +34,7 @@ export default async function AdminVideoPage({ params }: { params: Promise<{ vid
           <Group gap="sm">
             <Code>{video.reviewUrl}</Code>
             <CopyLinkButton url={video.reviewUrl} />
+            <OpenLinkButton url={video.reviewUrl} />
           </Group>
           <Text size="sm" c="dimmed">
             The link always opens the latest version (v{video.latestVersion}).

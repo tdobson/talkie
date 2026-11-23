@@ -55,6 +55,9 @@ test('admin imports from the inbox and downloads a zip with the feedback', async
   const video = videos.find((v) => v.title === 'Inbox film');
   if (!video) throw new Error('imported video missing from /api/admin/videos');
   const token = video.reviewUrl.split('/r/')[1];
+  const open = videoRow.getByTestId(T.adminOpenLink);
+  await expect(open).toHaveAttribute('href', video.reviewUrl);
+  await expect(open).toHaveAttribute('target', '_blank');
 
   await apiReview(request, { token, videoId: video.videoId }, 'Ada Api');
 

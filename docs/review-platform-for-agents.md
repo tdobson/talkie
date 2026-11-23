@@ -24,7 +24,8 @@ It takes two kinds of film:
 - **On:** copy the file into the inbox on geriatrix, then import it with one API call (new video, or
   the next version of one already there). You get a review link. See "Put a film up".
 - **Off:** download the feedback as `export.json` (for a model) or `export.zip` (with stills, and
-  clips if asked). See "Read the feedback". For a Talkie film the zip also holds its
+  clips if asked), or watch it arrive comment by comment while the reviewer is still going. See
+  "Read the feedback". For a Talkie film the zip also holds its
   `talkie.json` and captions, so scene ids map back to source. The film itself is not in it: you
   have it already.
 - **Delete:** there is no delete in the API. Ask Tim.
@@ -113,6 +114,45 @@ curl -sS -OJ "${H[@]}" "$VF/api/admin/videos/<videoId>/export.zip?version=latest
   `304` when nothing changed.
 - `&clips=1` adds a short reconstructed clip of each comment to the zip. `version=all` covers every
   version.
+
+### Watch feedback while the reviewer is still watching
+
+Each comment is transcribed and its stills drawn as soon as the reviewer finishes it (presses play
+again), not when they press Done. So you can read and act on feedback mid-session.
+`apps/video-feedback/scripts/watch-feedback.mjs` does the polling for you. It is plain Node (20 or
+newer, no dependencies, no model), so the same comments on the server always give the same output:
+
+```bash
+set -a; . ~/.config/video-feedback/service-token.env; set +a
+node apps/video-feedback/scripts/watch-feedback.mjs <videoId> \
+  --state ~/tmp/<videoId>-watch.json --images ~/tmp/<videoId>-stills
+```
+
+- It asks for `export.json?partial=1` every 20 s (`--every <seconds>`), sending the last `ETag`, so
+  a quiet video costs a `304`.
+- It prints one JSON line per event on stdout:
+  - `{"type":"comment", ...}` once a comment is finished: `done` (transcript and stills ready),
+    `empty` (no speech) or `failed`. The fields are those of a comment in `feedback.json`, below.
+  - `{"type":"session-done","sessionId":...,"reviewerName":...}` once a reviewer has pressed Done
+    and all their comments have been printed. That is the moment to read the whole review.
+- `--images <dir>` saves each comment's stills (overview, moments, zooms) to
+  `<dir>/<commentId>/` before the line is printed, and the line's `local` field maps each `media/`
+  path to its file.
+- `--state <file>` remembers what was printed, so a restart carries on where it stopped. A comment
+  is printed at least once: one cut off between printing and saving comes again.
+- `--new-only` skips what is already there on the first run. `--once` polls once and exits.
+- It exits `2` if the token is refused and `3` for an unknown video. Network trouble goes to
+  stderr and it keeps polling.
+
+Run it in the background and read its output as it grows, or pipe it into your own loop. Each
+`media/<commentId>/<name>` path in the export can also be fetched on its own:
+
+```bash
+curl -sS "${H[@]}" -o moment-01.jpg "$VF/api/admin/videos/<videoId>/media/<commentId>/moment-01.jpg"
+```
+
+A comment whose transcript or stills are reprocessed later is not printed again. Read
+`export.json` for the latest.
 
 What is in `feedback.json` (`ExportModel` in `apps/video-feedback/lib/export/model.ts`):
 

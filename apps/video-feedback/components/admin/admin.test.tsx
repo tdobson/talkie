@@ -5,6 +5,7 @@ import { DownloadButton } from './DownloadButton';
 import { inboxFile, sessionRow, summary, versionSummary } from './fixtures';
 import { ImportModal } from './ImportModal';
 import { InboxTable } from './InboxTable';
+import { OpenLinkButton } from './OpenLinkButton';
 import { ReprocessButton } from './ReprocessButton';
 import { SessionTable } from './SessionTable';
 import { VersionCard } from './VersionCard';
@@ -29,6 +30,10 @@ describe('VideoTable', () => {
       '/admin/videos/launch-film'
     );
     expect(screen.getByTestId(T.adminCopyLink)).toBeInTheDocument();
+    expect(screen.getByTestId(T.adminOpenLink)).toHaveAttribute(
+      'href',
+      'https://feedback.example.com/r/tok123'
+    );
   });
 
   it('uses the singular for one comment and shows pending work', () => {
@@ -63,6 +68,18 @@ describe('CopyLinkButton', () => {
     await user.click(button);
     await waitFor(() => expect(button).toHaveTextContent('Copied'));
     expect(await navigator.clipboard.readText()).toBe('https://feedback.example.com/r/tok123');
+  });
+});
+
+describe('OpenLinkButton', () => {
+  it('opens the review link in a new tab, without handing it this page', () => {
+    render(<OpenLinkButton url="https://feedback.example.com/r/tok123" />);
+    const link = screen.getByTestId(T.adminOpenLink);
+    expect(link.tagName).toBe('A');
+    expect(link).toHaveTextContent('Open');
+    expect(link).toHaveAttribute('href', 'https://feedback.example.com/r/tok123');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });
 

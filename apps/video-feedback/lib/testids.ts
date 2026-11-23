@@ -46,6 +46,7 @@ export const T = {
   invalidLink: 'invalid-link',
   adminVideoRow: 'admin-video-row',
   adminCopyLink: 'admin-copy-link',
+  adminOpenLink: 'admin-open-link',
   adminDownload: 'admin-download',
   adminClipsToggle: 'admin-clips-toggle',
   adminReprocess: 'admin-reprocess',
