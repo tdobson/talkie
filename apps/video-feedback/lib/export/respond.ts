@@ -1,6 +1,13 @@
 import { PassThrough, Readable } from 'node:stream';
-import { buildExportModel, type ExportModel, ExportNotFoundError, parseExportQuery } from './model';
-import { exportEtag, writeZip, zipFilename } from './zip';
+import {
+  buildExportModel,
+  type ExportModel,
+  ExportNotFoundError,
+  type ExportOptions,
+  parseExportQuery,
+} from './model';
+import { exportFingerprint } from './fingerprint';
+import { writeZip, zipFilename } from './zip';
 
 // The two admin export routes differ only in the body they send, so the query parsing and
 // the 202, 304, 400 and 404 answers live here.
@@ -31,6 +38,18 @@ function zipBody(model: ExportModel, opts: Parameters<typeof writeZip>[1]): Read
   return Readable.toWeb(pipe) as ReadableStream;
 }
 
+// Identical exports asked for at the same time share one build, so pollers cannot pile up.
+const building = new Map<string, ReturnType<typeof buildExportModel>>();
+function buildShared(videoId: string, opts: ExportOptions, now: Date) {
+  const key = JSON.stringify([videoId, opts]);
+  let build = building.get(key);
+  if (!build) {
+    build = buildExportModel(videoId, opts, now).finally(() => building.delete(key));
+    building.set(key, build);
+  }
+  return build;
+}
+
 /** Answers `GET export.zip` or `GET export.json` for one video. */
 export async function exportResponse(
   req: Request,
@@ -41,9 +60,17 @@ export async function exportResponse(
   const opts = parseExportQuery(new URL(req.url).searchParams);
   if (opts === null) return fail(400, 'invalid request');
 
+  // Asked again with nothing changed (the watcher polls like this): answer from file metadata
+  // alone, without building anything.
+  // An id that is not even well formed has no fingerprint: the build below says 404.
+  const etag = await exportFingerprint(videoId, opts).catch(() => null);
+  if (etag !== null && etagMatches(req.headers.get('if-none-match'), etag)) {
+    return new Response(null, { status: 304, headers: { ...revalidate, ETag: etag } });
+  }
+
   let model: Awaited<ReturnType<typeof buildExportModel>>;
   try {
-    model = await buildExportModel(videoId, opts, now);
+    model = await buildShared(videoId, opts, now);
   } catch (err) {
     if (err instanceof ExportNotFoundError) return fail(404, 'not found');
     throw err;
@@ -55,17 +82,13 @@ export async function exportResponse(
     );
   }
 
-  const etag = exportEtag(model, opts);
-  if (etagMatches(req.headers.get('if-none-match'), etag)) {
-    return new Response(null, { status: 304, headers: { ...revalidate, ETag: etag } });
-  }
   if (format === 'json') {
-    return Response.json(model, { headers: { ...revalidate, ETag: etag } });
+    return Response.json(model, { headers: { ...revalidate, ...(etag ? { ETag: etag } : {}) } });
   }
   return new Response(zipBody(model, opts), {
     headers: {
       ...revalidate,
-      ETag: etag,
+      ...(etag ? { ETag: etag } : {}),
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${zipFilename(model, now)}"`,
     },

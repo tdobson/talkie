@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isSafeRelativePath, type TalkieFilm, validateFilm } from '@talkie/format';
 import { mediaKindOf } from '@/lib/media-kind';
@@ -210,7 +210,35 @@ const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isF
  * Reads the film of a Talkie version. Null when it is missing or not valid: the export then
  * goes ahead without the Talkie fields rather than failing.
  */
+// A film version never changes once imported, so what is read from it is kept. Reading it
+// means opening (and unzipping) every scene; a poller would otherwise do that every time.
+const talkieCache = new Map<string, Promise<TalkieContext | null>>();
+const TALKIE_CACHE_SIZE = 16;
+
 async function loadTalkie(
+  videoId: string,
+  version: number,
+  fps: number
+): Promise<TalkieContext | null> {
+  // Keyed on the film file itself too: if it were ever replaced or removed, it is read again.
+  const film = await stat(join(filmDir(videoId, version), 'talkie.json')).catch(() => null);
+  const key = `${filmDir(videoId, version)}/${fps}/${film ? `${film.ino}:${film.mtimeMs}` : '-'}`;
+  let hit = talkieCache.get(key);
+  if (!hit) {
+    hit = readTalkie(videoId, version, fps);
+    // Not kept if it could not be read: it may be readable next time.
+    hit
+      .then((film) => film === null && talkieCache.delete(key))
+      .catch(() => talkieCache.delete(key));
+    if (talkieCache.size >= TALKIE_CACHE_SIZE) {
+      talkieCache.delete(talkieCache.keys().next().value as string);
+    }
+    talkieCache.set(key, hit);
+  }
+  return hit;
+}
+
+async function readTalkie(
   videoId: string,
   version: number,
   fps: number
