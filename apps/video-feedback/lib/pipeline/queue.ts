@@ -108,6 +108,7 @@ export class ProcessingQueue {
       }
       this.current = job;
       this.currentSince = Date.now();
+      await jobStarting();
       try {
         await this.process(job);
       } catch (err) {
@@ -183,6 +184,20 @@ async function runJob(job: Job): Promise<void> {
   await processComment(ref, { fromStep: resumeStep(status), includeClip: false });
   const after = await readStatus(ref);
   if (after && wantsClip(after)) getQueue().enqueue({ ...ref, clip: true } as CommentRef);
+}
+
+// Called as each job starts, before any file is touched: the worker publishes its status then,
+// so the server never takes a comment that has just started for an idle one.
+let onJobStart: () => Promise<void> = async () => {};
+export function setJobStartListener(fn: () => Promise<void>): void {
+  onJobStart = fn;
+}
+async function jobStarting(): Promise<void> {
+  try {
+    await onJobStart();
+  } catch {
+    // Telling the server is best effort; the job runs either way.
+  }
 }
 
 /** A clip render is started at most this many times. */

@@ -10,6 +10,7 @@ import {
   type ProcessingQueue,
   scanForPendingClips,
   scanForUnfinished,
+  setJobStartListener,
   startPipelineChores,
 } from './queue';
 import { readStatus, updateStatus } from './status';
@@ -117,6 +118,7 @@ export async function runWorker(
   const stallCheckMs = opts.stallCheckMs ?? 60_000;
   const lanes = getQueue();
   await startPipelineChores();
+  setJobStartListener(() => publishStatus(lanes));
 
   let busy = false;
   const tick = async () => {

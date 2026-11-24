@@ -84,15 +84,30 @@ public_ok() {
   return 1
 }
 
+# 0 once the comment-processing worker has written a fresh status since $1 (epoch seconds):
+# it took the pipeline lock and is looking for work. Up to 90 s: it waits for the old slot's
+# worker to stop first.
+worker_ok() {
+  local since=$1 at
+  for _ in $(seq 1 45); do
+    at="$(ssh "$HOST" "/usr/local/bin/node -e 'try{const s=require(\"$BASE/data/pipeline-status.json\");console.log(Math.floor(Date.parse(s.updatedAt)/1000))}catch{console.log(0)}'" || echo 0)"
+    (( at > since )) && { echo "processing worker running (status $(( $(date +%s) - at ))s old)"; return 0; }
+    sleep 2
+  done
+  echo "processing worker has not reported since the switch"
+  return 1
+}
+
 # Hands traffic from slot $1 to slot $2, which is running and healthy: stop $1, and the proxy
 # sends everything to $2 (a request $1 cannot take is retried there). Then the public check.
 # If that fails, $1 (still on disk) is started again and $2 stopped.
 hand_over() {
   local from=$1 to=$2
   say "stop the old slot $from: the proxy sends everything to $to"
+  local switched; switched=$(date +%s)
   ssh "$HOST" "sudo systemctl stop video-feedback@$from"
-  if ! public_ok; then
-    say "public check FAILED: back to slot $from"
+  if ! public_ok || ! worker_ok "$switched"; then
+    say "check FAILED: back to slot $from"
     ssh "$HOST" "sudo systemctl start video-feedback@$from"
     healthy "$from" || true
     ssh "$HOST" "journalctl -u video-feedback@$to -n 30 --no-pager || true; sudo systemctl stop video-feedback@$to"
