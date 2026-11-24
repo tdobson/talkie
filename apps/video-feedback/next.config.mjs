@@ -39,6 +39,22 @@ const playwrightBrowsersJson = relative(
   )
 );
 
+// What the processing worker imports from node_modules at run time (see
+// lib/pipeline/worker-build.ts: everything else is bundled into it).
+const workerPackages = [
+  'playwright-core',
+  'sharp',
+  '@img',
+  'color',
+  'color-convert',
+  'color-name',
+  'color-string',
+  'simple-swizzle',
+  'is-arrayish',
+  'detect-libc',
+  'semver',
+].map((name) => `${relative(appDir, join(repoRoot, 'node_modules', name))}/**/*`);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
@@ -55,8 +71,11 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/*': [
       './lib/media/talkie-render-page/dist/**/*',
-      // The processing worker, a process of its own (lib/pipeline/worker-host.ts).
+      // The processing worker, a process of its own (lib/pipeline/worker-host.ts), and the
+      // packages it loads at run time. The server itself no longer imports them, so file
+      // tracing would leave them out. (The deploy swaps in a sharp for geriatrix's old CPU.)
       './lib/pipeline/worker-dist/**/*',
+      ...workerPackages,
       playwrightBrowsersJson,
     ],
   },

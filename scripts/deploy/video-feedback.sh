@@ -180,18 +180,19 @@ busy() {
       console.log(n);' || echo unknown" \
     | awk '/^[0-9]+$/ { s += $1; seen = 1; next } { bad = 1 } END { print (bad || !seen) ? "unknown" : s }'
 }
-waited=0
+# Timed by the clock: each check itself can take a while on a busy server.
+wait_from=$SECONDS
 while :; do
   n="$(busy)"
   [[ "$n" == 0 ]] && { echo "queue empty"; break; }
   # A failed check counts as busy: never go ahead on a guess.
+  waited=$(( SECONDS - wait_from ))
   if (( waited >= wait_s )); then
     echo "still $n comments or clips in the queue after ${waited}s: going ahead (they carry on after)"
     break
   fi
   echo "$n comments or clips still processing, waiting (${waited}s of ${wait_s}s)"
   sleep 15
-  waited=$(( waited + 15 ))
 done
 
 say "install the units and the proxy config"
