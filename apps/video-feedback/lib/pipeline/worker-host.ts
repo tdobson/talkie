@@ -66,6 +66,18 @@ export function startWorkerHost(log: (m: string) => void = console.log): void {
   start();
 }
 
+/**
+ * On SIGTERM (a deploy stopping this slot) Next.js closes the server gracefully, but a
+ * connection that keeps being used (the proxy's health check, every second) holds it open until
+ * systemd kills it. By then the proxy sends everything to the other slot, and any processing is
+ * left pending for the next worker, so exit after a few seconds.
+ */
+export function exitSoonAfterSigterm(): void {
+  process.once('SIGTERM', () => {
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}
+
 /** Tells the worker to look for work now (a comment completed, or was reprocessed). */
 export function kickWorker(): void {
   const child = (globalThis as Holder)[KEY]?.child;
