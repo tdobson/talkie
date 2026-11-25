@@ -49,9 +49,9 @@ try {
   if ((await first.getAttribute('data-testid')) === 'mic-continue') await first.click();
   // The mic check has no button: it moves on by itself once it hears the fake microphone.
   await page.waitForSelector(tid('mic-heard'), { timeout: 15_000 });
-  // The practice run: a card explains it, Start practice plays the film, pause, and as soon as
-  // the fake microphone talks it says "Got that" and the film starts again from the beginning.
-  // Nothing of this is saved.
+  // The practice run: a card explains it, Start practice plays a short practice clip (not the
+  // film), pause, and as soon as the fake microphone talks it says "Got that" and the real film
+  // starts from the beginning. Nothing of this is saved.
   const playing = `${tid('play-pause')}[aria-label="Pause"]`;
   await page.waitForSelector(`${tid('practice-start')}:not([disabled]):not([data-disabled])`, {
     timeout: 30_000,

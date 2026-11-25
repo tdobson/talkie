@@ -106,6 +106,13 @@ test('a Talkie film that will not load shows the error panel and a Reload button
   await page.getByTestId(T.startButton).click();
   await continueMic(page);
   await expect(page.getByTestId(T.micHeard)).toBeVisible({ timeout: 10_000 });
+  // The practice runs on its own clip, which loads: skip it with play to reach the film.
+  await expect(page.getByTestId(T.practiceStart)).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId(T.practiceStart).click();
+  await expect(page.getByTestId(T.coachMark)).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId(T.practiceListening)).toBeVisible();
+  await page.keyboard.press('Space');
   await expect(page.getByTestId(T.videoError)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(T.videoReload)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('talkie-load-failure.png') });

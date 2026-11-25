@@ -16,6 +16,8 @@ export interface VideoStageProps {
   surfaceRef: RefObject<HTMLDivElement | null>;
   /** The video file, for an mp4. A film is loaded by its engine. */
   src?: string;
+  /** Goes back to the start at the end, for an mp4: the practice clip. */
+  loop?: boolean;
   playing: boolean;
   zoom: ZoomState | null;
   /** Where the zoom last was, so zooming out shrinks back around the same point. */
@@ -40,6 +42,7 @@ export function VideoStage({
   videoRef,
   surfaceRef,
   src,
+  loop = false,
   playing,
   zoom,
   lastOrigin,
@@ -85,6 +88,7 @@ export function VideoStage({
             className={classes.video}
             src={src}
             preload="auto"
+            loop={loop}
             playsInline
             disablePictureInPicture
             draggable={false}

@@ -84,6 +84,10 @@ export interface PlayerProps {
   reconnectFailed?: boolean;
   /** Called by Done, once every comment has been saved. */
   onDone: () => void | Promise<void>;
+  /** Where an mp4 comes from, in place of this link's video: the practice clip. */
+  src?: string;
+  /** Starts playing as soon as the media is ready: the real film, straight after the practice. */
+  autoPlay?: boolean;
 }
 
 /** How long the Saved toast stays up. */
@@ -169,6 +173,8 @@ export function Player({
   reconnecting = false,
   reconnectFailed = false,
   onDone,
+  src,
+  autoPlay = false,
 }: PlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -527,11 +533,11 @@ export function Player({
       // A film's engine arrives some time after the controls do. Until then there is nothing
       // to start, and showing it as playing would make the next press open a comment.
       if (!adapter && mediaKind === 'talkie') return;
-      // Playing on after the practice pause is the real start: from the beginning.
+      // Play after the practice pause skips the rest of it: on to the real film.
       const practice = practiceRef.current;
-      if (adapter && !alreadyPlaying && (practice === 'listening' || practice === 'gotThat')) {
-        adapter.currentTime = 0;
-        setCurrentTime(0);
+      if (practice === 'listening' || practice === 'gotThat') {
+        dispatch({ type: 'practiceFinished' });
+        return;
       }
       playingRef.current = true;
       void closeComment().catch(() => {});
@@ -821,12 +827,20 @@ export function Player({
     return () => document.removeEventListener('fullscreenchange', update);
   }, []);
 
-  // Practice: "Got that" for a moment, then the film starts again from the beginning.
+  // Practice: "Got that" for a moment, then on to the real film.
   useEffect(() => {
     if (state.practice !== 'gotThat') return;
-    const timer = setTimeout(() => play(), PRACTICE_GOT_THAT_MS);
+    const timer = setTimeout(() => dispatch({ type: 'practiceFinished' }), PRACTICE_GOT_THAT_MS);
     return () => clearTimeout(timer);
-  }, [state.practice, play]);
+  }, [state.practice, dispatch]);
+
+  // Straight after the practice the real film plays as soon as it can, from the beginning.
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (!autoPlay || autoPlayedRef.current || duration <= 0) return;
+    autoPlayedRef.current = true;
+    play();
+  }, [autoPlay, duration, play]);
 
   // Playing a long time with no pause: a reminder that pausing is how to comment.
   const idleHint = useIdleHint(
@@ -942,9 +956,11 @@ export function Player({
           surfaceRef={surfaceRef}
           src={
             mediaKind === 'mp4'
-              ? `/api/r/${encodeURIComponent(token)}/video?version=${version}`
+              ? (src ?? `/api/r/${encodeURIComponent(token)}/video?version=${version}`)
               : undefined
           }
+          // The practice clip is short: it goes round until they pause.
+          loop={state.practice !== null}
           playing={state.playing}
           zoom={state.zoom}
           lastOrigin={lastOriginRef.current}
@@ -1002,7 +1018,7 @@ export function Player({
           duration={duration}
           playing={state.playing}
           volume={volume}
-          showDone={state.screen !== 'end'}
+          showDone={state.screen !== 'end' && state.practice === null}
           finishing={finishing}
           fullscreen={isFullscreen}
           canFullscreen={canFullscreen}

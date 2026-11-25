@@ -75,6 +75,9 @@ From `apps/video-feedback/docs/FOLLOW-UPS.md` (details there):
 
 ## Done
 
+- 2026-11-24: the practice runs on a 12-second practice clip of its own
+  (`public/practice/clip.mp4`, made by `scripts/make-practice-clip.mjs` on a render machine),
+  never the film under review. As soon as the reviewer speaks, the real film plays from the start.
 - 2026-11-23: onboarding once per browser. The name, the hello check and the practice are
   remembered in localStorage (`vf:reviewer`) for every film; the microphone is only explained
   when the browser has not allowed it. The practice is now plainly practice: a card explains

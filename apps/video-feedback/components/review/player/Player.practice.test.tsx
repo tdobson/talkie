@@ -64,6 +64,8 @@ function Harness(props: {
   mediaKind: MediaKind;
   mountTalkie?: MountTalkie;
   initial: ReviewState;
+  src?: string;
+  autoPlay?: boolean;
 }) {
   const [state, dispatch] = useReducer(reducer, props.initial);
   // One stream for the whole test: a new one means the microphone was reconnected.
@@ -83,6 +85,8 @@ function Harness(props: {
         trouble={false}
         onReconnectMic={() => {}}
         onDone={() => {}}
+        src={props.src}
+        autoPlay={props.autoPlay}
       />
     </>
   );
@@ -95,7 +99,11 @@ const begin = () => fireEvent.click(screen.getByTestId(T.practiceStart));
 const isPlaying = () => screen.getByTestId(T.playPause).getAttribute('aria-label') === 'Pause';
 
 /** Mounts a player of either kind and returns how to read and move its playhead. */
-async function setup(kind: MediaKind, initial: ReviewState = practiceState) {
+async function setup(
+  kind: MediaKind,
+  initial: ReviewState = practiceState,
+  extra: { src?: string; autoPlay?: boolean } = {}
+) {
   const uploader: PlayerUploader = {
     enqueue: vi.fn(async () => {}),
     complete: vi.fn(async () => {}),
@@ -106,7 +114,13 @@ async function setup(kind: MediaKind, initial: ReviewState = practiceState) {
       new TalkieAdapter(engine, { filmUrl, sceneJson: async (src) => readFixture(src) })
   );
   render(
-    <Harness uploader={uploader} mediaKind={kind} mountTalkie={mountTalkie} initial={initial} />
+    <Harness
+      uploader={uploader}
+      mediaKind={kind}
+      mountTalkie={mountTalkie}
+      initial={initial}
+      {...extra}
+    />
   );
   screen.getByTestId(T.videoStage).getBoundingClientRect = () => new DOMRect(0, 0, 1000, 500);
   let time = 0;
@@ -192,8 +206,8 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(screen.getByTestId('practice')).toHaveTextContent('coach');
   });
 
-  it('a practice pause listens, says Got that as soon as they speak, then plays again from the start; nothing is saved', async () => {
-    const { uploader, getTime, moveTo } = await setup(kind);
+  it('a practice pause listens, says Got that as soon as they speak, then hands on to the real film; nothing is saved', async () => {
+    const { uploader, moveTo } = await setup(kind);
     begin();
     await settle();
     moveTo(1.5);
@@ -208,10 +222,10 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(screen.getByTestId(T.practiceGotThat)).toHaveTextContent(copy.practice.gotThat);
     expect(isPlaying()).toBe(false);
 
+    // The practice is over: the page swaps this player for one on the real film.
     await advance(PRACTICE_GOT_THAT_MS);
-    expect(isPlaying()).toBe(true);
-    expect(getTime()).toBe(0);
     expect(screen.getByTestId('practice')).toHaveTextContent('none');
+    expect(isPlaying()).toBe(false);
     expect(screen.queryByTestId(T.practiceGotThat)).toBeNull();
     expect(screen.queryByTestId(T.practiceBanner)).toBeNull();
 
@@ -219,11 +233,6 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(FakeMediaRecorder.instances).toHaveLength(0);
     expect(uploader.enqueue).not.toHaveBeenCalled();
     expect(uploader.complete).not.toHaveBeenCalled();
-
-    // The next pause is a real comment.
-    playPause();
-    expect(screen.getByTestId(T.listening)).toBeInTheDocument();
-    expect(FakeMediaRecorder.instances).toHaveLength(1);
   });
 
   it('Give feedback pauses just as Pause does', async () => {
@@ -235,15 +244,13 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(screen.getByTestId(T.giveFeedback)).toBeDisabled();
   });
 
-  it('pressing play during the practice pause skips straight to the real start', async () => {
-    const { getTime, moveTo } = await setup(kind);
+  it('pressing play during the practice pause skips straight on to the real film', async () => {
+    const { moveTo } = await setup(kind);
     begin();
     await settle();
     moveTo(2);
     playPause();
     playPause();
-    expect(isPlaying()).toBe(true);
-    expect(getTime()).toBe(0);
     expect(screen.getByTestId('practice')).toHaveTextContent('none');
     expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
@@ -255,6 +262,36 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     playPause();
     await advance(30_000);
     expect(screen.getByTestId(T.practiceListening)).toBeInTheDocument();
+  });
+});
+
+describe('the practice clip', () => {
+  it('plays the clip it is given, round and round, and offers no Done', async () => {
+    await setup('mp4', practiceState, { src: '/practice/clip.mp4' });
+    const video = screen.getByTestId(T.video) as HTMLVideoElement;
+    expect(video.getAttribute('src')).toBe('/practice/clip.mp4');
+    expect(video.loop).toBe(true);
+    expect(screen.queryByTestId(T.doneButton)).toBeNull();
+  });
+
+  it('the real film, straight after the practice, plays by itself once it has loaded', async () => {
+    await setup('mp4', { ...practiceState, practice: null }, { autoPlay: true });
+    const video = screen.getByTestId(T.video) as HTMLVideoElement;
+    expect(video.getAttribute('src')).toBe('/api/r/tok/video?version=2');
+    expect(video.loop).toBe(false);
+    expect(isPlaying()).toBe(true);
+    expect(media.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('a film plays by itself too, once its engine is ready', async () => {
+    await setup('talkie', { ...practiceState, practice: null }, { autoPlay: true });
+    expect(isPlaying()).toBe(true);
+  });
+
+  it('without autoPlay the film waits for play', async () => {
+    await setup('mp4', { ...practiceState, practice: null });
+    expect(isPlaying()).toBe(false);
+    expect(screen.getByTestId(T.doneButton)).toBeInTheDocument();
   });
 });
 

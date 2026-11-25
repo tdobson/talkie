@@ -216,21 +216,40 @@ describe('review machine', () => {
       expect(s).toMatchObject({ playing: false, practice: 'listening', commentId: null });
     });
 
-    it('heard, then back to the start for real; the browser has now practised', () => {
+    it('heard, then on to the real film, paused until it loads; the browser has now practised', () => {
       let s = reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' });
       expect(s.practised).toBe(false);
       s = reducer(s, { type: 'practiceHeard' });
       expect(s.practice).toBe('gotThat');
       expect(s.practised).toBe(true);
-      s = reducer(s, { type: 'play' });
-      expect(s).toMatchObject({ playing: true, practice: null, commentId: null });
+      s = reducer(s, { type: 'practiceFinished' });
+      expect(s).toMatchObject({
+        screen: 'player',
+        playing: false,
+        practice: null,
+        commentId: null,
+      });
     });
 
-    it('pressing play while listening also ends the practice', () => {
-      const s = reducer(reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' }), {
-        type: 'play',
+    it('play skipping the practice pause finishes it too, without counting it as practised', () => {
+      const listening = reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' });
+      const s = reducer(listening, { type: 'practiceFinished' });
+      expect(s).toMatchObject({ playing: false, practice: null, practised: false });
+    });
+
+    it('play never leaves the practice by itself: the clip only starts again', () => {
+      const listening = reducer(reducer(coach, { type: 'play' }), { type: 'practicePause' });
+      expect(reducer(listening, { type: 'play' })).toMatchObject({
+        playing: true,
+        practice: 'coach',
       });
-      expect(s).toMatchObject({ playing: true, practice: null });
+    });
+
+    it('finishing the practice does nothing before the practice pause, or outside it', () => {
+      expect(reducer(coach, { type: 'practiceFinished' })).toBe(coach);
+      const playing = reducer(coach, { type: 'play' });
+      expect(reducer(playing, { type: 'practiceFinished' })).toBe(playing);
+      expect(reducer(playerState, { type: 'practiceFinished' })).toBe(playerState);
     });
 
     it('practice actions do nothing outside the practice', () => {
@@ -245,9 +264,9 @@ describe('review machine', () => {
       expect(reducer(playing, { type: 'pause', commentId: 'c' })).toBe(playing);
     });
 
-    it('the film ending or Done drops the practice', () => {
+    it('the practice clip never ends the review; Done drops the practice', () => {
       const playing = reducer(coach, { type: 'play' });
-      expect(reducer(playing, { type: 'ended' }).practice).toBeNull();
+      expect(reducer(playing, { type: 'ended' })).toBe(playing);
       expect(reducer(playing, { type: 'done' }).practice).toBeNull();
     });
   });

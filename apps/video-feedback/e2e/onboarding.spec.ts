@@ -31,8 +31,10 @@ for (const kind of ['mp4', 'talkie'] as const) {
     const playPause = page.getByTestId(T.playPause);
     await expect(page.getByTestId(T.practiceIntro)).toContainText('First, a quick practice');
     await expect(page.getByTestId(T.practiceIntro)).toContainText('pause it and talk');
-    await expect(page.getByTestId(T.practiceBanner)).toContainText('Practice run');
+    await expect(page.getByTestId(T.practiceBanner)).toContainText('not your film');
     await expect(playPause).toHaveAttribute('aria-label', 'Play');
+    // It practises on a short clip of its own, not the film under review.
+    await expect(page.getByTestId(T.video)).toHaveAttribute('src', '/practice/clip.mp4');
 
     // Start practice plays it, and the coach mark says to pause now.
     await page.getByTestId(T.practiceStart).click();
@@ -45,11 +47,13 @@ for (const kind of ['mp4', 'talkie'] as const) {
     await expect(page.getByTestId(T.practiceListening)).toContainText('say something');
     await expect(page.getByTestId(T.listening)).toHaveCount(0);
 
-    // As soon as it hears them: Got that, then the real thing from the start, playing.
+    // As soon as it hears them: Got that, then the real film from the start, playing.
     await expect(page.getByTestId(T.practiceGotThat)).toContainText('Now for real', {
       timeout: 15_000,
     });
-    await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 10_000 });
+    await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 20_000 });
+    // The real film now: a video has its own src, a film's surface none at all.
+    await expect(page.getByTestId(T.video)).not.toHaveAttribute('src', '/practice/clip.mp4');
     expect(await position(page)).toBeLessThan(0.4);
     await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
     await expect(page.getByTestId(T.practiceBanner)).toHaveCount(0);

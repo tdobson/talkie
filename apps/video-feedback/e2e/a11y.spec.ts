@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { continueMic, state, T } from './helpers';
+import { continueMic, doPractice, state, T } from './helpers';
 
 /**
  * Screens fade in. Axe blends colours through opacity, so a check mid-fade reports contrast
@@ -47,6 +47,9 @@ test('reviewer screens have no serious axe violations', async ({ page }) => {
   await expect(page.getByTestId(T.practiceStart)).toBeEnabled({ timeout: 20_000 });
   await settled(page, T.player);
   expect(await seriousViolations(page), 'player').toEqual([]);
+
+  // Through the practice to the real film, which plays from the start.
+  await doPractice(page);
 
   await page.getByTestId(T.video).evaluate((v: HTMLVideoElement) => {
     v.currentTime = v.duration - 0.1;

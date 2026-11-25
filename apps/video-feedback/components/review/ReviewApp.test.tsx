@@ -1,6 +1,7 @@
 import { copy } from '@/lib/review/copy';
 import { PROFILE_KEY, readProfile } from '@/lib/review/profile';
 import { T } from '@/lib/testids';
+import { PRACTICE_CLIP } from '@/lib/constants';
 import { fakeStream, stubMediaPlayback } from '@/test/helpers/fakeMedia';
 import { fireEvent, render, screen, userEvent, waitFor } from '@/test/helpers/render';
 import { ReviewApp, type ReviewAppProps, type ReviewUploader } from './ReviewApp';
@@ -113,12 +114,22 @@ describe('ReviewApp', () => {
       userAgent: navigator.userAgent,
     });
     expect(localStorage.getItem(KEY)).toBe(SID);
-    expect(screen.getByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
-    // A new reviewer starts on the practice card, under the practice banner.
+    // A new reviewer starts on the practice card, under the practice banner, and the practice
+    // plays a short clip of its own, never the film under review.
     expect(screen.getByTestId(T.practiceIntro)).toBeInTheDocument();
     expect(screen.getByTestId(T.practiceBanner)).toBeInTheDocument();
+    expect(screen.getByTestId(T.video)).toHaveAttribute('src', PRACTICE_CLIP);
+    expect(screen.queryByTestId(T.doneButton)).toBeNull();
     // This browser now knows their name, for every film.
     expect(readProfile().name).toBe('Sarah');
+
+    // Play, pause, then play again instead of talking: on to the real film.
+    await user.click(screen.getByTestId(T.playPause));
+    await user.click(screen.getByTestId(T.playPause));
+    expect(await screen.findByTestId(T.practiceListening)).toBeInTheDocument();
+    await user.click(screen.getByTestId(T.playPause));
+    expect(screen.queryByTestId(T.practiceBanner)).toBeNull();
+    expect(screen.getByTestId(T.video)).toHaveAttribute('src', '/api/r/tok/video?version=2');
 
     await user.click(screen.getByTestId(T.doneButton));
     expect(await screen.findByTestId(T.thanks)).toHaveTextContent('Thanks, Sarah.');

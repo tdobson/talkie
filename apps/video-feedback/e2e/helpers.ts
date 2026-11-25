@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import { type APIRequestContext, expect, type Page } from '@playwright/test';
 import sharp from 'sharp';
 import yauzl from 'yauzl';
+import { PRACTICE_CLIP } from '@/lib/constants';
 import { T } from '@/lib/testids';
 import type {
   AdminVideoSummary,
@@ -175,15 +176,17 @@ export async function passMicCheck(
 
 /**
  * The practice run: a card says it is practice and how feedback works; Start practice plays the
- * film under the practice banner with a coach mark on Pause. Pausing listens; with `talk` the
- * fake microphone talks, "Got that" shows as soon as it is heard, and the film starts again
- * from the beginning for real. Without it (a silent microphone) the reviewer presses play to
- * carry on. Either way nothing is saved, and the film ends up playing from the start.
+ * short practice clip (never the film under review) under the practice banner, with a coach
+ * mark on Pause. Pausing listens; with `talk` the fake microphone talks, "Got that" shows as
+ * soon as it is heard, and the real film starts. Without it (a silent microphone) the reviewer
+ * presses play to carry on. Either way nothing is saved, and the film ends up playing from the
+ * start.
  */
 export async function doPractice(page: Page, { talk = true }: { talk?: boolean } = {}) {
   const playPause = page.getByTestId(T.playPause);
   await expect(page.getByTestId(T.practiceIntro)).toBeVisible();
   await expect(page.getByTestId(T.practiceBanner)).toBeVisible();
+  await expect(page.getByTestId(T.video)).toHaveAttribute('src', PRACTICE_CLIP);
   await expect(page.getByTestId(T.practiceStart)).toBeEnabled({ timeout: 20_000 });
   await page.getByTestId(T.practiceStart).click();
   await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 20_000 });
@@ -195,10 +198,12 @@ export async function doPractice(page: Page, { talk = true }: { talk?: boolean }
   } else {
     await page.keyboard.press('Space');
   }
-  await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 10_000 });
+  await expect(playPause).toHaveAttribute('aria-label', 'Pause', { timeout: 20_000 });
   await expect(page.getByTestId(T.coachMark)).toHaveCount(0);
   await expect(page.getByTestId(T.practiceListening)).toHaveCount(0);
   await expect(page.getByTestId(T.practiceBanner)).toHaveCount(0);
+  // The real film now: a film's surface has no src at all, a video has its own.
+  await expect(page.getByTestId(T.video)).not.toHaveAttribute('src', PRACTICE_CLIP);
 }
 
 /**

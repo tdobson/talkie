@@ -36,8 +36,12 @@ export const MIC_HEARD_SHOW_MS = 1000;
 export const PRACTICE_SPEECH_MS = 600;
 /** Quiet after that speech before it moves on: none. */
 export const PRACTICE_SILENCE_MS = 0;
-/** How long "Got that" shows before the film goes back to the start, for real. */
+/** How long "Got that" shows before the real film starts. */
 export const PRACTICE_GOT_THAT_MS = 2500;
+/** The short clip the practice runs on, so it never uses the film under review. */
+export const PRACTICE_CLIP = '/practice/clip.mp4';
+/** Seconds per frame of the practice clip (25 fps), for arrow-key stepping. */
+export const PRACTICE_CLIP_FRAME = 0.04;
 /**
  * A paused comment ends on its own after this long with no speech, so a reviewer who walks away
  * (or talks to someone else in the room) is not recorded for ever. Shorter in the E2E build.

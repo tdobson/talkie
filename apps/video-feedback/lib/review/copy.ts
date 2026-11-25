@@ -82,12 +82,12 @@ export const copy = {
     forward: (seconds: number) => `Forward ${seconds} seconds`,
   },
   practice: {
-    banner: 'Practice run: nothing you say here is saved.',
+    banner: 'Practice clip, not your film: nothing you say here is saved.',
     introTitle: 'First, a quick practice',
     intro1:
       'When you want to say something about the film, pause it and talk. Point at the picture with your mouse as you go.',
     intro2:
-      "Let's try it once. Press Start practice, then pause whenever you like and say anything. Nothing in the practice is saved, and after it the film starts again from the beginning for real.",
+      "Let's try it once, on a short practice clip, not your film. Press Start practice, then pause whenever you like and say anything. Nothing here is saved, and as soon as you speak your film starts.",
     start: 'Start practice',
     coachKeys: 'Now press pause, or the space bar.',
     coachTouch: 'Now tap pause.',
@@ -95,7 +95,7 @@ export const copy = {
     listening: 'Listening',
     listeningHelp: 'Now say something, anything. This one is just practice.',
     gotThat: 'Got that',
-    gotThatHelp: "That's all there is to it. Now for real: starting from the beginning.",
+    gotThatHelp: "That's all there is to it. Now for real: here comes your film.",
   },
   end: {
     title: "That's the end of the video.",

@@ -3,6 +3,7 @@
 import { Transition } from '@mantine/core';
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Uploader, type UploaderOptions } from '@/lib/capture/uploader';
+import { PRACTICE_CLIP, PRACTICE_CLIP_FRAME } from '@/lib/constants';
 import { initialState, reducer } from '@/lib/review/machine';
 import { readProfile, saveProfile } from '@/lib/review/profile';
 import type { MediaKind } from '@/lib/types';
@@ -169,6 +170,11 @@ export function ReviewApp({
   useEffect(() => {
     if (state.practised) saveProfile({ practised: true });
   }, [state.practised]);
+  // A practice run this visit: when it ends, the film starts by itself.
+  const practisedNowRef = useRef(false);
+  useEffect(() => {
+    if (state.practice !== null) practisedNowRef.current = true;
+  }, [state.practice]);
 
   // Microphone
 
@@ -374,10 +380,34 @@ export function ReviewApp({
         </Fade>
       );
     default:
+      // The practice: the same player on a short clip of its own, never the film under review.
+      if (state.practice !== null) {
+        return (
+          <Fade key="practice">
+            <Player
+              token={token}
+              frameDuration={PRACTICE_CLIP_FRAME}
+              mediaKind="mp4"
+              src={PRACTICE_CLIP}
+              state={state}
+              dispatch={dispatch}
+              stream={stream}
+              uploader={uploader}
+              trouble={false}
+              onReconnectMic={() => void reconnectMic()}
+              reconnecting={asking}
+              reconnectFailed={reconnectFailed}
+              onDone={finish}
+            />
+          </Fade>
+        );
+      }
       // player, end and general are all the player: it must not remount between them.
       return (
         <Fade key="player">
           <Player
+            // Straight from the practice: the film starts by itself, from the beginning.
+            autoPlay={practisedNowRef.current}
             token={token}
             frameDuration={frameDurations?.[state.version ?? latestVersion] ?? frameDuration}
             mediaKind={mediaKinds?.[state.version ?? latestVersion] ?? 'mp4'}

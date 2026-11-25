@@ -12,10 +12,11 @@ export type Screen =
   | 'thanks';
 
 /**
- * The practice run a browser gets once, before its first real review. A card says how giving
- * feedback works (`intro`). Play starts the film under a coach mark on Pause (`coach`). A pause
- * listens without recording anything (`listening`), and as soon as they speak it says so
- * (`gotThat`) and the film starts again from the beginning for real. Null outside the practice.
+ * The practice run a browser gets once, before its first real review, on a short practice clip
+ * of its own, never the film under review. A card says how giving feedback works (`intro`).
+ * Play starts the clip under a coach mark on Pause (`coach`). A pause listens without recording
+ * anything (`listening`), and as soon as they speak it says so (`gotThat`), then the real film
+ * plays from the beginning. Null outside the practice.
  */
 export type Practice = 'intro' | 'coach' | 'listening' | 'gotThat' | null;
 
@@ -74,6 +75,8 @@ export type ReviewAction =
   | { type: 'practicePause' }
   /** The reviewer spoke during the practice pause. */
   | { type: 'practiceHeard' }
+  /** On from the practice clip to the real film: after "Got that", or play pressed instead. */
+  | { type: 'practiceFinished' }
   | { type: 'play' }
   | { type: 'pause'; commentId: string }
   | { type: 'ended' }
@@ -206,8 +209,9 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
     case 'play': {
       if (s.screen !== 'player' && s.screen !== 'end') return s;
       if (s.screen === 'player' && s.playing) return s;
-      // Play on the practice card starts the practice; after the practice pause, the real thing.
-      const practice = s.practice === 'coach' || s.practice === 'intro' ? 'coach' : null;
+      // Play on the practice card starts the practice clip. After the practice pause, play
+      // means practiceFinished, so here it only ever starts the clip again.
+      const practice = s.practice === null ? null : 'coach';
       return {
         ...s,
         screen: 'player',
@@ -231,8 +235,15 @@ export function reducer(s: ReviewState, a: ReviewAction): ReviewState {
       if (s.screen !== 'player' || s.practice !== 'listening') return s;
       return { ...s, practice: 'gotThat', practised: true };
 
+    case 'practiceFinished':
+      if (s.screen !== 'player' || (s.practice !== 'listening' && s.practice !== 'gotThat')) {
+        return s;
+      }
+      return { ...s, practice: null, playing: false, commentId: null, zoom: null, held: null };
+
     case 'ended':
-      if (s.screen !== 'player') return s;
+      // The practice clip goes round and never ends: only the film does.
+      if (s.screen !== 'player' || s.practice !== null) return s;
       return {
         ...s,
         screen: 'end',

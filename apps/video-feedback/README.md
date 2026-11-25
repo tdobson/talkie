@@ -54,9 +54,9 @@ next to it, opens it in a new tab so you can review it yourself). Anyone with th
 review; there is no account. It always plays the latest version.
 
 The first time, a reviewer types a name, allows the microphone, says hello, and does a short
-practice: a card explains that you pause and talk to give feedback, the film plays under a
-"Practice run" banner, they pause and say anything, and the real review starts from the
-beginning. The browser remembers all of that (localStorage `vf:reviewer`), so on any film after
+practice: a card explains that you pause and talk to give feedback, a 12-second practice clip
+(`public/practice/clip.mp4`, never the film under review) plays under a "Practice clip" banner,
+they pause and say anything, and their film starts from the beginning. The browser remembers all of that (localStorage `vf:reviewer`), so on any film after
 that they only see "Welcome back" and go straight to it. The microphone is only explained when
 the browser has not already allowed it. To comment they pause and talk, pointing at the frame
 with the mouse while they do. Pressing play ends the comment. It needs a computer: phones and
