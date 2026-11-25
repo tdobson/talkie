@@ -39,6 +39,8 @@ export const PRACTICE_SILENCE_MS = 0;
 /** How long "Got that" shows before the real film starts. */
 export const PRACTICE_GOT_THAT_MS = 2500;
 /** The short clip the practice runs on, so it never uses the film under review. */
+/** How long the practice clip plays before a big prompt says how to pause and talk. */
+export const PRACTICE_PROMPT_MS = 2000;
 export const PRACTICE_CLIP = '/practice/clip.mp4';
 /** Seconds per frame of the practice clip (25 fps), for arrow-key stepping. */
 export const PRACTICE_CLIP_FRAME = 0.04;

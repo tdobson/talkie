@@ -11,6 +11,7 @@ import {
   FEEDBACK_HINT_SHOW_MS,
   KEY_STEP_COLLAPSE_MS,
   PRACTICE_GOT_THAT_MS,
+  PRACTICE_PROMPT_MS,
 } from '@/lib/constants';
 import { containRect } from '@/lib/geometry';
 import { copy } from '@/lib/review/copy';
@@ -45,7 +46,7 @@ import { Controls } from './Controls';
 import { CommentStopped, ListeningOverlay, VideoError, VideoLoading } from './ListeningOverlay';
 import { MicLost } from './MicLost';
 import { CommentHeld, CommentLimiter } from './CommentLimit';
-import { PracticeBanner, PracticeIntro, PracticeOverlay } from './PracticeOverlay';
+import { PracticeBanner, PracticeIntro, PracticeOverlay, PracticePrompt } from './PracticeOverlay';
 import classes from './player.module.css';
 import { type SaveState, SaveStatus, TroubleBanner } from './SaveStatus';
 import { VideoStage } from './VideoStage';
@@ -204,6 +205,17 @@ export function Player({
   finishingRef.current = finishing;
   const [videoError, setVideoError] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  // A couple of seconds into the practice clip, a big prompt says how to pause and talk.
+  const [practicePrompt, setPracticePrompt] = useState(false);
+  const coaching = state.practice === 'coach' && state.screen === 'player' && state.playing;
+  useEffect(() => {
+    if (!coaching) {
+      setPracticePrompt(false);
+      return;
+    }
+    const timer = setTimeout(() => setPracticePrompt(true), PRACTICE_PROMPT_MS);
+    return () => clearTimeout(timer);
+  }, [coaching]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [canFullscreen, setCanFullscreen] = useState(true);
 
@@ -980,6 +992,7 @@ export function Player({
             <PracticeIntro ready={duration > 0} onStart={() => play()} />
           )}
           {state.practice !== null && state.screen === 'player' && <PracticeBanner />}
+          {coaching && practicePrompt && <PracticePrompt touch={isTouch()} />}
           {recording && !stopped && (
             <CommentLimiter key={state.commentId} stream={stream} onEnd={endOnItsOwn} />
           )}

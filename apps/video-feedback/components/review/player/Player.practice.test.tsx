@@ -6,6 +6,7 @@ import {
   FEEDBACK_HINT_AFTER_MS,
   FEEDBACK_HINT_SHOW_MS,
   PRACTICE_GOT_THAT_MS,
+  PRACTICE_PROMPT_MS,
   PRACTICE_SILENCE_MS,
   PRACTICE_SPEECH_MS,
 } from '@/lib/constants';
@@ -196,6 +197,19 @@ describe.each(['mp4', 'talkie'] as const)('practice run (%s)', (kind) => {
     expect(screen.getByTestId(T.giveFeedback)).toBeEnabled();
     // The click on the card did not count as a pause on the picture.
     expect(screen.queryByTestId(T.practiceListening)).toBeNull();
+  });
+
+  it('a couple of seconds into the practice, a big prompt says how to pause, until they do', async () => {
+    await setup(kind);
+    begin();
+    await settle();
+    expect(screen.queryByTestId(T.practicePrompt)).toBeNull();
+    await advance(PRACTICE_PROMPT_MS);
+    expect(screen.getByTestId(T.practicePrompt)).toHaveTextContent(copy.practice.promptKeys);
+    playPause();
+    await settle();
+    expect(screen.queryByTestId(T.practicePrompt)).toBeNull();
+    expect(screen.getByTestId(T.practiceListening)).toBeInTheDocument();
   });
 
   it('play, instead of Start practice, starts the practice too', async () => {

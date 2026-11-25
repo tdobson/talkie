@@ -25,6 +25,7 @@ export const T = {
   practiceIntro: 'practice-intro',
   practiceStart: 'practice-start',
   practiceBanner: 'practice-banner',
+  practicePrompt: 'practice-prompt',
   practiceListening: 'practice-listening',
   practiceGotThat: 'practice-got-that',
   giveFeedback: 'give-feedback',

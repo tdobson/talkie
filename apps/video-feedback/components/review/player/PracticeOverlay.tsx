@@ -106,3 +106,15 @@ export function PracticeBanner() {
     </div>
   );
 }
+
+/**
+ * A couple of seconds into the practice clip: a big prompt on the picture saying how to pause
+ * and talk. Clicks go through it to the picture, which pauses like the button.
+ */
+export function PracticePrompt({ touch }: { touch: boolean }) {
+  return (
+    <div className={classes.practicePrompt} role="status" data-testid={T.practicePrompt}>
+      {touch ? copy.practice.promptTouch : copy.practice.promptKeys}
+    </div>
+  );
+}

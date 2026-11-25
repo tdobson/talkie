@@ -92,6 +92,8 @@ export const copy = {
     coachKeys: 'Now press pause, or the space bar.',
     coachTouch: 'Now tap pause.',
     coachPlay: 'Press play to start the practice.',
+    promptKeys: 'Press the space bar or click pause to give feedback.',
+    promptTouch: 'Tap pause to give feedback.',
     listening: 'Listening',
     listeningHelp: 'Now say something, anything. This one is just practice.',
     gotThat: 'Got that',
