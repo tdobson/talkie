@@ -96,7 +96,8 @@ DATA_DIR=/srv/video-feedback/data
 GROQ_API_KEY=gsk_...
 CF_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com
 CF_ACCESS_AUD=<the application's AUD tag>
-PUBLIC_BASE_URL=https://video-feedback.tdobson.net
+PUBLIC_BASE_URL=https://feedback.migratingdragons.com
+OTHER_BASE_URLS=https://video-feedback.tdobson.net
 ```
 
 | Variable                | What it is                                                                 |
@@ -106,6 +107,7 @@ PUBLIC_BASE_URL=https://video-feedback.tdobson.net
 | `CF_ACCESS_TEAM_DOMAIN` | Your Zero Trust team domain. Used to fetch the keys that sign Access JWTs. |
 | `CF_ACCESS_AUD`         | Audience tag of the Access application (section 5).                        |
 | `PUBLIC_BASE_URL`       | Public address, no trailing slash. Review links are built from it, and admin POSTs from any other origin are refused. |
+| `OTHER_BASE_URLS`       | Optional. Other addresses the same app answers on, separated by commas or spaces. Admin POSTs from these are accepted too; links still use `PUBLIC_BASE_URL`. |
 
 Optional: `WHISPER_LANGUAGE` (default `en`), and `TALKIE_CHROMIUM_PATH` to use a Chromium other
 than the one section 3 installs.
@@ -172,10 +174,14 @@ rendering are lowered per process by the app (`ionice -c2 -n7 nice -n19`), so th
 The settings, with dashboard paths, are in [`apps/video-feedback/deploy/cloudflared.md`](../apps/video-feedback/deploy/cloudflared.md).
 In short:
 
-1. **Ingress rule**: `video-feedback.tdobson.net` to `http://127.0.0.1:3000`.
+The live app answers on two hostnames: `feedback.migratingdragons.com` (the one links use) and
+`video-feedback.tdobson.net` (the first address, kept so old links work). Each needs its own ingress
+rule, DNS record and pair of Access paths below, in the same Access application.
+
+1. **Ingress rule**: `feedback.migratingdragons.com` to `http://127.0.0.1:3000`.
 2. **Access application** (self-hosted) covering exactly two paths on that hostname:
-   - `video-feedback.tdobson.net/admin` (covers `/admin` and `/admin/*`)
-   - `video-feedback.tdobson.net/api/admin` (covers `/api/admin/*`)
+   - `feedback.migratingdragons.com/admin` (covers `/admin` and `/admin/*`)
+   - `feedback.migratingdragons.com/api/admin` (covers `/api/admin/*`)
 
    Both in one application, because the app checks one audience tag. Policy 1: `Allow`, your
    email. Cookie setting Same Site Attribute: `Lax` or `Strict`.
@@ -192,7 +198,7 @@ are public for a moment, protected only by the app's own JWT check (which does h
 curl -sS \
   -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  https://video-feedback.tdobson.net/api/admin/videos
+  https://feedback.migratingdragons.com/api/admin/videos
 ```
 
 Download the feedback on a video:
@@ -201,7 +207,7 @@ Download the feedback on a video:
 curl -sS -OJ \
   -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  "https://video-feedback.tdobson.net/api/admin/videos/<videoId>/export.zip?version=latest"
+  "https://feedback.migratingdragons.com/api/admin/videos/<videoId>/export.zip?version=latest"
 ```
 
 A `202` with `Retry-After: 30` means comments are still being processed: wait and ask again, or
@@ -232,7 +238,7 @@ The inbox import is an admin API, so a script with the service token does the wh
 ```bash
 . ~/.config/video-feedback/service-token.env   # CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET
 H=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-VF=https://video-feedback.tdobson.net
+VF=https://feedback.migratingdragons.com
 
 rsync -P --bwlimit=20000 dist/film.lottie geriatrix:/srv/video-feedback/data/inbox/roof-v1.lottie
 curl -sS "${H[@]}" $VF/api/admin/inbox                     # lists the inbox
@@ -309,7 +315,7 @@ On the host:
 
 From a browser on a computer that is not signed in to Access (a private window):
 
-- [ ] `https://video-feedback.tdobson.net/admin` sends you to the Cloudflare login page.
+- [ ] `https://feedback.migratingdragons.com/admin` sends you to the Cloudflare login page.
 - [ ] A review link (`/r/<token>`) loads with no login and the video plays.
 
 As a reviewer, on that review link:

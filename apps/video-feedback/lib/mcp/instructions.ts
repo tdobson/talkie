@@ -1,7 +1,7 @@
 // What an agent is told about this server when it connects (MCP `instructions`). Claude Code
 // puts it in the agent's system prompt, so it is short and says how the tools fit together.
 
-export const INSTRUCTIONS = `Video feedback (https://video-feedback.tdobson.net): people watch a film (MP4 or Talkie), pause wherever they like, talk and point at the picture. Each pause is a comment: the server transcribes it and draws stills of the frame with their pointer on it. These tools put films up for review and bring the feedback back.
+export const INSTRUCTIONS = `Video feedback (https://feedback.migratingdragons.com): people watch a film (MP4 or Talkie), pause wherever they like, talk and point at the picture. Each pause is a comment: the server transcribes it and draws stills of the frame with their pointer on it. These tools put films up for review and bring the feedback back.
 
 Reading feedback
 - list_videos: every video, its id, review link and how much feedback it has.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy apps/video-feedback to geriatrix (https://video-feedback.tdobson.net).
+# Deploy apps/video-feedback to geriatrix (https://feedback.migratingdragons.com).
 #
 # Builds here (geriatrix is too slow and too full to build), swaps in a sharp that runs on its old
 # CPU and copies a new release next to the old ones. Then, with no downtime (blue/green):
@@ -39,7 +39,7 @@ set -euo pipefail
 
 HOST="${VF_HOST:-geriatrix}"
 BASE=/srv/video-feedback
-PUBLIC_URL="${VF_PUBLIC_URL:-https://video-feedback.tdobson.net}"
+PUBLIC_URL="${VF_PUBLIC_URL:-https://feedback.migratingdragons.com}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 app="$root/apps/video-feedback"
 low() { nice -n19 ionice -c2 -n7 "$@"; }

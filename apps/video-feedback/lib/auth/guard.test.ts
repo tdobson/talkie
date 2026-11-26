@@ -122,16 +122,22 @@ describe('requireAdminPage', () => {
 
 describe('cross-site requests to state-changing admin routes', () => {
   const KEY = 'PUBLIC_BASE_URL';
+  const OTHER = 'OTHER_BASE_URLS';
   let savedBase: string | undefined;
+  let savedOther: string | undefined;
   beforeEach(() => {
     savedBase = process.env[KEY];
+    savedOther = process.env[OTHER];
     process.env.ADMIN_AUTH = 'off';
     process.env[KEY] = 'https://feedback.example.com';
+    process.env[OTHER] = 'https://old.example.com';
     resetConfigForTests();
   });
   afterEach(() => {
     if (savedBase === undefined) delete process.env[KEY];
     else process.env[KEY] = savedBase;
+    if (savedOther === undefined) delete process.env[OTHER];
+    else process.env[OTHER] = savedOther;
   });
 
   const handler = vi.fn(async () => new Response('ok'));
@@ -150,7 +156,9 @@ describe('cross-site requests to state-changing admin routes', () => {
     expect((await post({ ...json, Origin: 'http://127.0.0.1:3000' })).status).toBe(200);
     // curl with a service token: no Origin, no Sec-Fetch-Site.
     expect((await post(json)).status).toBe(200);
-    expect(handler).toHaveBeenCalledTimes(3);
+    // The admin page on the app's other address (OTHER_BASE_URLS).
+    expect((await post({ ...json, Origin: 'https://old.example.com' })).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(4);
   });
 
   it('refuses a POST from another site', async () => {

@@ -1,6 +1,6 @@
 # The review platform, for agents
 
-How an agent puts a film up for review on https://video-feedback.tdobson.net, gets the review
+How an agent puts a film up for review on https://feedback.migratingdragons.com, gets the review
 link, and reads the feedback back to change the film. The easy way is the MCP server: an agent
 gets tools for all of it, feedback comes back with its stills as images, and nothing needs a
 script. Everything also works from a shell with curl: no browser, no admin login.
@@ -22,7 +22,7 @@ It takes two kinds of film:
 
 ## The MCP server (use this)
 
-`https://video-feedback.tdobson.net/api/admin/mcp` is an MCP server (Streamable HTTP). It sits
+`https://feedback.migratingdragons.com/api/admin/mcp` is an MCP server (Streamable HTTP). It sits
 behind the same Cloudflare Access as the admin API, so it takes the same service token.
 
 ### Set it up
@@ -37,7 +37,7 @@ behind the same Cloudflare Access as the admin API, so it takes the same service
    works in it), or for yourself in every project:
 
    ```bash
-   claude mcp add-json --scope user video-feedback '{"type":"http","url":"https://video-feedback.tdobson.net/api/admin/mcp","headersHelper":". ~/.config/video-feedback/service-token.env && printf '"'"'{\"CF-Access-Client-Id\":\"%s\",\"CF-Access-Client-Secret\":\"%s\"}'"'"' \"$CF_ACCESS_CLIENT_ID\" \"$CF_ACCESS_CLIENT_SECRET\"","timeout":960000}'
+   claude mcp add-json --scope user video-feedback '{"type":"http","url":"https://feedback.migratingdragons.com/api/admin/mcp","headersHelper":". ~/.config/video-feedback/service-token.env && printf '"'"'{\"CF-Access-Client-Id\":\"%s\",\"CF-Access-Client-Secret\":\"%s\"}'"'"' \"$CF_ACCESS_CLIENT_ID\" \"$CF_ACCESS_CLIENT_SECRET\"","timeout":960000}'
    ```
 
    The entry holds no secret. `headersHelper` reads your token file each time Claude Code
@@ -137,7 +137,7 @@ request reaches the app. Without them every admin call answers `302` (a redirect
   ```bash
   set -a; . ~/.config/video-feedback/service-token.env; set +a
   H=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-  VF=https://video-feedback.tdobson.net
+  VF=https://feedback.migratingdragons.com
   ```
 
 - **On asterix, xebit-dev1, xebit-dev3** (or another machine of Tim's that can ssh to tragicomix),
@@ -180,7 +180,7 @@ curl -sS "${H[@]}" -H 'Content-Type: application/json' \
   -d '{"filename":"roof-v1.lottie","mode":"new","title":"Roof: how a batten gauge works"}' \
   $VF/api/admin/inbox
 # -> {"ok":true,"videoId":"roof-how-a-batten-gauge-works-x1y2","version":1,
-#     "reviewUrl":"https://video-feedback.tdobson.net/r/...","next":[...],"docs":"..."}
+#     "reviewUrl":"https://feedback.migratingdragons.com/r/...","next":[...],"docs":"..."}
 
 # ...or as the next version of a video that is already there (same review link):
 curl -sS "${H[@]}" -H 'Content-Type: application/json' \

@@ -34,6 +34,17 @@ it('loads a complete production config', () => {
 it('defaults PUBLIC_BASE_URL to localhost outside production', () => {
   expect(loadConfig({}).publicBaseUrl).toBe('http://localhost:3000');
 });
+it('reads the other addresses the app answers on from OTHER_BASE_URLS', () => {
+  expect(loadConfig({}).otherBaseUrls).toEqual([]);
+  const c = loadConfig({
+    ...prod,
+    OTHER_BASE_URLS: ' https://video-feedback.tdobson.net/ , https://old.example.com ',
+  });
+  expect(c.otherBaseUrls).toEqual([
+    'https://video-feedback.tdobson.net',
+    'https://old.example.com',
+  ]);
+});
 it('requires PUBLIC_BASE_URL in production', () => {
   expect(() => loadConfig({ ...prod, PUBLIC_BASE_URL: undefined })).toThrow(/PUBLIC_BASE_URL/);
   expect(() => loadConfig({ ...prod, PUBLIC_BASE_URL: '  ' })).toThrow(/PUBLIC_BASE_URL/);

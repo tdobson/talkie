@@ -9,7 +9,7 @@ the traps that have already caught people out. Every section links to the doc wi
 | Thing | What it is | Where |
 | --- | --- | --- |
 | **Talkie** | A film format: vector drawings that move, plus narration. Plays in a web page like a video, stays sharp at any size, a fraction of an MP4's size. Written as code: scene files and SVG art in, one `.lottie` file out. | `packages/` (format, author, player, react, cli), `examples/` |
-| **Video feedback** | The review platform. A reviewer opens a link, watches, pauses, talks and points. You get transcripts, timecodes, stills with the pointer drawn on, and for Talkie the exact scene. | https://video-feedback.tdobson.net, code in `apps/video-feedback` |
+| **Video feedback** | The review platform. A reviewer opens a link, watches, pauses, talks and points. You get transcripts, timecodes, stills with the pointer drawn on, and for Talkie the exact scene. | https://feedback.migratingdragons.com, code in `apps/video-feedback` |
 | **Drop player** | A static page: drop a `.lottie` and it plays. Nothing is uploaded. | https://talkie.tdobson.net, code in `sites/talkie-drop` |
 
 The repo is https://github.com/tdobson/talkie (public, AGPL-3.0-or-later, branch `main`). Tim and

@@ -38,7 +38,7 @@ export interface ToolResult {
 export interface ToolContext {
   /** Who is calling: null when admin auth is off (development and tests). */
   identity: AccessIdentity | null;
-  /** The public origin, no trailing slash: https://video-feedback.tdobson.net */
+  /** The public origin, no trailing slash: https://feedback.migratingdragons.com */
   baseUrl: string;
   /** Aborted when the client goes away. A tool that waits must stop then. */
   signal: AbortSignal;

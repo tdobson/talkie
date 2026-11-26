@@ -13,6 +13,8 @@ export interface Config {
   adminAuth: AdminAuthMode;
   transcriber: TranscriberMode;
   publicBaseUrl: string;
+  /** Other addresses the same app answers on (OTHER_BASE_URLS), so its admin pages work there too. */
+  otherBaseUrls: string[];
   isProduction: boolean;
 }
 
@@ -79,6 +81,10 @@ export function loadConfig(env: Env): Config {
     adminAuth,
     transcriber,
     publicBaseUrl: (publicBaseUrl ?? 'http://localhost:3000').replace(/\/+$/, ''),
+    otherBaseUrls: (value(env, 'OTHER_BASE_URLS') ?? '')
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map((u) => u.replace(/\/+$/, '')),
     isProduction,
   };
 }

@@ -6,7 +6,7 @@
 //   node watch-feedback.mjs <videoId> [--version latest] [--every 20] [--state watch.json]
 //                           [--images ./stills] [--new-only] [--once]
 //
-// Environment: VF (default https://video-feedback.tdobson.net), CF_ACCESS_CLIENT_ID and
+// Environment: VF (default https://feedback.migratingdragons.com), CF_ACCESS_CLIENT_ID and
 // CF_ACCESS_CLIENT_SECRET (the service token, see docs/review-platform-for-agents.md).
 //
 // Output, one JSON object per line on stdout:
@@ -178,7 +178,7 @@ async function saveState(path, state) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const base = process.env.VF ?? 'https://video-feedback.tdobson.net';
+  const base = process.env.VF ?? 'https://feedback.migratingdragons.com';
   const headers = {};
   if (process.env.CF_ACCESS_CLIENT_ID) {
     headers['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID;

@@ -82,7 +82,8 @@ export function checkSameOrigin(req: Request): Response | null {
   }
   const origin = req.headers.get('origin');
   if (origin !== null) {
-    const allowed = [originOf(config().publicBaseUrl), originOf(req.url)];
+    const { publicBaseUrl, otherBaseUrls } = config();
+    const allowed = [publicBaseUrl, ...otherBaseUrls, req.url].map(originOf);
     if (!allowed.includes(origin)) return refused(403, 'cross-site request refused');
   }
   const type = req.headers.get('content-type');
