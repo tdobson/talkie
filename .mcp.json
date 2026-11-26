@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "video-feedback": {
+      "type": "http",
+      "url": "https://video-feedback.tdobson.net/api/admin/mcp",
+      "headersHelper": ". ~/.config/video-feedback/service-token.env && printf '{\"CF-Access-Client-Id\":\"%s\",\"CF-Access-Client-Secret\":\"%s\"}' \"$CF_ACCESS_CLIENT_ID\" \"$CF_ACCESS_CLIENT_SECRET\"",
+      "timeout": 960000
+    }
+  }
+}

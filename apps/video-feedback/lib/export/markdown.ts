@@ -72,7 +72,10 @@ function wordEnds(text: string, words: ExportTranscript['words']): number[] | nu
 }
 
 /** The transcript with a marker after the word nearest each moment. */
-function transcriptWithMarkers(transcript: ExportTranscript, moments: ExportMoment[]): string {
+export function transcriptWithMarkers(
+  transcript: ExportTranscript,
+  moments: ExportMoment[]
+): string {
   const { words } = transcript;
   const after = new Map<number, string[]>();
   for (const m of moments) {

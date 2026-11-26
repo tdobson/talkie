@@ -135,10 +135,11 @@ export async function listInbox(): Promise<InboxFile[]> {
   );
 }
 
-// One import at a time per video, so two new versions cannot claim the same number.
+// One import (or other change to video.json) at a time per video, so two new versions cannot
+// claim the same number.
 const locks = new Map<string, Promise<unknown>>();
 
-async function withVideoLock<T>(videoId: string, fn: () => Promise<T>): Promise<T> {
+export async function withVideoLock<T>(videoId: string, fn: () => Promise<T>): Promise<T> {
   const previous = locks.get(videoId) ?? Promise.resolve();
   const next = previous.then(fn, fn);
   const settled = next.catch(() => {});
